@@ -1,0 +1,27 @@
+{
+  // Compila los tests (tests/) junto con la librería a .test-build/
+  // para ejecutarlos con el test runner de Node (`npm test`).
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "esnext",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+
+    "noEmit": false,
+    "sourceMap": true,
+    "rootDir": ".",
+    "outDir": ".test-build"
+  },
+  "include": ["src", "tests", "bench"]
+}

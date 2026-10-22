@@ -1,0 +1,1192 @@
+[
+  {
+    "title": {
+      "en": "Speed and starting",
+      "es": "Velocidad y arranque"
+    },
+    "params": [
+      {
+        "name": "walkSpeed",
+        "doc": {
+          "en": "Normal walking speed (m/s): the cruise speed when navigating on foot, at which it takes `stepFrequency` steps per second. It can walk faster, up to `runStartSpeed`.",
+          "es": "Velocidad normal de caminar (m/s): la de crucero al navegar caminando y a la que se dan `stepFrequency` pasos por segundo. Se puede caminar más deprisa, hasta `runStartSpeed`."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runSpeed",
+        "doc": {
+          "en": "Maximum running speed (m/s).",
+          "es": "Velocidad máxima corriendo (m/s)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runStartSpeed",
+        "doc": {
+          "en": "Speed at which the transition to running begins (m/s). A person starts running at about 2 m/s (Froude number v²/(g·leg) ≈ 0.5); below that they walk, even at a brisk pace.",
+          "es": "Velocidad a partir de la cual empieza la transición a correr (m/s). Una persona pasa a correr hacia los 2 m/s (número de Froude v²/(g·pierna) ≈ 0,5); por debajo camina, aunque sea a paso vivo."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runTransition",
+        "doc": {
+          "en": "Speed range (m/s) above runStartSpeed over which walking gradually turns into running.",
+          "es": "Margen de velocidad (m/s) por encima de runStartSpeed en el que se pasa gradualmente de caminar a correr."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "acceleration",
+        "doc": {
+          "en": "Acceleration when starting to move (m/s²).",
+          "es": "Aceleración al arrancar (m/s²)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "deceleration",
+        "doc": {
+          "en": "Deceleration when braking (m/s²).",
+          "es": "Deceleración al frenar (m/s²)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "speedEasing",
+        "doc": {
+          "en": "Smoothing of speed changes (s): the time over which acceleration or braking ramps up to its maximum and back to zero (S-curve). 0 = constant rate, no smoothing.",
+          "es": "Suavizado de los cambios de velocidad (s): tiempo en que la aceleración o la frenada crecen hasta su máximo y vuelven a cero (curva en S). 0 = ritmo constante, sin suavizar."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Steps (walking)",
+      "es": "Paso (caminando)"
+    },
+    "params": [
+      {
+        "name": "stepFrequency",
+        "doc": {
+          "en": "Steps per second (counting both feet) at `walkSpeed`. When walking, cadence grows with the square root of speed (as in motion capture); step length provides the rest.",
+          "es": "Pasos por segundo (contando ambos pies) a `walkSpeed`. Caminando, la cadencia crece con la raíz cuadrada de la velocidad (como en las capturas de movimiento): el resto lo pone la longitud del paso."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "minStepFrequency",
+        "doc": {
+          "en": "Steps per second at near-zero speed (when starting, stopping or repositioning the feet).",
+          "es": "Pasos por segundo a velocidad casi nula (al arrancar, parar o recolocarse)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "stepLength",
+        "doc": {
+          "en": "Maximum step length (m): if more were needed, the step frequency increases instead.",
+          "es": "Longitud máxima de un paso (m): si hiciera falta más, se aumenta la frecuencia."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "stepWidth",
+        "doc": {
+          "en": "Lateral distance between the feet (m). `null` = 80 % of the rig's hip width (distance between the thighs), as in walking.",
+          "es": "Separación lateral entre pies (m). `null` = el 80 % de la anchura de las caderas del rig (separación de los muslos), como al caminar."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "stepHeight",
+        "doc": {
+          "en": "Maximum foot height during the swing (m).",
+          "es": "Altura máxima del pie durante el swing (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "dutyFactor",
+        "doc": {
+          "en": "Fraction of the cycle each foot spends on the ground when walking (> 0.5: double support).",
+          "es": "Fracción del ciclo que cada pie pasa apoyado al caminar (> 0,5: doble apoyo)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "walkLandingLead",
+        "doc": {
+          "en": "Walking: fraction of the normal lead at which the foot lands (0–1). With 1, the stance is centred on the neutral position; with less, further back: the trailing leg extends with the heel raised before lifting off and the leading foot lands closer, as in motion capture. It applies in full when the heel lifts 45° or more at toe-off (`heelLiftAngle`); with less, the stance moves towards centred (with flat feet the trailing leg cannot extend as far).",
+          "es": "Caminar: fracción del adelanto normal con la que aterriza el pie (0–1). Con 1, el apoyo queda centrado en la posición neutra; menos, más atrás: la pierna de atrás se estira con el talón levantado antes de despegar y la de delante aterriza más cerca, como en las capturas de movimiento. Se aplica entero con el talón levantado 45° o más al despegar (`heelLiftAngle`); con menos, el apoyo se acerca al centrado (con los pies planos la pierna de atrás no puede estirarse tanto)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "liftFraction",
+        "doc": {
+          "en": "Fraction of the cycle, at the end of the stance, in which the heel rises (LIFT; at most 30 % of the stance). It starts before the other foot lands, as in real walking.",
+          "es": "Fracción del ciclo, al final del apoyo, en la que el talón se levanta (LIFT; como mucho el 30 % del apoyo). Empieza antes de que aterrice el otro pie, como al caminar de verdad."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "plantFraction",
+        "doc": {
+          "en": "Fraction of the cycle, at the start of the stance, in which the foot settles flat (PLANT).",
+          "es": "Fracción del ciclo, al inicio del apoyo, en la que el pie termina de apoyarse (PLANT)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "heelLiftAngle",
+        "doc": {
+          "en": "Maximum heel angle at toe-off, pivoting on the toes (degrees).",
+          "es": "Ángulo máximo del talón al despegar, pivotando sobre la punta (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "heelStrikeAngle",
+        "doc": {
+          "en": "Angle of the raised toes at heel strike (degrees).",
+          "es": "Ángulo de la punta levantada al aterrizar de talón (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "standKneeBend",
+        "doc": {
+          "en": "Knee bend when standing (degrees; if the model has its knees more bent at rest, the rest bend).",
+          "es": "Flexión de las rodillas de pie (grados; si el modelo las tiene más dobladas en reposo, la de reposo)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "stanceKneeBend",
+        "doc": {
+          "en": "Bend of the supporting knee at landing and mid-stance, walking at `walkSpeed` (degrees). It grows with speed (from `standKneeBend` when still), as in motion capture: at a brisk pace the knees cushion more and the hips rise and fall less.",
+          "es": "Flexión de la rodilla de apoyo al aterrizar y a mitad del apoyo, caminando a `walkSpeed` (grados). Crece con la velocidad (desde `standKneeBend` parado), como en las capturas de movimiento: a paso vivo las rodillas amortiguan más y las caderas suben y bajan menos."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "loadingKneeBend",
+        "doc": {
+          "en": "Extra knee bend when taking the weight after landing (cushioning), walking at `walkSpeed` (degrees; grows with speed).",
+          "es": "Flexión extra de la rodilla al recibir el peso tras aterrizar (amortiguación), caminando a `walkSpeed` (grados; crece con la velocidad)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Running",
+      "es": "Correr"
+    },
+    "params": [
+      {
+        "name": "runStepFrequency",
+        "doc": {
+          "en": "Running: steps per second at runSpeed.",
+          "es": "Correr: pasos por segundo a runSpeed."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runStepLength",
+        "doc": {
+          "en": "Running: maximum step length (m).",
+          "es": "Correr: longitud máxima de paso (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "runDutyFactor",
+        "doc": {
+          "en": "Running: fraction of the cycle with the foot on the ground (< 0.5: flight phase).",
+          "es": "Correr: fracción del ciclo con el pie apoyado (< 0,5: fase de vuelo)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runStepHeight",
+        "doc": {
+          "en": "Running: foot height in the air (m).",
+          "es": "Correr: altura del pie en el aire (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "runHeelLiftAngle",
+        "doc": {
+          "en": "Running: heel angle at toe-off (degrees).",
+          "es": "Correr: ángulo del talón al despegar (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runHeelStrikeAngle",
+        "doc": {
+          "en": "Running: toe angle at landing (degrees; small = midfoot strike).",
+          "es": "Correr: ángulo de la punta al aterrizar (grados; pequeño = apoyo de medio pie)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runCrouch",
+        "doc": {
+          "en": "Running: how much the hips drop on average (m).",
+          "es": "Correr: cuánto bajan las caderas en promedio (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "runBounce",
+        "doc": {
+          "en": "Running: amplitude of the vertical bounce of the hips (m).",
+          "es": "Correr: amplitud del rebote vertical de las caderas (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "runLandingLead",
+        "doc": {
+          "en": "Running: fraction of the normal lead at which the foot lands (0–1). When walking the foot lands half a stance ahead of the hip; when running, closer to the body (and it lifts off further back, pushing).",
+          "es": "Correr: fracción del adelanto normal con la que aterriza el pie (0–1). Al caminar el pie aterriza a medio apoyo por delante de la cadera; corriendo, más cerca del cuerpo (y despega más atrás, empujando)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runLean",
+        "doc": {
+          "en": "Running: forward lean of the torso (degrees).",
+          "es": "Correr: inclinación del torso hacia delante (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runArmAbduction",
+        "doc": {
+          "en": "Running: arm angle away from the vertical (degrees).",
+          "es": "Correr: separación del brazo respecto a la vertical (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runElbowBend",
+        "doc": {
+          "en": "Running: elbow bend (degrees).",
+          "es": "Correr: flexión del codo (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runArmSwing",
+        "doc": {
+          "en": "Running: maximum arm swing (degrees).",
+          "es": "Correr: balanceo máximo del brazo (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "runElbowSwingBend",
+        "doc": {
+          "en": "Running: extra elbow bend when the arm swings forward (degrees).",
+          "es": "Correr: flexión extra del codo con el brazo hacia delante (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Posture",
+      "es": "Postura"
+    },
+    "params": [
+      {
+        "name": "walkLean",
+        "doc": {
+          "en": "Forward lean of the torso when standing and walking (degrees; when running it changes to `runLean`).",
+          "es": "Inclinación del torso hacia delante de pie y caminando (grados; al correr pasa a `runLean`)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "ankleBack",
+        "doc": {
+          "en": "How far the ankle sits behind the hip in the neutral foot position (m): when standing, the weight falls on the middle of the foot, ahead of the ankle. It is not taken from the model's rest pose, which may have the feet forward or back.",
+          "es": "Cuánto queda el tobillo por detrás de la cadera en la posición neutra del pie (m): de pie, el peso cae sobre el medio del pie, por delante del tobillo. No se toma de la pose de reposo del modelo, que puede tener los pies adelantados o retrasados."
+        },
+        "length": true,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Crouching",
+      "es": "Agacharse"
+    },
+    "params": [
+      {
+        "name": "crouchDepth",
+        "doc": {
+          "en": "Crouching: how much the hips drop (m).",
+          "es": "Agachado: cuánto bajan las caderas (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "crouchHipBack",
+        "doc": {
+          "en": "Crouching: how far the hips move back to keep balance (m).",
+          "es": "Agachado: cuánto retroceden las caderas para mantener el equilibrio (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "crouchPelvisTilt",
+        "doc": {
+          "en": "Crouching: forward tilt of the pelvis (degrees).",
+          "es": "Agachado: inclinación de la pelvis hacia delante (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "crouchLean",
+        "doc": {
+          "en": "Crouching: additional forward lean of the torso (degrees).",
+          "es": "Agachado: inclinación adicional del torso hacia delante (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "crouchElbowBend",
+        "doc": {
+          "en": "Crouching: additional elbow bend (degrees).",
+          "es": "Agachado: flexión adicional del codo (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "crouchArmForward",
+        "doc": {
+          "en": "Crouching: how far forward the arms move (degrees).",
+          "es": "Agachado: adelanto de los brazos (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "crouchMaxSpeed",
+        "doc": {
+          "en": "Crouching: maximum speed (m/s).",
+          "es": "Agachado: velocidad máxima (m/s)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "crouchRate",
+        "doc": {
+          "en": "How fast it crouches or stands up (fraction of a full crouch per second).",
+          "es": "Rapidez con la que se agacha o se levanta (fracción de agachado por segundo)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Jumping",
+      "es": "Salto"
+    },
+    "params": [
+      {
+        "name": "gravity",
+        "doc": {
+          "en": "Gravity (m/s²).",
+          "es": "Gravedad (m/s²)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "jumpSpeed",
+        "doc": {
+          "en": "Jump: vertical speed at takeoff (m/s).",
+          "es": "Salto: velocidad vertical al despegar (m/s)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "jumpCrouch",
+        "doc": {
+          "en": "Jump: how far the hips sink while preparing (m). The duration of the preparation follows from this and jumpSpeed: the hips go down from rest and up again, taking off exactly at the jump speed.",
+          "es": "Salto: cuánto se hunden las caderas al prepararse (m). La duración de la preparación se deriva de esto y de jumpSpeed: las caderas bajan desde parado y suben hasta despegar justo a la velocidad del salto."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "jumpToeOff",
+        "doc": {
+          "en": "Jump: heel raise at the end of the preparation (pushing off with the toes, degrees).",
+          "es": "Salto: elevación de talones al final de la preparación (impulso con la punta, grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "jumpTuck",
+        "doc": {
+          "en": "Jump: how much the feet tuck up in the air (m).",
+          "es": "Salto: cuánto se recogen los pies en el aire (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "jumpLandingPrep",
+        "doc": {
+          "en": "Jump: time before touching the ground in which the legs extend towards the landing (s).",
+          "es": "Salto: tiempo antes de tocar el suelo en que las piernas se extienden hacia el aterrizaje (s)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "landingAbsorb",
+        "doc": {
+          "en": "Landing: hip drop for each m/s of falling speed (m per m/s).",
+          "es": "Aterrizaje: hundimiento de caderas por cada m/s de velocidad de caída (m por m/s)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxLandingDip",
+        "doc": {
+          "en": "Landing: maximum hip drop (m).",
+          "es": "Aterrizaje: hundimiento máximo de caderas (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "landingTime",
+        "doc": {
+          "en": "Landing: duration of the cushioning (s).",
+          "es": "Aterrizaje: duración de la amortiguación (s)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Standing still",
+      "es": "Pararse"
+    },
+    "params": [
+      {
+        "name": "idleArmAbduction",
+        "doc": {
+          "en": "Standing still: arm angle away from the vertical (degrees; arms hang lower than when walking).",
+          "es": "Parado: separación del brazo respecto a la vertical (grados; brazos más caídos que caminando)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "idleElbowBend",
+        "doc": {
+          "en": "Standing still: elbow bend (degrees).",
+          "es": "Parado: flexión del codo (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "idleStepThreshold",
+        "doc": {
+          "en": "Distance to the neutral position below which a foot counts as repositioned (m). More is allowed forwards and backwards: a foot slightly ahead when stopping is not corrected with another step.",
+          "es": "Distancia a la posición neutra por debajo de la cual un pie se considera recolocado (m). Adelante y atrás se admite más: un pie algo adelantado al pararse no se corrige con otro paso."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "idleTurnThreshold",
+        "doc": {
+          "en": "Orientation difference below which a foot counts as repositioned (degrees).",
+          "es": "Diferencia de orientación por debajo de la cual un pie se considera recolocado (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Turning",
+      "es": "Giro"
+    },
+    "params": [
+      {
+        "name": "turnSpeed",
+        "doc": {
+          "en": "Maximum turning speed (degrees/s).",
+          "es": "Velocidad máxima de giro (grados/s)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "turnAcceleration",
+        "doc": {
+          "en": "Maximum angular acceleration (degrees/s²).",
+          "es": "Aceleración angular máxima (grados/s²)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxLateralAcceleration",
+        "doc": {
+          "en": "Maximum lateral acceleration in curves (m/s²): the faster it goes, the slower it turns (ω ≤ a / v), like a runner who cannot turn sharply at full speed.",
+          "es": "Aceleración lateral máxima en las curvas (m/s²): a más velocidad, giro más lento (ω ≤ a / v), como un corredor que no puede girar en seco a toda velocidad."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxTurnPerStep",
+        "doc": {
+          "en": "Maximum turn of a foot between two of its steps (degrees): turning faster takes more steps per second.",
+          "es": "Giro máximo de un pie entre dos apoyos suyos (grados): si se gira más rápido, se dan más pasos por segundo."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "turnSlowdown",
+        "doc": {
+          "en": "How much it slows down to turn (0–1): fraction of the speed it loses with a 180° turn left to go. The smaller the remaining turn, the less it slows (none up to 20°), and it regains speed as it completes the turn: large changes of direction happen in a tighter curve.",
+          "es": "Cuánto frena para girar (0–1): fracción de la velocidad que pierde cuando le queda un giro de 180°. Menos giro pendiente, menos frena (hasta 20°, nada) y recupera la velocidad a medida que completa el giro: los cambios de dirección grandes se hacen en una curva más cerrada."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Weight shift",
+      "es": "Reparto del peso"
+    },
+    "params": [
+      {
+        "name": "lateralShift",
+        "doc": {
+          "en": "Fraction (0–1) of the way to the centre of support that the body shifts sideways.",
+          "es": "Fracción (0–1) del camino hacia el centro de apoyo que el cuerpo se desplaza de lado."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "lateralShiftResponse",
+        "doc": {
+          "en": "How fast the body shifts sideways (rad/s of the damped spring).",
+          "es": "Rapidez del desplazamiento lateral del cuerpo (rad/s del muelle amortiguado)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Pelvis",
+      "es": "Pelvis"
+    },
+    "params": [
+      {
+        "name": "pelvisRotation",
+        "doc": {
+          "en": "Maximum rotation of the pelvis towards the leading foot (degrees).",
+          "es": "Rotación máxima de la pelvis hacia el pie adelantado (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "pelvisObliquity",
+        "doc": {
+          "en": "Maximum lateral drop of the pelvis on the side of the leg in the air (degrees).",
+          "es": "Caída lateral máxima de la pelvis del lado de la pierna en el aire (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "pelvisTilt",
+        "doc": {
+          "en": "Forward tilt of the pelvis at walking speed (degrees).",
+          "es": "Inclinación hacia delante de la pelvis a velocidad de marcha (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "pelvisTiltSwing",
+        "doc": {
+          "en": "Tilt oscillation of the pelvis with each step at walking speed (degrees, ±): forward at each heel strike and backward at mid-stance, twice per stride (±1.8° in the CMU captures).",
+          "es": "Basculación de la pelvis en cada paso a velocidad de marcha (grados, ±): hacia delante al apoyar cada talón y hacia atrás a mitad del apoyo, dos veces por zancada (en las capturas de CMU, ±1,8°)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "pelvisFrequency",
+        "doc": {
+          "en": "Natural frequency of the pelvis (Hz): how quickly its rotation and drop follow the steps. Lower = more damped motion with more lag; very high = follows the feet instantly.",
+          "es": "Frecuencia natural de la pelvis (Hz): con qué rapidez sigue su giro y su caída a los pasos. Más baja = movimiento más amortiguado y con más retraso; muy alta = sigue a los pies al instante."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "pelvisDamping",
+        "doc": {
+          "en": "Damping of the pelvis (1 = no overshoot; less = it overshoots a little and comes back, looser).",
+          "es": "Amortiguación de la pelvis (1 = sin rebote; menos = se pasa un poco y vuelve, más suelto)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Torso and head",
+      "es": "Torso y cabeza"
+    },
+    "params": [
+      {
+        "name": "spineCounterRotation",
+        "doc": {
+          "en": "Fraction of the pelvis rotation that the spine counteracts.",
+          "es": "Fracción de la rotación de la pelvis que contrarresta la columna."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "chestCounterRotation",
+        "doc": {
+          "en": "Additional fraction counteracted by the chest (sum > 1 → shoulders opposite to the pelvis).",
+          "es": "Fracción adicional que contrarresta el pecho (suma > 1 → hombros opuestos a la pelvis)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "chestRollShare",
+        "doc": {
+          "en": "Share of the compensation for the pelvic drop done by the chest instead of the lower spine (0–1): the back curves instead of bending at one point. The shoulders stay just as level. About 1/3 in the CMU captures.",
+          "es": "Parte de la compensación de la caída de la pelvis que hace el pecho en vez de la columna baja (0–1): la espalda se curva en vez de doblarse en un punto. Los hombros quedan igual de rectos. En las capturas de CMU, ~1/3."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "leanPerAcceleration",
+        "doc": {
+          "en": "Torso lean per unit of acceleration (degrees per m/s²).",
+          "es": "Inclinación del torso por unidad de aceleración (grados por m/s²)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxLean",
+        "doc": {
+          "en": "Maximum torso lean from accelerating/braking (degrees).",
+          "es": "Inclinación máxima del torso por aceleración/frenado (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "headStabilization",
+        "doc": {
+          "en": "How much the head is stabilized towards its rest orientation (0–1).",
+          "es": "Cuánto se estabiliza la cabeza hacia su orientación de reposo (0–1)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "headTurnLead",
+        "doc": {
+          "en": "Fraction of the remaining turn the head looks ahead.",
+          "es": "Fracción del giro pendiente que la cabeza se adelanta a mirar."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxHeadTurn",
+        "doc": {
+          "en": "Maximum anticipatory turn of the head (degrees).",
+          "es": "Giro máximo de anticipación de la cabeza (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "chestTurnLead",
+        "doc": {
+          "en": "Fraction of the remaining turn the chest turns ahead.",
+          "es": "Fracción del giro pendiente que el pecho se adelanta."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxChestTurn",
+        "doc": {
+          "en": "Maximum anticipatory turn of the chest (degrees).",
+          "es": "Giro máximo de anticipación del pecho (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxTurnLean",
+        "doc": {
+          "en": "Maximum lean into a curve (degrees).",
+          "es": "Inclinación máxima hacia el interior de una curva (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "trunkFrequency",
+        "doc": {
+          "en": "Natural frequency of the trunk (Hz): how quickly spine and chest follow the pelvis. Lower = heavier trunk that arrives later (the chest a bit more than the spine).",
+          "es": "Frecuencia natural del tronco (Hz): con qué rapidez columna y pecho siguen a la pelvis. Más baja = tronco más pesado, que llega más tarde (el pecho, algo más que la columna)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "trunkDamping",
+        "doc": {
+          "en": "Damping of the trunk (1 = no overshoot; less = it overshoots a little and comes back).",
+          "es": "Amortiguación del tronco (1 = sin rebote; menos = se pasa un poco y vuelve)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "trunkInertia",
+        "doc": {
+          "en": "Trunk inertia: how much it leans from the accelerations of the hips (degrees per m/s²): forward when their descent stops at each step, sideways against the sway.",
+          "es": "Inercia del tronco: cuánto se inclina por las aceleraciones de las caderas (grados por m/s²): hacia delante al frenar su bajada en cada paso, de lado contra el balanceo."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Arms",
+      "es": "Brazos"
+    },
+    "params": [
+      {
+        "name": "idleArmAbduction",
+        "doc": {
+          "en": "Standing still: arm angle away from the vertical (degrees; arms hang lower than when walking).",
+          "es": "Parado: separación del brazo respecto a la vertical (grados; brazos más caídos que caminando)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "idleElbowBend",
+        "doc": {
+          "en": "Standing still: elbow bend (degrees).",
+          "es": "Parado: flexión del codo (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "armAbduction",
+        "doc": {
+          "en": "Arm angle away from the vertical, outwards (degrees).",
+          "es": "Separación del brazo respecto a la vertical, hacia fuera (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "elbowBend",
+        "doc": {
+          "en": "Elbow bend at rest (degrees).",
+          "es": "Flexión del codo en reposo (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "armSwing",
+        "doc": {
+          "en": "Forward/backward arm swing when walking at `walkSpeed` (degrees); it grows with speed. The centre of the swing sits slightly behind the vertical, as in real walking.",
+          "es": "Balanceo del brazo hacia delante/atrás al caminar a `walkSpeed` (grados); crece con la velocidad. El centro del balanceo queda algo por detrás de la vertical, como al caminar de verdad."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "elbowSwingBend",
+        "doc": {
+          "en": "Extra elbow bend when the arm swings forward (degrees).",
+          "es": "Flexión extra del codo cuando el brazo va hacia delante (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "armSwingFrequency",
+        "doc": {
+          "en": "Natural frequency of the arm (Hz): how quickly it follows the swing driven by the legs. Lower = heavier arm with more lag.",
+          "es": "Frecuencia natural del brazo (Hz): con qué rapidez sigue al balanceo que piden las piernas. Más baja = brazo más pesado y con más retraso."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "armSwingDamping",
+        "doc": {
+          "en": "Damping of the swing (1 = no overshoot; less = the arm overshoots a little, like a pendulum).",
+          "es": "Amortiguación del balanceo (1 = sin rebote; menos = el brazo se pasa un poco, como un péndulo)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "armInertia",
+        "doc": {
+          "en": "Inertia: how much the arms lag behind when accelerating (and swing ahead when braking) (degrees per m/s²).",
+          "es": "Inercia: cuánto se quedan atrás los brazos al acelerar (y se adelantan al frenar) (grados por m/s²)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "shoulderSwing",
+        "doc": {
+          "en": "How much the shoulder (clavicle) follows the arm swing, forward and back (fraction of the arm angle).",
+          "es": "Cuánto acompaña el hombro (clavícula) al balanceo del brazo, hacia delante y atrás (fracción del ángulo del brazo)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "shoulderDrop",
+        "doc": {
+          "en": "Shoulder drop from the weight of the relaxed arm (degrees).",
+          "es": "Caída del hombro por el peso del brazo relajado (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "forearmFrequency",
+        "doc": {
+          "en": "Natural frequency of the forearm (Hz): it follows the arm like a pendulum hanging from the elbow. Lower = looser forearm (it lags when the arm accelerates and carries on when it brakes).",
+          "es": "Frecuencia natural del antebrazo (Hz): sigue al brazo como un péndulo colgado del codo. Más baja = antebrazo más suelto (se queda atrás al acelerar el brazo y sigue al frenarlo)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "handFrequency",
+        "doc": {
+          "en": "Natural frequency of the hand (Hz): it follows the forearm with a little more lag (loose wrist).",
+          "es": "Frecuencia natural de la mano (Hz): sigue al antebrazo con algo más de retraso (muñeca suelta)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "fingerCurl",
+        "doc": {
+          "en": "How much the fingers close (if the rig has them): 0 = as in the model's rest pose, 1 = relaxed hand (fingers slightly bent and together, thumb towards the index finger), more = more closed.",
+          "es": "Cuánto se cierran los dedos (si el rig los tiene): 0 = como en la pose de reposo del modelo, 1 = mano relajada (dedos algo doblados y juntos, pulgar hacia el índice), más = más cerrada."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "fingerFrequency",
+        "doc": {
+          "en": "Natural frequency of the fingers (Hz): they follow the swing of the hand with a small lag.",
+          "es": "Frecuencia natural de los dedos (Hz): siguen al balanceo de la mano con un pequeño retraso."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Touching surfaces",
+      "es": "Tocar superficies"
+    },
+    "params": [
+      {
+        "name": "touchReachTime",
+        "doc": {
+          "en": "Duration of the gesture of bringing the hand to the surface (s). In the CMU reaches (subject 144), 0.65–0.8 s from the hanging arm, with a bell-shaped speed profile.",
+          "es": "Duración del gesto de llevar la mano hasta la superficie (s). En los alcances de CMU (sujeto 144), 0,65–0,8 s desde el brazo colgando, con la velocidad en campana."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "touchReleaseTime",
+        "doc": {
+          "en": "Duration of the hand's return to its swing after letting go (s). CMU: ~0.7 s, symmetric bell.",
+          "es": "Duración de la vuelta de la mano a su balanceo tras soltar (s). CMU: ~0,7 s, campana simétrica."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "touchHoldTime",
+        "doc": {
+          "en": "Minimum time with the hand resting on the surface (s). When walking, it lets go once the point falls behind.",
+          "es": "Tiempo mínimo con la mano apoyada (s). Caminando, suelta cuando el punto queda atrás."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "touchMaxReach",
+        "doc": {
+          "en": "Maximum distance from shoulder to wrist when touching, predicted when the gesture starts (fraction of the arm, 0–1). In CMU, reaching as far as possible, 0.94–0.99 (elbow at 140–165°); touching in passing does not stretch as much, and the sway of walking (±3–4 cm at the shoulder) makes it arrive a little more extended.",
+          "es": "Distancia máxima del hombro a la muñeca al tocar, prevista al empezar el gesto (fracción del brazo, 0–1). En CMU, al alcanzar lo más lejos posible, 0,94–0,99 (codo a 140–165°); tocar al pasar no estira tanto, y el vaivén de la marcha (±3–4 cm en el hombro) la hace llegar algo más estirada."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "touchCooldown",
+        "doc": {
+          "en": "Pause after letting go before touching something again on its own (s).",
+          "es": "Pausa tras soltar antes de volver a tocar algo por sí solo (s)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Natural variation",
+      "es": "Variación natural"
+    },
+    "params": [
+      {
+        "name": "variation",
+        "doc": {
+          "en": "Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the swing of each arm change slightly and slowly, differently for each character (according to its `seed`).",
+          "es": "Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`)."
+        },
+        "length": false,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Point and click (moveTo)",
+      "es": "Point and click (moveTo)"
+    },
+    "params": [
+      {
+        "name": "arriveRadius",
+        "doc": {
+          "en": "Distance to the target at which it counts as arrived (m).",
+          "es": "Distancia al destino a la que se considera que ha llegado (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxWalkTurnAngle",
+        "doc": {
+          "en": "Heading error from which the target counts as well off to the side: it stops going at its normal speed and turns while walking, along a curve whose radius is limited by the distance (it does not stop to turn) (degrees). Beyond 120° (behind) it no longer curves: it brakes and turns towards the target in 2–3 steps.",
+          "es": "Error de rumbo a partir del cual el destino se considera muy de lado: deja de ir a su velocidad normal y gira caminando por una curva cuyo radio se limita según la distancia (no se para a girar) (grados). Más allá de 120° (detrás) ya no hace la curva: frena y gira hacia el destino en 2–3 pasos."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "headingLockRadius",
+        "doc": {
+          "en": "Near the target it stops correcting its heading (avoids circling around the point) (m).",
+          "es": "Cerca del destino deja de corregir el rumbo (evita girar alrededor del punto) (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "stopTolerance",
+        "doc": {
+          "en": "Extra distance to the target within which, once stopped after braking, it counts as arrived (m).",
+          "es": "Distancia extra al destino con la que, ya parado tras frenar, se considera que ha llegado (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      }
+    ]
+  },
+  {
+    "title": {
+      "en": "Advanced: clearances and probes",
+      "es": "Avanzado: márgenes y sondas"
+    },
+    "params": [
+      {
+        "name": "toeClearance",
+        "doc": {
+          "en": "Minimum clearance between the toes and the terrain during the swing (m).",
+          "es": "Margen mínimo entre la punta del pie y el terreno durante el swing (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxExtraStepHeight",
+        "doc": {
+          "en": "Maximum extra swing height to clear obstacles (m).",
+          "es": "Altura extra máxima del swing para salvar obstáculos (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "groundProbeHeight",
+        "doc": {
+          "en": "Height above the root from which the ground under the body is searched (m).",
+          "es": "Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "groundProbeDepth",
+        "doc": {
+          "en": "Depth below the root down to which the ground is searched when walking (m).",
+          "es": "Profundidad bajo la raíz hasta la que se busca el suelo al caminar (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "footProbeHeight",
+        "doc": {
+          "en": "Height above the target ankle from which the ground under each foot is searched (m).",
+          "es": "Altura sobre el tobillo deseado desde la que se busca el suelo bajo cada pie (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "footProbeDepth",
+        "doc": {
+          "en": "Depth below the target ankle down to which the ground under each foot is searched (m).",
+          "es": "Profundidad bajo el tobillo deseado hasta la que se busca el suelo bajo cada pie (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "footProbeTolerance",
+        "doc": {
+          "en": "Minimum height difference of the ground under the toes relative to the heel plane for the foot to tilt (m).",
+          "es": "Desnivel mínimo del suelo bajo los dedos respecto al plano del talón para inclinar el pie (m)."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "kneePoleDistance",
+        "doc": {
+          "en": "Distance ahead of the knee of the point it bends towards (IK pole) (m). Only at creation.",
+          "es": "Distancia por delante de la rodilla del punto hacia el que se dobla (pole del IK) (m). Solo al crear."
+        },
+        "length": true,
+        "constructionOnly": true
+      }
+    ]
+  }
+]
