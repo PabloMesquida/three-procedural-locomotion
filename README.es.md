@@ -1,5 +1,7 @@
 # three-procedural-locomotion
 
+[![CI](https://github.com/PabloMesquida/three-procedural-locomotion/actions/workflows/ci.yml/badge.svg)](https://github.com/PabloMesquida/three-procedural-locomotion/actions/workflows/ci.yml)
+
 [English](README.md)
 
 Locomoción humana procedural para Three.js: camina, corre, gira, se agacha, salta y va hasta un punto sobre

@@ -114,6 +114,8 @@ referencia: prueban el movimiento con sus proporciones, no cómo se exportó.
   de las caderas al despegar (hasta ≈ 31 según las proporciones).
 - Conocido: corriendo por encima de ~4 m/s (más que `runSpeed` por defecto), al frenar se acentúa la bajada
   de caderas en la fase de vuelo (hasta ≈ 0,45 × pierna). A la velocidad de carrera por defecto no ocurre.
+- **CI** (`.github/workflows/ci.yml`): en cada push a `main` y en cada pull request, GitHub Actions ejecuta el
+  typecheck, los tests con los dos rigs de prueba y `npm pack` (que compila la librería) con Node 20, 22 y 24.
 
 ## Rendimiento
 

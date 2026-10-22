@@ -119,6 +119,8 @@ reference one: they test the motion with its proportions, not how it was exporte
   stretched trailing leg pulled the hips at toe-off (up to ≈ 31 depending on the proportions).
 - Known: running above ~4 m/s (more than the default `runSpeed`), braking accentuates the drop of the hips
   in the flight phase (up to ≈ 0.45 × leg). At the default running speed it doesn't happen.
+- **CI** (`.github/workflows/ci.yml`): on every push to `main` and every pull request, GitHub Actions runs the
+  type-check, the tests with both test rigs and `npm pack` (which builds the library) on Node 20, 22 and 24.
 
 ## Performance
 

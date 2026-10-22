@@ -1,5 +1,7 @@
 # three-procedural-locomotion
 
+[![CI](https://github.com/PabloMesquida/three-procedural-locomotion/actions/workflows/ci.yml/badge.svg)](https://github.com/PabloMesquida/three-procedural-locomotion/actions/workflows/ci.yml)
+
 [Español](README.es.md)
 
 Procedural human locomotion for Three.js: walks, runs, turns, crouches, jumps and goes to a point over any

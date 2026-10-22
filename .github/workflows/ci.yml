@@ -1,0 +1,50 @@
+# Checks every push to main and every pull request: types, tests with both test rigs (Mixamo names and
+# Rigify), and that the package builds and packs. Publishes nothing.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Node ${{ matrix.node }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20.x, 22.x, 24.x]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      # Includes the documentation check (tests/docs.test.ts runs `scripts/gen-docs.mjs --check`).
+      - name: Tests (model with Mixamo names)
+        run: npm test
+
+      - name: Tests (Rigify metarig)
+        run: npm test
+        env:
+          PH_MODEL: modelos/human.glb
+          PH_MAPPING: rigify
+
+      # `prepack` builds the library into dist/ first.
+      - name: Build and pack
+        run: npm pack --dry-run
