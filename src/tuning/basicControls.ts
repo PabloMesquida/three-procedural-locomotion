@@ -15,6 +15,7 @@ export type BasicControlName =
   | 'knees'
   | 'hipSway'
   | 'armSwing'
+  | 'armSpread'
   | 'lean'
   | 'looseness'
   | 'agility'
@@ -118,6 +119,16 @@ const individualControls: readonly BasicControlInfo[] = [
     params: ['armSwing', 'runArmSwing', 'elbowSwingBend', 'runElbowSwingBend', 'shoulderSwing'],
   },
   {
+    name: 'armSpread',
+    label: { en: 'Arm spread', es: 'Separación de brazos' },
+    description: {
+      en: 'How far the arms hang away from the body, standing, walking and running (degrees added).',
+      es: 'Cuánto se separan los brazos del cuerpo, parado, caminando y corriendo (grados que se suman).',
+    },
+    kind: 'degrees', min: -5, max: 20, neutral: 0,
+    params: ['idleArmAbduction', 'armAbduction', 'runArmAbduction'],
+  },
+  {
     name: 'lean',
     label: { en: 'Lean', es: 'Inclinación' },
     description: {
@@ -211,6 +222,7 @@ export function applyBasicControls(base: Readonly<ProceduralHumanConfig>, values
   const knees = amplitude('knees');
   const hipSway = amplitude('hipSway');
   const armSwing = amplitude('armSwing');
+  const armSpread = v('armSpread');
   const lean = v('lean');
   const looseness = v('looseness');
   const agility = v('agility');
@@ -253,6 +265,10 @@ export function applyBasicControls(base: Readonly<ProceduralHumanConfig>, values
     elbowSwingBend: base.elbowSwingBend * armSwing,
     runElbowSwingBend: base.runElbowSwingBend * armSwing,
     shoulderSwing: base.shoulderSwing * armSwing,
+    // Separación: los mismos grados parado, caminando y corriendo (nunca hacia dentro del cuerpo).
+    idleArmAbduction: Math.max(base.idleArmAbduction + armSpread, 0),
+    armAbduction: Math.max(base.armAbduction + armSpread, 0),
+    runArmAbduction: Math.max(base.runArmAbduction + armSpread, 0),
 
     walkLean: base.walkLean + lean,
     runLean: base.runLean + lean,

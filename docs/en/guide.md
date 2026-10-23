@@ -169,6 +169,7 @@ human.setConfig({ ...base, ...applyBasicControls(base, { lean: 5 }) });
 | `knees` | 0–2 (1) | springier or stiffer gait |
 | `hipSway` | 0–2.5 (1) | motion of the pelvis and of the weight |
 | `armSwing` | 0–2.5 (1) | amplitude of the arm swing |
+| `armSpread` | −5–20° (0) | how far the arms hang away from the body, standing, walking and running |
 | `lean` | −10–25° (0) | posture leaning forward or upright |
 | `looseness` | 0.5–2 (1) | loose body, with inertia, or stiff |
 | `agility` | 0.4–2.5 (1) | starts, brakes and turns faster or slower |

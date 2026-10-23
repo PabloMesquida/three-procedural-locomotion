@@ -169,6 +169,7 @@ human.setConfig({ ...base, ...applyBasicControls(base, { lean: 5 }) });
 | `knees` (Flexión de rodillas) | 0–2 (1) | marcha más elástica o más rígida |
 | `hipSway` (Balanceo de cadera) | 0–2,5 (1) | movimiento de la pelvis y del peso |
 | `armSwing` (Braceo) | 0–2,5 (1) | amplitud del balanceo de los brazos |
+| `armSpread` (Separación de brazos) | −5–20° (0) | cuánto se separan los brazos del cuerpo, parado, caminando y corriendo |
 | `lean` (Inclinación) | −10–25° (0) | postura hacia delante o erguida |
 | `looseness` (Soltura) | 0,5–2 (1) | cuerpo suelto, con inercia, o rígido |
 | `agility` (Reactividad) | 0,4–2,5 (1) | arranca, frena y gira más rápido o más despacio |
