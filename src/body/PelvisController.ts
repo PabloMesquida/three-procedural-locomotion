@@ -387,8 +387,12 @@ export class PelvisController {
   }
 }
 
-/** Width of the rounding between the height limits of the legs, in leg lengths (at walkSpeed or above). */
-const LEG_LIMIT_SMOOTHING = 0.05;
+/**
+ * Width of the rounding between the height limits of the legs, in leg lengths (at walkSpeed or above). In
+ * double support it lowers the hips below what both legs need: with 0.05 the trailing knee was bent ~23° when
+ * the other heel struck (CMU: ~18°; a person, 5–10°).
+ */
+const LEG_LIMIT_SMOOTHING = 0.025;
 /** Frequency (Hz) of the spring with which the hips follow the requested height when rising. */
 const RISE_FREQUENCY = 5;
 /**
