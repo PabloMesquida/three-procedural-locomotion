@@ -12,6 +12,11 @@ const DEG = Math.PI / 180;
 export interface ArmConfig {
   /** Arm angle away from the vertical, outwards (degrees). */
   armAbduction: number;
+  /**
+   * Walking and running: upper arm angle in front of the vertical around which it swings (degrees; negative
+   * = back). The swing is centred somewhat further back anyway, as in real walking.
+   */
+  armForward: number;
   /** Elbow bend at rest (degrees). */
   elbowBend: number;
   /**

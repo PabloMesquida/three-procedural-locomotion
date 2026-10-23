@@ -112,6 +112,10 @@
       "en": "Standing still: elbow bend (degrees).",
       "es": "Parado: flexión del codo (grados)."
     },
+    "idleArmForward": {
+      "en": "Standing still: upper arm angle in front of the vertical (degrees; negative = back). A little back, with the elbow a little bent, the hand stays beside the thigh instead of in front of it.",
+      "es": "Parado: ángulo del brazo por delante de la vertical (grados; negativo = hacia atrás). Un poco hacia atrás, con el codo algo doblado, la mano queda al lado del muslo y no delante."
+    },
     "runArmAbduction": {
       "en": "Running: arm angle away from the vertical (degrees).",
       "es": "Correr: separación del brazo respecto a la vertical (grados)."
@@ -379,6 +383,10 @@
     "armAbduction": {
       "en": "Arm angle away from the vertical, outwards (degrees).",
       "es": "Separación del brazo respecto a la vertical, hacia fuera (grados)."
+    },
+    "armForward": {
+      "en": "Walking and running: upper arm angle in front of the vertical around which it swings (degrees; negative = back). The swing is centred somewhat further back anyway, as in real walking.",
+      "es": "Caminando y corriendo: ángulo del brazo por delante de la vertical alrededor del cual se balancea (grados; negativo = hacia atrás). El balanceo se centra de todos modos algo más atrás, como al caminar de verdad."
     },
     "elbowBend": {
       "en": "Elbow bend at rest (degrees).",

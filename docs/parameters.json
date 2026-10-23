@@ -558,6 +558,15 @@
         "constructionOnly": false
       },
       {
+        "name": "idleArmForward",
+        "doc": {
+          "en": "Standing still: upper arm angle in front of the vertical (degrees; negative = back). A little back, with the elbow a little bent, the hand stays beside the thigh instead of in front of it.",
+          "es": "Parado: ángulo del brazo por delante de la vertical (grados; negativo = hacia atrás). Un poco hacia atrás, con el codo algo doblado, la mano queda al lado del muslo y no delante."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
         "name": "idleStepThreshold",
         "doc": {
           "en": "Distance to the neutral position below which a foot counts as repositioned (m). More is allowed forwards and backwards: a foot slightly ahead when stopping is not corrected with another step.",
@@ -877,10 +886,28 @@
         "constructionOnly": false
       },
       {
+        "name": "idleArmForward",
+        "doc": {
+          "en": "Standing still: upper arm angle in front of the vertical (degrees; negative = back). A little back, with the elbow a little bent, the hand stays beside the thigh instead of in front of it.",
+          "es": "Parado: ángulo del brazo por delante de la vertical (grados; negativo = hacia atrás). Un poco hacia atrás, con el codo algo doblado, la mano queda al lado del muslo y no delante."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
         "name": "armAbduction",
         "doc": {
           "en": "Arm angle away from the vertical, outwards (degrees).",
           "es": "Separación del brazo respecto a la vertical, hacia fuera (grados)."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
+        "name": "armForward",
+        "doc": {
+          "en": "Walking and running: upper arm angle in front of the vertical around which it swings (degrees; negative = back). The swing is centred somewhat further back anyway, as in real walking.",
+          "es": "Caminando y corriendo: ángulo del brazo por delante de la vertical alrededor del cual se balancea (grados; negativo = hacia atrás). El balanceo se centra de todos modos algo más atrás, como al caminar de verdad."
         },
         "length": false,
         "constructionOnly": false

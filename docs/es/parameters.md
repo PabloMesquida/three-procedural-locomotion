@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-117 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+119 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -101,6 +101,7 @@ opcionales y se validan (nombre, número finito y rango).
 |---|---|---|
 | `idleArmAbduction` | 10 | Parado: separación del brazo respecto a la vertical (grados; brazos más caídos que caminando). |
 | `idleElbowBend` | 14 | Parado: flexión del codo (grados). |
+| `idleArmForward` | -4 | Parado: ángulo del brazo por delante de la vertical (grados; negativo = hacia atrás). Un poco hacia atrás, con el codo algo doblado, la mano queda al lado del muslo y no delante. |
 | `idleStepThreshold` ↔ | 0.03 | Distancia a la posición neutra por debajo de la cual un pie se considera recolocado (m). Adelante y atrás se admite más: un pie algo adelantado al pararse no se corrige con otro paso. |
 | `idleTurnThreshold` | 8 | Diferencia de orientación por debajo de la cual un pie se considera recolocado (grados). |
 
@@ -157,7 +158,9 @@ opcionales y se validan (nombre, número finito y rango).
 |---|---|---|
 | `idleArmAbduction` | 10 | Parado: separación del brazo respecto a la vertical (grados; brazos más caídos que caminando). |
 | `idleElbowBend` | 14 | Parado: flexión del codo (grados). |
+| `idleArmForward` | -4 | Parado: ángulo del brazo por delante de la vertical (grados; negativo = hacia atrás). Un poco hacia atrás, con el codo algo doblado, la mano queda al lado del muslo y no delante. |
 | `armAbduction` | 6 | Separación del brazo respecto a la vertical, hacia fuera (grados). |
+| `armForward` | 0 | Caminando y corriendo: ángulo del brazo por delante de la vertical alrededor del cual se balancea (grados; negativo = hacia atrás). El balanceo se centra de todos modos algo más atrás, como al caminar de verdad. |
 | `elbowBend` | 22 | Flexión del codo en reposo (grados). |
 | `armSwing` | 15 | Balanceo del brazo hacia delante/atrás al caminar a `walkSpeed` (grados); crece con la velocidad. El centro del balanceo queda algo por detrás de la vertical, como al caminar de verdad. |
 | `elbowSwingBend` | 12 | Flexión extra del codo cuando el brazo va hacia delante (grados). |

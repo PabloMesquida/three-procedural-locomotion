@@ -170,6 +170,7 @@ human.setConfig({ ...base, ...applyBasicControls(base, { lean: 5 }) });
 | `hipSway` | 0–2.5 (1) | motion of the pelvis and of the weight |
 | `armSwing` | 0–2.5 (1) | amplitude of the arm swing |
 | `armSpread` | −5–20° (0) | how far the arms hang away from the body, standing, walking and running |
+| `armForward` | −15–15° (0) | arms further forward or back, standing and as the centre of the swing |
 | `lean` | −10–25° (0) | posture leaning forward or upright |
 | `looseness` | 0.5–2 (1) | loose body, with inertia, or stiff |
 | `agility` | 0.4–2.5 (1) | starts, brakes and turns faster or slower |

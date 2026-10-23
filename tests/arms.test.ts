@@ -228,14 +228,13 @@ describe('brazos', () => {
     });
   });
 
-  it('parado, los brazos cuelgan relajados (idleArmAbduction, idleElbowBend, un poco hacia atrás) y al caminar pasan a su pose', () => {
+  it('parado, los brazos cuelgan relajados (idleArmAbduction, idleElbowBend, idleArmForward) y al caminar pasan a su pose', () => {
     const world = createWorld({ human: { config: { variation: 0 } } });
     const c = world.human.config;
     simulate(world, 2, []);
     const still = armAngles(world);
     assert.ok(Math.abs(still.abduction - c.idleArmAbduction) < 0.5 && Math.abs(still.elbow - c.idleElbowBend) < 0.5, `parado: ${JSON.stringify(still)}`);
-    // Con el codo algo doblado, la mano queda al lado del muslo y no delante.
-    assert.ok(still.forward < -2 && still.forward > -6, `parado, brazo ${still.forward.toFixed(1)}° hacia delante`);
+    assert.ok(Math.abs(still.forward - c.idleArmForward) < 0.5, `parado, brazo ${still.forward.toFixed(1)}° hacia delante`);
     simulate(world, 3, [[2, (h) => { h.targetSpeed = c.walkSpeed; }]], { start: 2 });
     // Caminando el codo oscila con el balanceo: su media está por encima de elbowBend.
     let sum = 0;

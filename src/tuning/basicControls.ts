@@ -16,6 +16,7 @@ export type BasicControlName =
   | 'hipSway'
   | 'armSwing'
   | 'armSpread'
+  | 'armForward'
   | 'lean'
   | 'looseness'
   | 'agility'
@@ -129,6 +130,16 @@ const individualControls: readonly BasicControlInfo[] = [
     params: ['idleArmAbduction', 'armAbduction', 'runArmAbduction'],
   },
   {
+    name: 'armForward',
+    label: { en: 'Arm position', es: 'Posición de brazos' },
+    description: {
+      en: 'Arms further forward (positive) or back (negative), standing and as the centre of the swing (degrees added).',
+      es: 'Brazos más adelante (positivo) o más atrás (negativo), parado y como centro del balanceo (grados que se suman).',
+    },
+    kind: 'degrees', min: -15, max: 15, neutral: 0,
+    params: ['idleArmForward', 'armForward'],
+  },
+  {
     name: 'lean',
     label: { en: 'Lean', es: 'Inclinación' },
     description: {
@@ -223,6 +234,7 @@ export function applyBasicControls(base: Readonly<ProceduralHumanConfig>, values
   const hipSway = amplitude('hipSway');
   const armSwing = amplitude('armSwing');
   const armSpread = v('armSpread');
+  const armForward = v('armForward');
   const lean = v('lean');
   const looseness = v('looseness');
   const agility = v('agility');
@@ -269,6 +281,8 @@ export function applyBasicControls(base: Readonly<ProceduralHumanConfig>, values
     idleArmAbduction: Math.max(base.idleArmAbduction + armSpread, 0),
     armAbduction: Math.max(base.armAbduction + armSpread, 0),
     runArmAbduction: Math.max(base.runArmAbduction + armSpread, 0),
+    idleArmForward: base.idleArmForward + armForward,
+    armForward: base.armForward + armForward,
 
     walkLean: base.walkLean + lean,
     runLean: base.runLean + lean,

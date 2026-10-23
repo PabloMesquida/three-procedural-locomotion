@@ -95,6 +95,11 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   idleArmAbduction: number;
   /** Standing still: elbow bend (degrees). */
   idleElbowBend: number;
+  /**
+   * Standing still: upper arm angle in front of the vertical (degrees; negative = back). A little back, with
+   * the elbow a little bent, the hand stays beside the thigh instead of in front of it.
+   */
+  idleArmForward: number;
   /** Running: arm angle away from the vertical (degrees). */
   runArmAbduction: number;
   /** Running: elbow bend (degrees). */
@@ -259,6 +264,7 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   ankleBack: 0.03,
   idleArmAbduction: 10,
   idleElbowBend: 14,
+  idleArmForward: -4,
   runArmAbduction: 9,
   runElbowBend: 95,
   runArmSwing: 25,
@@ -335,6 +341,7 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   trunkInertia: 0.5,
 
   armAbduction: 6,
+  armForward: 0,
   elbowBend: 22,
   armSwing: 15,
   elbowSwingBend: 12,
