@@ -228,12 +228,14 @@ describe('brazos', () => {
     });
   });
 
-  it('parado, los brazos cuelgan relajados (idleArmAbduction, idleElbowBend) y al caminar pasan a su pose', () => {
+  it('parado, los brazos cuelgan relajados (idleArmAbduction, idleElbowBend, un poco hacia atrás) y al caminar pasan a su pose', () => {
     const world = createWorld({ human: { config: { variation: 0 } } });
     const c = world.human.config;
     simulate(world, 2, []);
     const still = armAngles(world);
     assert.ok(Math.abs(still.abduction - c.idleArmAbduction) < 0.5 && Math.abs(still.elbow - c.idleElbowBend) < 0.5, `parado: ${JSON.stringify(still)}`);
+    // Con el codo algo doblado, la mano queda al lado del muslo y no delante.
+    assert.ok(still.forward < -2 && still.forward > -6, `parado, brazo ${still.forward.toFixed(1)}° hacia delante`);
     simulate(world, 3, [[2, (h) => { h.targetSpeed = c.walkSpeed; }]], { start: 2 });
     // Caminando el codo oscila con el balanceo: su media está por encima de elbowBend.
     let sum = 0;
@@ -261,13 +263,16 @@ describe('brazos', () => {
   });
 });
 
-/** Brazo derecho: separación respecto a la vertical y flexión del codo (grados). */
-function armAngles(world: ReturnType<typeof createWorld>): { abduction: number; elbow: number } {
+/**
+ * Brazo derecho: separación hacia fuera respecto a la vertical, inclinación hacia delante (negativa = hacia
+ * atrás) y flexión del codo (grados). El personaje de los tests mira hacia −Z.
+ */
+function armAngles(world: ReturnType<typeof createWorld>): { abduction: number; forward: number; elbow: number } {
   const arm = world.human.rig.rightArm!;
   const p = (b: Bone): Vector3 => b.getWorldPosition(new Vector3());
   const upper = p(arm.forearm).sub(p(arm.upperArm)).normalize();
   const fore = p(arm.hand).sub(p(arm.forearm)).normalize();
-  return { abduction: upper.angleTo(new Vector3(0, -1, 0)) / DEG2RAD, elbow: upper.angleTo(fore) / DEG2RAD };
+  return { abduction: Math.atan2(Math.abs(upper.x), -upper.y) / DEG2RAD, forward: Math.atan2(-upper.z, -upper.y) / DEG2RAD, elbow: upper.angleTo(fore) / DEG2RAD };
 }
 
 const DEG2RAD = Math.PI / 180;

@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-116 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+117 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -99,8 +99,8 @@ opcionales y se validan (nombre, número finito y rango).
 
 | Parámetro | Por defecto | Descripción |
 |---|---|---|
-| `idleArmAbduction` | 6 | Parado: separación del brazo respecto a la vertical (grados; brazos más caídos que caminando). |
-| `idleElbowBend` | 8 | Parado: flexión del codo (grados). |
+| `idleArmAbduction` | 10 | Parado: separación del brazo respecto a la vertical (grados; brazos más caídos que caminando). |
+| `idleElbowBend` | 14 | Parado: flexión del codo (grados). |
 | `idleStepThreshold` ↔ | 0.03 | Distancia a la posición neutra por debajo de la cual un pie se considera recolocado (m). Adelante y atrás se admite más: un pie algo adelantado al pararse no se corrige con otro paso. |
 | `idleTurnThreshold` | 8 | Diferencia de orientación por debajo de la cual un pie se considera recolocado (grados). |
 
@@ -155,8 +155,8 @@ opcionales y se validan (nombre, número finito y rango).
 
 | Parámetro | Por defecto | Descripción |
 |---|---|---|
-| `idleArmAbduction` | 6 | Parado: separación del brazo respecto a la vertical (grados; brazos más caídos que caminando). |
-| `idleElbowBend` | 8 | Parado: flexión del codo (grados). |
+| `idleArmAbduction` | 10 | Parado: separación del brazo respecto a la vertical (grados; brazos más caídos que caminando). |
+| `idleElbowBend` | 14 | Parado: flexión del codo (grados). |
 | `armAbduction` | 6 | Separación del brazo respecto a la vertical, hacia fuera (grados). |
 | `elbowBend` | 22 | Flexión del codo en reposo (grados). |
 | `armSwing` | 15 | Balanceo del brazo hacia delante/atrás al caminar a `walkSpeed` (grados); crece con la velocidad. El centro del balanceo queda algo por detrás de la vertical, como al caminar de verdad. |
@@ -166,6 +166,7 @@ opcionales y se validan (nombre, número finito y rango).
 | `armInertia` | 2 | Inercia: cuánto se quedan atrás los brazos al acelerar (y se adelantan al frenar) (grados por m/s²). |
 | `shoulderSwing` | 0.25 | Cuánto acompaña el hombro (clavícula) al balanceo del brazo, hacia delante y atrás (fracción del ángulo del brazo). |
 | `shoulderDrop` | 3 | Caída del hombro por el peso del brazo relajado (grados). |
+| `shoulderForward` ↔ | 0 | Cuánto queda la articulación del hombro por delante de la base del cuello, en horizontal (m; negativo = por detrás): la clavícula gira hacia atrás o hacia delante (hasta 30°) para dejarla ahí, sea cual sea la pose de reposo del modelo (algunos tienen los hombros caídos hacia delante). Menos = hombros más atrás. Necesita los huesos del cuello y del hombro. |
 | `forearmFrequency` | 3 | Frecuencia natural del antebrazo (Hz): sigue al brazo como un péndulo colgado del codo. Más baja = antebrazo más suelto (se queda atrás al acelerar el brazo y sigue al frenarlo). |
 | `handFrequency` | 4 | Frecuencia natural de la mano (Hz): sigue al antebrazo con algo más de retraso (muñeca suelta). |
 | `fingerCurl` | 1 | Cuánto se cierran los dedos (si el rig los tiene): 0 = como en la pose de reposo del modelo, 1 = mano relajada (dedos algo doblados y juntos, pulgar hacia el índice), más = más cerrada. |
@@ -237,8 +238,8 @@ Valores que cambia cada estilo (vacío = el de por defecto):
 | `runStepHeight` | 0.15 |  |  | 0.28 |  |
 | `runLean` | 10 |  |  | 12 |  |
 | `walkLean` | 0 | 15 | 18 |  |  |
-| `idleArmAbduction` | 6 | 5 | 12 |  | 18 |
-| `idleElbowBend` | 8 | 6 | 40 |  |  |
+| `idleArmAbduction` | 10 | 5 | 12 |  | 18 |
+| `idleElbowBend` | 14 | 6 | 40 |  |  |
 | `runArmSwing` | 25 |  |  | 45 |  |
 | `crouchDepth` | 0.32 |  | 0.4 |  |  |
 | `crouchMaxSpeed` | 0.8 |  |  | 1.2 |  |

@@ -40,6 +40,12 @@ export interface ArmConfig {
   /** Shoulder drop from the weight of the relaxed arm (degrees). */
   shoulderDrop: number;
   /**
+   * How far the shoulder joint sits in front of the base of the neck, horizontally (m; negative = behind):
+   * the clavicle turns back or forward (up to 30°) to put it there, whatever the model's rest pose (some
+   * have the shoulders hunched forward). Less = shoulders further back. Needs the neck and shoulder bones.
+   */
+  shoulderForward: number;
+  /**
    * Natural frequency of the forearm (Hz): it follows the arm like a pendulum hanging from the elbow. Lower =
    * looser forearm (it lags when the arm accelerates and carries on when it brakes).
    */
@@ -120,6 +126,8 @@ const MIN_SWING_FOR_BEND = 5;
 const ARM_SWING_ABDUCTION = 0.2;
 /** The most the fingers lag behind the hand (rad). */
 const MAX_FINGER_LAG = (20 * Math.PI) / 180;
+/** The most the clavicle turns, back or forward, to put the shoulder at `shoulderForward` (rad). */
+const MAX_SHOULDER_PLACEMENT = (30 * Math.PI) / 180;
 /** Damping of forearm and hand: some overshoot, like a loose segment. */
 const LIMB_DAMPING = 0.55;
 
@@ -154,6 +162,8 @@ export class ArmController {
 
   private readonly config: ArmConfig;
   private readonly arms: ArmRuntime[] = [];
+  private readonly neck?: Bone;
+  private readonly neckPosition = new Vector3();
   private readonly a = new Vector3();
   private readonly b = new Vector3();
   private readonly dir = new Vector3();
@@ -166,7 +176,8 @@ export class ArmController {
 
   constructor(rig: HumanRig, config: ArmConfig) {
     this.config = config;
-    const add = (bones: ArmBones | undefined, sign: number): void => {
+    this.neck = rig.neck;
+    const add =(bones: ArmBones | undefined, sign: number): void => {
       if (!bones) return;
       this.arms.push({
         bones,
@@ -264,8 +275,8 @@ export class ArmController {
       arm.fingers?.pose(cfg.fingerCurl + (TOUCH_FINGER_CURL - cfg.fingerCurl) * touch);
       const forward = (c.armForward ?? 0) * DEG;
 
-      // 0. Hombro: sigue la intención del balanceo (más rápido que el brazo: llega antes)
-      //    y cae un poco por el peso del brazo.
+      // 0. Hombro: en su sitio (shoulderForward), sigue la intención del balanceo (más rápido que el brazo:
+      //    llega antes) y cae un poco por el peso del brazo.
       arm.shoulder.target = this.swingTarget * arm.sign * cfg.shoulderSwing * (motion.swingScale ? (arm.sign > 0 ? motion.swingScale.right : motion.swingScale.left) : 1);
       if (dynamic) stepSpring(arm.shoulder, 2 * 2 * Math.PI * cfg.armSwingFrequency, cfg.armSwingDamping, motion.dt!);
       else snapSpring(arm.shoulder);
@@ -276,7 +287,8 @@ export class ArmController {
         this.boneDirection(shoulder, upperArm, this.dir); // clavícula: del pecho hacia el hombro
         // Adelantar el hombro: giro sobre la vertical en el sentido que lleva su extremo hacia delante.
         const forwardSign = Math.sign(this.axis.crossVectors(UP, this.dir).dot(F)) || 1;
-        this.rotateWorld(shoulder, this.q.setFromAxisAngle(UP, arm.shoulder.value * forwardSign));
+        const placement = this.shoulderPlacement(shoulder, F);
+        this.rotateWorld(shoulder, this.q.setFromAxisAngle(UP, (placement + arm.shoulder.value) * forwardSign));
         // Bajarlo: giro sobre el eje de avance en el sentido que baja su extremo.
         this.boneDirection(shoulder, upperArm, this.dir);
         const downSign = -Math.sign(this.axis.crossVectors(F, this.dir).dot(UP)) || 1;
@@ -351,6 +363,26 @@ export class ArmController {
       }
       updateSubtree(shoulder ?? upperArm);
     }
+  }
+
+  /**
+   * Turn of the clavicle about the vertical (rad, positive = its end forward) that leaves the shoulder
+   * joint `shoulderForward` in front of the base of the neck. Right after `boneDirection(shoulder, upperArm)`:
+   * reads the positions it left in `a` (clavicle) and `b` (shoulder joint).
+   */
+  private shoulderPlacement(shoulder: Bone, F: Vector3): number {
+    if (!this.neck) return 0;
+    if (shoulder.parent) updateDown(shoulder.parent, this.neck);
+    else updateNode(this.neck);
+    const front = -worldPosition(this.neck, this.neckPosition).sub(this.b).dot(F);
+    // Extremo de la clavícula en el plano horizontal: su componente hacia delante es horizontal·sen(ángulo).
+    const clavicle = this.b.sub(this.a);
+    const ahead = clavicle.dot(F);
+    const horizontal = Math.hypot(clavicle.x, clavicle.z);
+    if (horizontal < 1e-6) return 0;
+    const from = Math.asin(clamp(ahead / horizontal, -1, 1));
+    const to = Math.asin(clamp((ahead + this.config.shoulderForward - front) / horizontal, -1, 1));
+    return clamp(to - from, -MAX_SHOULDER_PLACEMENT, MAX_SHOULDER_PLACEMENT);
   }
 
   /** World direction (unit) from `from` (up to date) to `to`, which hangs from it (updated here). */

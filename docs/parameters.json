@@ -958,6 +958,15 @@
         "constructionOnly": false
       },
       {
+        "name": "shoulderForward",
+        "doc": {
+          "en": "How far the shoulder joint sits in front of the base of the neck, horizontally (m; negative = behind): the clavicle turns back or forward (up to 30°) to put it there, whatever the model's rest pose (some have the shoulders hunched forward). Less = shoulders further back. Needs the neck and shoulder bones.",
+          "es": "Cuánto queda la articulación del hombro por delante de la base del cuello, en horizontal (m; negativo = por detrás): la clavícula gira hacia atrás o hacia delante (hasta 30°) para dejarla ahí, sea cual sea la pose de reposo del modelo (algunos tienen los hombros caídos hacia delante). Menos = hombros más atrás. Necesita los huesos del cuello y del hombro."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
         "name": "forearmFrequency",
         "doc": {
           "en": "Natural frequency of the forearm (Hz): it follows the arm like a pendulum hanging from the elbow. Lower = looser forearm (it lags when the arm accelerates and carries on when it brakes).",

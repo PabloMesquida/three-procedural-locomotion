@@ -107,6 +107,11 @@ const IDLE_RECHECK_TIME = 0.25;
 /** Fraction of walkSpeed below which the arms gradually go to the standing pose. */
 const IDLE_ARMS_SPEED = 0.5;
 /**
+ * Standing still, the upper arm hangs this far behind the vertical (degrees): with the elbow a little bent,
+ * the hand stays beside the thigh instead of in front of it. Walking, ARM_SWING_BACK takes over.
+ */
+const IDLE_ARM_BACK = 4;
+/**
  * When walking, the arm swings further backward than forward: the center of the swing is this fraction of
  * its amplitude behind the vertical (CMU motion capture: ≈ 0.4; Murray 1967, a little less).
  */
@@ -710,7 +715,7 @@ export class LocomotionController {
         elbowBend: relax(mix(c.elbowBend, c.runElbowBend), c.idleElbowBend) + k * c.crouchElbowBend,
         armSwing: mix(walkSwing, c.runArmSwing),
         elbowSwingBend: mix(c.elbowSwingBend, c.runElbowSwingBend),
-        armForward: k * c.crouchArmForward + this.jumping.armForward() - mix(ARM_SWING_BACK * walkSwing, RUN_ARM_SWING_BACK * c.runArmSwing),
+        armForward: k * c.crouchArmForward + this.jumping.armForward() - mix(ARM_SWING_BACK * walkSwing, RUN_ARM_SWING_BACK * c.runArmSwing) - idle * IDLE_ARM_BACK,
       },
     });
 
