@@ -1,0 +1,25 @@
+cff-version: 1.2.0
+title: "three-procedural-locomotion: procedural human locomotion for Three.js"
+message: "If you use this software in work you publish, please cite it."
+type: software
+abstract: >-
+  TypeScript library for Three.js that makes a humanoid character walk, run,
+  turn, crouch, jump and go to a point over any ground without baked
+  animations. Everything is computed every frame from a speed and a heading:
+  gait, footstep planning, Two-Bone IK legs, foot placement on the terrain and
+  the posture of the body.
+authors:
+  - family-names: Mesquida
+    given-names: Pablo
+    website: "https://pablopx.com"
+repository-code: "https://github.com/PabloMesquida/three-procedural-locomotion"
+url: "https://locomotion.pablopx.com"
+license: MIT
+keywords:
+  - Three.js
+  - procedural animation
+  - procedural locomotion
+  - character animation
+  - inverse kinematics
+  - footstep planning
+  - TypeScript

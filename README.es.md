@@ -125,6 +125,13 @@ Las mallas de los dos modelos son de [Human Base Meshes](https://www.blender.org
 - Sin escaleras ni saltos a otra altura planificados (solo baches y escalones bajos).
 - Rigs verificados: Mixamo y metarig de Rigify. Otros deberían funcionar con su mapping, sin verificar.
 
+## Cómo citar
+
+Si esta librería forma parte de algo que publiques, por favor cítala. Ver [CITATION.cff](CITATION.cff), o:
+
+Mesquida, Pablo. (2026). three-procedural-locomotion: procedural human locomotion for Three.js.
+https://github.com/PabloMesquida/three-procedural-locomotion
+
 ## Licencia
 
 Este proyecto está licenciado bajo la licencia MIT. Ver [LICENSE](LICENSE).

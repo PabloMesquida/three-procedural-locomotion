@@ -133,6 +133,13 @@ The meshes of both models come from [Human Base Meshes](https://www.blender.org/
 - No planned stairs or jumps to a different height (only bumps and low steps).
 - Verified rigs: Mixamo and the Rigify metarig. Others should work with their mapping, unverified.
 
+## Citing this work
+
+If this library supports something you publish, please cite it. See [CITATION.cff](CITATION.cff), or:
+
+Mesquida, Pablo. (2026). three-procedural-locomotion: procedural human locomotion for Three.js.
+https://github.com/PabloMesquida/three-procedural-locomotion
+
 ## License
 
 This project is licensed under the MIT license. See [LICENSE](LICENSE).
