@@ -332,7 +332,8 @@ level, the character samples the ground ahead along its direction of travel, fin
 - the body follows a smooth line over the treads instead of the ground right under it and leans forward a
   little (more going up than down), and the foot in the air clears the edges with the whole sole (heel and
   tips of the toes): going up it rises first; going down it first moves forward over the edge and then drops;
-  on a step the foot lands flat, not on the heel;
+  on a step the foot doesn't land on the heel: flat going up, on the ball of the foot going down; going up, the
+  trailing foot raises its heel as much as needed to push off;
 - a riser higher than `maxStepUp` is a wall: it stops in front of it; from a drop deeper than `maxStepDown`
   it doesn't step down: it stops at the edge (both 0.35 m by default, scaled with the size).
 
@@ -402,7 +403,8 @@ measures it on your machine.
 - No collisions or physics (the body doesn't collide with obstacles); `moveTo` goes in a straight line, without
   pathfinding.
 - Stairs: walking up and down straight flights. There are no stairs when running, curved or spiral stairs,
-  or stairs without risers (separate treads) yet. The stance knee bends more than in the motion capture
-  (≈ 80° going up and ≈ 95° going down, against 55° and 68°). No planned jumps to a different height either.
+  or stairs without risers (separate treads) yet. Going down, the leading leg lands almost straight (a person
+  lands with the knee bent; see [naturalness](naturalness.md#stairs)). No planned jumps to a different height
+  either.
 - Tested rigs: Mixamo and the Rigify metarig. Other rigs should work with their mapping, but they are not
   verified (see [skeletons](skeletons.md)).

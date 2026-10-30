@@ -101,6 +101,12 @@ export interface PelvisMotion {
    */
   landings?: Record<Side, Vector3>;
   landingWeights?: Record<Side, number>;
+  /**
+   * Ankle of each leg for the height of the hips (reach limit and knees; world), if not the one given: e.g.
+   * a foot that can still raise its heel further (pushing off on stairs) only needs the hips within reach
+   * of its highest ankle.
+   */
+  reachAnkles?: Record<Side, Vector3>;
 }
 
 /**
@@ -183,6 +189,11 @@ export class PelvisController {
       return { upper: a.distanceTo(b), lower: b.distanceTo(c) };
     };
     this.segments = { left: segments('left'), right: segments('right') };
+  }
+
+  /** Hip → ankle distance at the reach limit of a leg (m): its length × `maxReach`. */
+  maxLegReach(side: Side, maxReach = this.reachFactor): number {
+    return this.legLength[side] * maxReach;
   }
 
   /** Hip → ankle distance of a leg with the knee bent `bend` rad (0 = straight). */
@@ -282,7 +293,8 @@ export class PelvisController {
     for (const side of ['left', 'right'] as const) {
       updateDown(hips, this.rig[side].thigh);
       worldPosition(this.rig[side].thigh, this.hip);
-      const ankle = ankles[side];
+      // Para la altura, el tobillo más alto al que puede llegar ese pie (si no se da, el suyo).
+      const ankle = motion?.reachAnkles?.[side] ?? ankles[side];
       const dh = Math.hypot(this.hip.x - ankle.x, this.hip.z - ankle.z);
       /** Vertical offset of the hips at which the ankle ends up at `reach` from the hip. */
       const heightFor = (reach: number): number => ankle.y + Math.sqrt(Math.max(reach * reach - dh * dh, 0)) - this.hip.y;

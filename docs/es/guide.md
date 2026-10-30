@@ -335,7 +335,8 @@ cambio de nivel, el personaje mide el suelo por delante en su dirección de avan
 - el cuerpo sigue una línea suave sobre las huellas en vez del suelo justo debajo y se inclina algo hacia
   delante (más al subir que al bajar), y el pie en el aire libra los bordes con toda la planta (talón y punta
   de los dedos): al subir, sube primero; al bajar, primero avanza por encima del borde y luego baja; en un
-  escalón el pie apoya plano, no de talón;
+  escalón el pie no apoya de talón: plano al subir, de antepié al bajar; al subir, el pie de atrás levanta el
+  talón lo que haga falta para empujar;
 - una contrahuella más alta que `maxStepUp` es una pared: se para delante; de un desnivel más hondo que
   `maxStepDown` no baja: se para en el borde (los dos, 0,35 m por defecto, escalados con el tamaño).
 
@@ -404,7 +405,8 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 
 - Sin colisiones ni física (el cuerpo no choca con obstáculos); `moveTo` va en línea recta, sin pathfinding.
 - Escaleras: subir y bajar caminando por tramos rectos. Todavía no hay escaleras corriendo, en curva ni de
-  caracol, ni escaleras sin contrahuella (huellas sueltas). La rodilla de apoyo se dobla más que en las capturas
-  (≈ 80° al subir y ≈ 95° al bajar, frente a 55° y 68°). Tampoco saltos planificados a otra altura.
+  caracol, ni escaleras sin contrahuella (huellas sueltas). Al bajar, la pierna de delante apoya casi estirada
+  (una persona apoya con la rodilla doblada; ver [naturalidad](naturalness.md#escaleras)). Tampoco saltos
+  planificados a otra altura.
 - Rigs probados: Mixamo y el metarig de Rigify. Otros rigs deben funcionar con su mapping, pero no están
   verificados (ver [esqueletos](skeletons.md)).

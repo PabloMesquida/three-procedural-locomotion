@@ -315,21 +315,28 @@ walls and railings on both sides, with both models. The resting hand without sli
 
 The CMU stair takes are short flights (2–3 steps of about 12–19 cm; the dimensions are not documented: they
 come from the height at which the ankle stands still). Each swing is classified as going up, going down or
-level, and compared with the library on 17 × 28 cm stairs:
+level, and compared with the library on stairs of the same height (16 × 28 cm; the knee, against the takes
+with steps of about 16 cm: 83_31–83_35 and 114). The stance is when the toes stand still:
 
 | | Mocap, up | Mocap, down | Library, up | Library, down |
 |---|---|---|---|---|
-| Foot height at mid-swing (fraction of the rise; < 0: above the start) | 1.48 | −0.33 | 1.8 | −0.5 |
-| Foot height at 75 % of the swing | 1.33 | 0.60 | 1.6 | −0.3 |
-| Foot angle at landing (°, + toes up) | 0 | −3 | 0 | 0 |
-| Trunk lean relative to the flat (°) | +7 | +2.5 | +7 | +2.4 |
-| Highest knee bend of the stance leg (°) | 55 | 68 | ≈ 80 | ≈ 95 |
+| Foot height at mid-swing (fraction of the rise; < 0: above the start) | 1.48 | −0.33 | 2.2 | −0.6 |
+| Foot height at 75 % of the swing | 1.33 | 0.60 | 1.4 | −0.3 |
+| Trunk lean relative to the flat (°) | +7 | +2.5 | +7 | +2.2 |
+| Knee bend of the stance leg when it lands (°) | 47 | 36 | 53 | 15 |
+| Highest knee bend of the stance leg (°) | 48 | 40 | 55 | 75 |
 
-What was changed from it: on a step the foot lands flat (on the flat it lands on the heel, toes up); going
+What was changed from it: on a step the foot doesn't land on the heel (on the flat it does, toes up): going
+up it lands flat and going down on the ball of the foot, with the heel raised 20°, which it then lowers; going
 down, it first moves forward over the edge and then drops (before, it dropped from the start and cut the
-nosing); and the trunk leans forward with the slope of the stairs. Going down, the library drops later than the
-mocap: it waits until the back of the heel has passed the edge. The stance knee bends more than in the mocap:
-the height of the hips is limited by the trailing leg, which reaches the lower tread; pending.
+nosing); the trunk leans forward with the slope of the stairs; and going up, the trailing foot raises its heel
+as much as needed (up to 70°) to push off, so the hips don't stay low: the leading knee landed at ≈ 66°.
+
+What is still different: going down, the library drops later than the mocap (it waits until the back of the
+heel has passed the edge) and lands with the leg almost straight, reaching down, while a person lands with
+the knee already bent; the bend then comes in the trailing leg at the end of its stance (75°; in the clinical
+literature, 80–90° at that moment; in the mocap it is smaller because the toes roll over the edge early and
+the stance, measured with the toes still, ends before).
 
 ## Pose jumps
 

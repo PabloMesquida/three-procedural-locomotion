@@ -111,6 +111,19 @@ const STAIR_LEAN_UP = 25;
 const STAIR_LEAN_DOWN = 12;
 /** Time constant with which the lean follows the slope (s): the slope of the line changes in corners. */
 const STAIR_LEAN_TIME = 0.3;
+/**
+ * Going down a step, the foot lands on the ball with the heel raised this much (rad) and then lowers the heel,
+ * as a person does: the ankle reaches further down and the stance knee bends less.
+ */
+const STAIR_TOE_STRIKE = 20 * DEG;
+/**
+ * Going up stairs, the trailing foot can raise its heel up to this angle (rad) to push off: the hips stay
+ * higher and the knee of the leading leg bends less when it lands (mocap of stairs, CMU: ≈ 47°; with this
+ * limit, ≈ 53°, against ≈ 66° without pushing off). More doesn't help: the ankle then moves backwards.
+ */
+const STAIR_MAX_HEEL_LIFT = 70 * DEG;
+/** Fraction of the reach limit of the leg the pushing foot is placed within. */
+const PUSH_OFF_MARGIN = 0.995;
 /** How fast the speed limit of the stairs is released when they end (× acceleration, per second). */
 const STAIR_RELEASE = 0.4;
 /** Heel lift at toe-off (degrees) from which `walkLandingLead` applies in full. */
@@ -277,6 +290,12 @@ export class LocomotionController {
   private stairLimit = Number.POSITIVE_INFINITY;
   /** Extra lean of the trunk on stairs (rad), following the slope (see STAIR_LEAN_UP). */
   private stairLean = 0;
+  /** Heel lift of each foot pushing off up some stairs (rad, 0 = none; see pushOffStairs). */
+  private readonly pushOff: Record<Side, number> = { left: 0, right: 0 };
+  /** Highest ankle of each foot for the reach limit of the hips (see pushOffStairs). */
+  private readonly reachAnkles: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
+  private readonly pushPosition = new Vector3();
+  private readonly pushRotation = new Quaternion();
 
   /** In the air: how far the legs have already extended towards the landing (0–1). */
   private landingPrep = 0;
@@ -627,13 +646,14 @@ export class LocomotionController {
           foot.rotation.slerpQuaternions(this.settleFrom[side].rotation, this.qPivot.copy(foot.rotation), s);
         }
         const k = smoothstep(this.gait.stateProgress(side));
-        this.toeBend[side] = foot.phase === 'LIFT' ? this.heelLift * this.liftCurve(this.gait.stateProgress(side)) : 0;
+        if (foot.phase !== 'LIFT') this.pushOff[side] = 0;
+        this.toeBend[side] = foot.phase === 'LIFT' ? Math.max(this.heelLift * this.liftCurve(this.gait.stateProgress(side)), this.pushOff[side]) : 0;
         if (foot.phase === 'LIFT') roll.roll(foot.position, foot.rotation, 'toe', this.toeBend[side]);
         // Solo un pie que acaba de aterrizar baja la punta desde el talón: al echar a andar desde parado,
         // la fase puede reanudarse dentro de la ventana del PLANT con el pie ya plano (saltaba un frame).
         // Y desde el ángulo con el que terminó el swing (planificado corriendo y aterrizando ya caminando,
         // el de ahora es otro y la punta saltaba).
-        if (foot.phase === 'PLANT' && this.landed[side]) roll.roll(foot.position, foot.rotation, 'heel', -foot.swing.heelStrike * (1 - k));
+        if (foot.phase === 'PLANT' && this.landed[side]) strikeRoll(roll, foot.position, foot.rotation, foot.swing.heelStrike * (1 - k));
         // Salto: impulso final con la punta (los pies en LIFT ya tienen el talón levantado).
         // Cada pie lo alcanza progresivamente desde que apoya (uno que aterriza tarde no salta de pose).
         const toeOff = Math.min(this.jumping.toeOff(), this.toeOffLevel[side] + dt / TOE_OFF_RAMP);
@@ -666,6 +686,11 @@ export class LocomotionController {
     const bodyState = this.body.state;
     const cfg = this.config;
     this.hipShift.copy(bodyState.shift).addScaledVector(bodyState.forward, -k * cfg.crouchHipBack);
+    const maxReach = WALK_MAX_REACH + (RUN_MAX_REACH - WALK_MAX_REACH) * this.gait.blend;
+    for (const side of SIDES) {
+      const reachAnkle = this.reachAnkles[side].copy(feet[side].position);
+      if (this.canPushOff(side)) this.pushOffPose(feet[side], STAIR_MAX_HEEL_LIFT, reachAnkle, this.pushRotation);
+    }
     this.pelvis.update({ left: feet.left.position, right: feet.right.position }, this.hipShift, {
       forward: bodyState.forward,
       supportWeights: bodyState.supportWeights,
@@ -684,7 +709,8 @@ export class LocomotionController {
             left: this.gait.supportWeight('left') * (1 - this.gait.blend),
             right: this.gait.supportWeight('right') * (1 - this.gait.blend),
           },
-      maxReach: WALK_MAX_REACH + (RUN_MAX_REACH - WALK_MAX_REACH) * this.gait.blend,
+      maxReach,
+      reachAnkles: this.reachAnkles,
       // Corriendo, las piernas empiezan y dejan de limitar de golpe (despegue estirado, aterrizaje).
       limitRounding: this.gait.blend,
       dt,
@@ -701,6 +727,7 @@ export class LocomotionController {
     });
     if (jumpEvent === 'liftoff') this.beginAir(dt);
     for (const side of SIDES) this.air[side].previous.copy(feet[side].position);
+    this.pushOffStairs(maxReach);
 
     // 7. IK de cada pierna.
     for (const side of SIDES) {
@@ -995,7 +1022,9 @@ export class LocomotionController {
     swing.end.copy(swing.landing);
     swing.endRotation.copy(swing.landingRotation);
     swing.heelStrike = Math.abs(level) >= this.stairs.edgeHeight ? 0 : this.heelStrike;
-    this.legs[foot.side].roll.roll(swing.end, swing.endRotation, 'heel', -swing.heelStrike);
+    // Bajando, de antepié: el tobillo extendido llega más abajo y las caderas no tienen que bajar tanto.
+    if (swing.dropDelay > 0) swing.heelStrike = -STAIR_TOE_STRIKE;
+    strikeRoll(this.legs[foot.side].roll, swing.end, swing.endRotation, swing.heelStrike);
   }
 
   /**
@@ -1071,8 +1100,57 @@ export class LocomotionController {
     outPosition.copy(foot.planted);
     outRotation.copy(foot.plantedRotation);
     this.pivotStanceFoot(foot.side, outPosition, outRotation);
-    this.legs[foot.side].roll.roll(outPosition, outRotation, 'toe', this.heelLift * this.liftCurve(u));
+    this.legs[foot.side].roll.roll(outPosition, outRotation, 'toe', Math.max(this.heelLift * this.liftCurve(u), this.pushOff[foot.side]));
     return outPosition;
+  }
+
+  /**
+   * Going up stairs, the trailing foot (in LIFT, with the other one on a higher tread or going to one) can
+   * raise its heel beyond the usual lift to push off.
+   */
+  private canPushOff(side: Side): boolean {
+    const foot = this.feet[side];
+    if (foot.phase !== 'LIFT' || this.stairs.blend <= 0) return false;
+    const other = this.feet[side === 'left' ? 'right' : 'left'];
+    const ahead = other.phase === 'SWING' ? other.swing.landing : other.planted;
+    return ahead.y - foot.planted.y >= this.stairs.edgeHeight;
+  }
+
+  /** Pose of a foot in LIFT with the heel raised `angle` rad about the toe joint. */
+  private pushOffPose(foot: FootTarget, angle: number, outPosition: Vector3, outRotation: Quaternion): void {
+    outPosition.copy(foot.planted);
+    outRotation.copy(foot.plantedRotation);
+    this.pivotStanceFoot(foot.side, outPosition, outRotation);
+    this.legs[foot.side].roll.roll(outPosition, outRotation, 'toe', angle);
+  }
+
+  /**
+   * Push-off up stairs: the hips were placed within reach of the highest ankle of the trailing foot (see
+   * PelvisMotion.reachAnkles); here that foot raises its heel just enough for the leg to reach it (the
+   * smallest angle, by bisection), with the toes still on the tread. It doesn't lower again until it takes
+   * off.
+   */
+  private pushOffStairs(maxReach: number): void {
+    for (const side of SIDES) {
+      if (!this.canPushOff(side)) continue;
+      const foot = this.feet[side];
+      const hip = worldPosition(this.legs[side].ik.leg.thigh, this.tmp);
+      // Con un margen: justo en el límite, el IK se quedaba a milímetros.
+      const reach = this.pelvis.maxLegReach(side, maxReach) * PUSH_OFF_MARGIN;
+      if (hip.distanceTo(foot.position) <= reach) continue;
+      let lo = this.toeBend[side];
+      let hi = STAIR_MAX_HEEL_LIFT;
+      for (let i = 0; i < 12; i++) {
+        const mid = (lo + hi) / 2;
+        this.pushOffPose(foot, mid, this.pushPosition, this.pushRotation);
+        if (hip.distanceTo(this.pushPosition) > reach) lo = mid;
+        else hi = mid;
+      }
+      this.pushOffPose(foot, hi, foot.position, foot.rotation);
+      this.toeBend[side] = hi;
+      this.liftoffToeBend[side] = hi;
+      this.pushOff[side] = hi;
+    }
   }
 
   /**
@@ -1467,6 +1545,15 @@ function createAirFoot(): AirFoot {
 function smoothstep(x: number): number {
   const t = Math.min(Math.max(x, 0), 1);
   return t * t * (3 - 2 * t);
+}
+
+/**
+ * Landing pose of a foot from its flat pose: on the heel with the toes raised `angle` rad, or, if `angle` is
+ * negative, on the ball of the foot with the heel raised.
+ */
+function strikeRoll(roll: FootRoll, position: Vector3, rotation: Quaternion, angle: number): void {
+  if (angle >= 0) roll.roll(position, rotation, 'heel', -angle);
+  else roll.roll(position, rotation, 'toe', -angle);
 }
 
 /** The `x` (0–1) at which `smoothstep(x)` is `y`. */

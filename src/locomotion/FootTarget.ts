@@ -28,7 +28,11 @@ export interface SwingState {
   t: number;
   /** Height of the arc for this step (m): stepHeight, or more if there is an obstacle. */
   height: number;
-  /** Angle at which it lands on the heel (rad): the one used for `end`; PLANT lowers the toes from it. */
+  /**
+   * Angle at which it lands on the heel (rad): the one used for `end`; PLANT lowers the toes from it.
+   * Negative: it lands on the ball of the foot with the heel raised that much (going down stairs), and PLANT
+   * lowers the heel pivoting on the toe joint.
+   */
   heelStrike: number;
   /**
    * Horizontal deviation of the path at mid-swing (m, world; added × sin²(π·t), which starts and ends with

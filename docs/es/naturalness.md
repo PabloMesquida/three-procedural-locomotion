@@ -311,22 +311,28 @@ vuelve a aparecer:
 
 Las tomas de escaleras de CMU son tramos cortos (2–3 escalones de unos 12–19 cm; las medidas no están
 documentadas: salen de la altura a la que el tobillo se queda quieto). Cada swing se clasifica en subir, bajar o
-llano, y se compara con la librería en una escalera de 17 × 28 cm:
+llano, y se compara con la librería en una escalera de la misma altura (16 × 28 cm; la rodilla, con las tomas de
+escalones de unos 16 cm: 83_31–83_35 y 114). El apoyo es mientras los dedos están quietos:
 
 | | Mocap, subir | Mocap, bajar | Librería, subir | Librería, bajar |
 |---|---|---|---|---|
-| Altura del pie a mitad del swing (fracción del desnivel; < 0: por encima del inicio) | 1,48 | −0,33 | 1,8 | −0,5 |
-| Altura del pie al 75 % del swing | 1,33 | 0,60 | 1,6 | −0,3 |
-| Ángulo del pie al apoyar (°, + punta arriba) | 0 | −3 | 0 | 0 |
-| Inclinación del tronco respecto al llano (°) | +7 | +2,5 | +7 | +2,4 |
-| Flexión máxima de la rodilla de apoyo (°) | 55 | 68 | ≈ 80 | ≈ 95 |
+| Altura del pie a mitad del swing (fracción del desnivel; < 0: por encima del inicio) | 1,48 | −0,33 | 2,2 | −0,6 |
+| Altura del pie al 75 % del swing | 1,33 | 0,60 | 1,4 | −0,3 |
+| Inclinación del tronco respecto al llano (°) | +7 | +2,5 | +7 | +2,2 |
+| Flexión de la rodilla de apoyo al apoyar (°) | 47 | 36 | 53 | 15 |
+| Flexión máxima de la rodilla de apoyo (°) | 48 | 40 | 55 | 75 |
 
-Lo que se cambió a partir de esto: en un escalón el pie apoya plano (en llano apoya de talón, con la punta
-arriba); al bajar, primero avanza por encima del borde y luego baja (antes bajaba desde el principio y cortaba
-el borde); y el tronco se inclina hacia delante según la pendiente de la escalera. Al bajar, la librería baja
-más tarde que el mocap: espera a que la parte de atrás del talón haya pasado el borde. La rodilla de apoyo se
-dobla más que en el mocap: la altura de las caderas la limita la pierna de atrás, que llega a la huella de
-abajo; pendiente.
+Lo que se cambió a partir de esto: en un escalón el pie no apoya de talón (en llano sí, con la punta arriba): al
+subir apoya plano y al bajar de antepié, con el talón levantado 20°, que luego baja; al bajar, primero avanza por
+encima del borde y luego baja (antes bajaba desde el principio y cortaba el borde); el tronco se inclina hacia
+delante según la pendiente de la escalera; y al subir, el pie de atrás levanta el talón lo que haga falta (hasta
+70°) para empujar, así las caderas no se quedan bajas: la rodilla de delante apoyaba a ≈ 66°.
+
+Lo que sigue distinto: al bajar, la librería baja más tarde que el mocap (espera a que la parte de atrás del
+talón haya pasado el borde) y apoya con la pierna casi estirada, estirándose hacia abajo, mientras que una persona
+apoya ya con la rodilla doblada; la flexión llega después en la pierna de atrás, al final de su apoyo (75°; en la
+literatura clínica, 80–90° en ese momento; en el mocap sale menos porque los dedos ruedan pronto sobre el borde y
+el apoyo, medido con los dedos quietos, termina antes).
 
 ## Saltos de pose
 
