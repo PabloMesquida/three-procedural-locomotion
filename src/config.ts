@@ -24,7 +24,7 @@ export const LENGTH_PARAMS = [
   'stepLength', 'stepWidth', 'stepHeight', 'ankleBack', 'runStepLength', 'runStepHeight',
   'runCrouch', 'runBounce', 'crouchDepth', 'crouchHipBack',
   'jumpCrouch', 'jumpTuck', 'maxLandingDip', 'idleStepThreshold',
-  'toeClearance', 'maxExtraStepHeight', 'groundProbeHeight', 'groundProbeDepth',
+  'toeClearance', 'maxExtraStepHeight', 'maxStepUp', 'groundProbeHeight', 'groundProbeDepth',
   'footProbeHeight', 'footProbeDepth', 'footProbeTolerance', 'kneePoleDistance', 'shoulderForward',
   'arriveRadius', 'headingLockRadius', 'stopTolerance',
 ] as const satisfies readonly (keyof ProceduralHumanConfig)[];

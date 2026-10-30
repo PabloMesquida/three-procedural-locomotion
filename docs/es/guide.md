@@ -324,9 +324,25 @@ const heightmapGround: GroundDetector = {
 El cuerpo es cinemático: no hay colisiones con obstáculos ni paredes; solo se busca el suelo bajo el cuerpo
 y bajo cada pie. Escalones bajos y pendientes moderadas sí: los pies se apoyan en su altura y se inclinan.
 
-Consultas al suelo por personaje: una por frame (bajo el cuerpo) y unas 14 al empezar cada paso (dónde aterriza
-y por dónde pasa la punta del pie). Parado, si el suelo bajo los pies cambia sin que se mueva el cuerpo (un objeto
-que aparece, un cambio de `setConfig`), se recoloca en como mucho 0,25 s.
+### Escaleras
+
+Las escaleras y los escalones se detectan en la geometría, sin marcar nada: cuando un paso aterrizaría en un
+cambio de nivel, el personaje mide el suelo por delante en su dirección de avance, encuentra los bordes y:
+
+- apoya cada pie en una huella, entero (el talón sobresale solo si la huella es más corta que el pie), sin
+  saltarse ninguna: un paso por escalón;
+- frena para que cada paso suba un escalón, y vuelve a acelerar poco a poco cuando la escalera termina;
+- el cuerpo sigue una línea suave sobre las huellas en vez del suelo justo debajo, y el pie en el aire libra los
+  bordes con toda la planta (talón y punta de los dedos);
+- una contrahuella más alta que `maxStepUp` (0,35 m por defecto, escalado con el tamaño) es una pared: se para
+  delante.
+
+Sirve cualquier medida de escalón hasta ese límite (probado de 10 × 40 cm a 30 × 30 cm).
+
+Consultas al suelo por personaje: una por frame (bajo el cuerpo) y unas 15 al empezar cada paso (dónde aterriza
+y por dónde pasa la punta del pie). En una escalera, unas 50–90 por paso (el perfil del suelo por delante).
+Parado, si el suelo bajo los pies cambia sin que se mueva el cuerpo (un objeto que aparece, un cambio de
+`setConfig`), se recoloca en como mucho 0,25 s.
 
 ## Frames irregulares
 
@@ -383,6 +399,8 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 ## Limitaciones actuales
 
 - Sin colisiones ni física (el cuerpo no choca con obstáculos); `moveTo` va en línea recta, sin pathfinding.
-- Sin escaleras ni saltos a otra altura planificados (solo baches y escalones bajos).
+- Escaleras: subir caminando por tramos rectos. Bajar funciona pero aún no está ajustado (el pie puede rozar los
+  bordes); todavía no hay escaleras corriendo, en curva ni de caracol, ni escaleras sin contrahuella (huellas
+  sueltas). Tampoco saltos planificados a otra altura.
 - Rigs probados: Mixamo y el metarig de Rigify. Otros rigs deben funcionar con su mapping, pero no están
   verificados (ver [esqueletos](skeletons.md)).

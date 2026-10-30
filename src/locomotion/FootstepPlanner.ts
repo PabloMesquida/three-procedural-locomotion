@@ -157,10 +157,16 @@ export class FootstepPlanner {
    * current step) and where it would rest if it took a step to its neutral position right now (including
    * the adaptation to the terrain): horizontal offset (m, world: from the neutral spot to the foot) and
    * difference in orientation (rad).
-   * Used to know whether a foot is already "settled" when stopping. Does a raycast.
+   * Used to know whether a foot is already "settled" when stopping. Does a raycast. `adjust` can change
+   * that pose (e.g. onto a tread of some stairs).
    */
-  settleError(foot: FootTarget, outOffset: Vector3): { distance: number; angle: number } {
+  settleError(
+    foot: FootTarget,
+    outOffset: Vector3,
+    adjust?: (target: Vector3, rotation: Quaternion) => void,
+  ): { distance: number; angle: number } {
     this.planLanding(foot.side, this.zero, this.zero, 0, this.settleTarget, this.settleRotation);
+    adjust?.(this.settleTarget, this.settleRotation);
     outOffset.set(foot.planted.x - this.settleTarget.x, 0, foot.planted.z - this.settleTarget.z);
     return { distance: outOffset.length(), angle: foot.plantedRotation.angleTo(this.settleRotation) };
   }
@@ -191,9 +197,19 @@ export class FootstepPlanner {
     this.tmp2.set(direction.x, 0, direction.z);
     if (this.tmp2.lengthSq() > 1e-8) outPosition.addScaledVector(this.tmp2.normalize(), lead);
 
-    const ground = this.placements[side].update(outPosition, footYaw);
+    this.placeLanding(side, outPosition, footYaw, outPosition, outRotation);
+  }
+
+  /** Places the foot on the ground under `desired` (world ankle), oriented with `footYaw`. */
+  placeLanding(side: Side, desired: Vector3, footYaw: number, outPosition: Vector3, outRotation: Quaternion): void {
+    const ground = this.placements[side].update(desired, footYaw);
     outPosition.copy(ground.ankleTarget);
     outRotation.copy(ground.footRotation);
+  }
+
+  /** Foot placement of a side: its last query of the ground and the height of its ankle. */
+  placement(side: Side): FootPlacement {
+    return this.placements[side];
   }
 
   /** Adjusts the lateral distance between the neutral feet. */

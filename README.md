@@ -21,6 +21,8 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
   chest anticipate the new heading and the feet land already pointing the right way (or pivot on the toes).
 - **Feet on the terrain**: heel → sole → toe, tilting over bumps and slopes, low steps, toe clearance during the
   swing.
+- **Stairs, detected from the geometry**: one step per tread with the whole foot on it, for any size of step up
+  to `maxStepUp`; a higher one is a wall it stops in front of ([guide](docs/en/guide.md#stairs)).
 - **Crouching, jumping and landing** with anticipation, push-off, tucked feet and cushioning.
 - **Gradual twist** of arms and legs if the rig has `twist` bones (optional): the wrist and ankle don't twist
   abruptly ([skeletons](docs/en/skeletons.md#twist-bones)).
@@ -130,7 +132,8 @@ The meshes of both models come from [Human Base Meshes](https://www.blender.org/
 ## Limitations
 
 - Kinematic body: no collisions or physics; `moveTo` goes in a straight line, without pathfinding.
-- No planned stairs or jumps to a different height (only bumps and low steps).
+- Stairs: walking up straight flights (going down works but isn't tuned yet; no running, curved or spiral
+  stairs yet). No planned jumps to a different height.
 - Verified rigs: Mixamo and the Rigify metarig. Others should work with their mapping, unverified.
 
 ## Citing this work

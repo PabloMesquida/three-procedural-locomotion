@@ -321,9 +321,24 @@ const heightmapGround: GroundDetector = {
 The body is kinematic: there are no collisions with obstacles or walls; it only looks for the ground under the
 body and under each foot. Low steps and moderate slopes do work: the feet rest at their height and tilt.
 
-Ground queries per character: one per frame (under the body) and about 14 at the start of each step (where it
-lands and where the toes pass). When standing still, if the ground under the feet changes without the body
-moving (an object that appears, a `setConfig` change), it repositions itself within 0.25 s at most.
+### Stairs
+
+Stairs and steps are detected from the geometry, with nothing to mark: when a step would land on a change of
+level, the character samples the ground ahead along its direction of travel, finds the edges, and:
+
+- puts each foot on one tread, whole (the heel overhangs only if the tread is shorter than the foot), without
+  skipping any: one step per tread;
+- slows down so that each step climbs one tread, and speeds up again gradually when the stairs end;
+- the body follows a smooth line over the treads instead of the ground right under it, and the foot in the air
+  clears the edges with the whole sole (heel and tips of the toes);
+- a riser higher than `maxStepUp` (0.35 m by default, scaled with the size) is a wall: it stops in front of it.
+
+Any size of step works up to that limit (tested from 10 × 40 cm to 30 × 30 cm).
+
+Ground queries per character: one per frame (under the body) and about 15 at the start of each step (where it
+lands and where the toes pass). On stairs, about 50–90 per step instead (the profile of the ground ahead). When
+standing still, if the ground under the feet changes without the body moving (an object that appears, a
+`setConfig` change), it repositions itself within 0.25 s at most.
 
 ## Irregular frames
 
@@ -382,6 +397,8 @@ measures it on your machine.
 
 - No collisions or physics (the body doesn't collide with obstacles); `moveTo` goes in a straight line, without
   pathfinding.
-- No planned stairs or jumps to a different height (only bumps and low steps).
+- Stairs: walking up straight flights. Going down works but isn't tuned yet (the foot can brush the edges);
+  there are no stairs when running, curved or spiral stairs, or stairs without risers (separate treads) yet.
+  No planned jumps to a different height either.
 - Tested rigs: Mixamo and the Rigify metarig. Other rigs should work with their mapping, but they are not
   verified (see [skeletons](skeletons.md)).

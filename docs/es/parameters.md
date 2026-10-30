@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-119 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+120 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -206,6 +206,7 @@ opcionales y se validan (nombre, número finito y rango).
 |---|---|---|
 | `toeClearance` ↔ | 0.02 | Margen mínimo entre la punta del pie y el terreno durante el swing (m). |
 | `maxExtraStepHeight` ↔ | 0.3 | Altura extra máxima del swing para salvar obstáculos (m). |
+| `maxStepUp` ↔ | 0.35 | Escalón más alto que sube (m): una contrahuella más alta es una pared, y el personaje se para delante. |
 | `groundProbeHeight` ↔ | 1.5 | Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m). |
 | `groundProbeDepth` ↔ | 2.5 | Profundidad bajo la raíz hasta la que se busca el suelo al caminar (m). |
 | `footProbeHeight` ↔ | 0.5 | Altura sobre el tobillo deseado desde la que se busca el suelo bajo cada pie (m). |

@@ -85,7 +85,7 @@ Los tests giran y escalan el modelo (sea cual sea) para que mire hacia −Z y su
 referencia: prueban el movimiento con sus proporciones, no cómo se exportó.
 
 - **Propiedades** (`tests/*.test.ts`): configuración, rig, IK, caminar (llano, giros, pendientes, pista
-  irregular), correr, agacharse, saltar, point and click, API (eventos, varios personajes, padres
+  irregular, escaleras), correr, agacharse, saltar, point and click, API (eventos, varios personajes, padres
   transformados, fps irregulares, teletransporte), tamaños, estilos y documentación. Comprueban cosas físicas con
   márgenes: los pies apoyados no deslizan, el IK llega, la punta no roza, las caderas no se desploman, llega al
   destino sin pasarse, alterna pies, queda quieto a tiempo… Cada error corregido tiene su test de regresión.

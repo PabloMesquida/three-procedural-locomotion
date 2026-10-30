@@ -164,7 +164,7 @@ const sections = [
   [{ en: 'Touching surfaces', es: 'Tocar superficies' }, (n) => n.startsWith('touch')],
   [{ en: 'Natural variation', es: 'Variación natural' }, (n) => n === 'variation'],
   [{ en: 'Point and click (moveTo)', es: 'Point and click (moveTo)' }, (n) => ['arriveRadius', 'maxWalkTurnAngle', 'headingLockRadius', 'stopTolerance'].includes(n)],
-  [{ en: 'Advanced: clearances and probes', es: 'Avanzado: márgenes y sondas' }, (n) => ['toeClearance', 'maxExtraStepHeight', 'groundProbeHeight', 'groundProbeDepth', 'footProbeHeight', 'footProbeDepth', 'footProbeTolerance', 'kneePoleDistance'].includes(n)],
+  [{ en: 'Advanced: clearances and probes', es: 'Avanzado: márgenes y sondas' }, (n) => ['toeClearance', 'maxExtraStepHeight', 'maxStepUp', 'groundProbeHeight', 'groundProbeDepth', 'footProbeHeight', 'footProbeDepth', 'footProbeTolerance', 'kneePoleDistance'].includes(n)],
 ];
 
 // ---------- Textos de la página ----------

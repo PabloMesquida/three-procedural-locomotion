@@ -87,6 +87,11 @@ export class BodyController {
    * of a turn.
    */
   accelerationScale = 1;
+  /**
+   * Height the root follows when walking, from the ground under it (world) and its position: by default,
+   * that ground. Over stairs, a smooth line over the treads (see StairPlanner).
+   */
+  groundLine: ((position: Vector3, ground: number) => number) | null = null;
   /** Turn rate (rad/s) at the end of the last prediction (`predict`). */
   predictedAngularVelocity = 0;
   readonly state: BodyState;
@@ -471,7 +476,8 @@ export class BodyController {
     this.state.grounded = this.detector.castDown(this.tmp, groundProbeHeight + depth, this.rootHit);
     if (this.state.grounded) {
       this.state.groundHeight = this.rootHit.point.y;
-      p.y += (this.rootHit.point.y - p.y) * blend;
+      const target = this.groundLine ? this.groundLine(p, this.rootHit.point.y) : this.rootHit.point.y;
+      p.y += (target - p.y) * blend;
     }
   }
 }

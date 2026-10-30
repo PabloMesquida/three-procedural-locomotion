@@ -57,6 +57,8 @@ export interface WorldOptions {
   /** Mapping a usar en vez del del modelo de los tests (p. ej. con huesos añadidos en `prepare`). */
   mapping?: HumanRigMapping;
   terrain?: TerrainKind;
+  /** Añade cosas al terreno antes de crear el personaje (y su detector de suelo). */
+  buildTerrain?: (terrain: Object3D) => void;
   /** Escala uniforme del terreno (para pruebas de semejanza). */
   terrainScale?: number;
   /** Escala uniforme del modelo. */
@@ -82,6 +84,7 @@ export function createWorld(options: WorldOptions = {}): World {
   const scene = new Scene();
   const terrain = createTerrain(options.terrain ?? 'flat');
   terrain.scale.setScalar(options.terrainScale ?? 1);
+  options.buildTerrain?.(terrain);
   scene.add(terrain);
   terrain.updateMatrixWorld(true);
 

@@ -86,7 +86,7 @@ the bone hierarchy, read the same way as GLTFLoader: no browser needed). Another
 The tests rotate and scale the model (whatever it is) so that it faces −Z and its leg length is the
 reference one: they test the motion with its proportions, not how it was exported.
 
-- **Properties** (`tests/*.test.ts`): configuration, rig, IK, walking (flat, turns, slopes, uneven track),
+- **Properties** (`tests/*.test.ts`): configuration, rig, IK, walking (flat, turns, slopes, uneven track, stairs),
   running, crouching, jumping, point and click, API (events, several characters, transformed parents,
   irregular frame rates, teleporting), sizes, styles and documentation. They check physical things with
   margins: planted feet don't slide, IK reaches, the toes don't scrape, the hips don't collapse, it reaches

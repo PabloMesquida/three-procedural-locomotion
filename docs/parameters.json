@@ -1170,6 +1170,15 @@
         "constructionOnly": false
       },
       {
+        "name": "maxStepUp",
+        "doc": {
+          "en": "Highest step it climbs (m): a higher riser is a wall, and the character stops in front of it.",
+          "es": "Escalón más alto que sube (m): una contrahuella más alta es una pared, y el personaje se para delante."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
         "name": "groundProbeHeight",
         "doc": {
           "en": "Height above the root from which the ground under the body is searched (m).",

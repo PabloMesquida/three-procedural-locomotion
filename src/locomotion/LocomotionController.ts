@@ -17,6 +17,7 @@ import { FootRoll } from './FootRoll.ts';
 import { FootstepPlanner } from './FootstepPlanner.ts';
 import { GaitController } from './GaitController.ts';
 import { JumpController } from './JumpController.ts';
+import { StairPlanner } from './StairPlanner.ts';
 import { SmoothNoise } from '../core/noise.ts';
 import { createFootTarget, effectiveSwingEnd, evaluateSwing, type FootTarget, swingArc } from './FootTarget.ts';
 import { defaultLocomotionConfig, type LocomotionConfig } from './LocomotionConfig.ts';
@@ -93,6 +94,8 @@ const CLEARANCE_SAMPLES = 12;
 const AIR_TUCK_TIME = 0.15;
 /** Minimum time to go from a flat foot to full push-off with the toes (s). */
 const TOE_OFF_RAMP = 0.1;
+/** How fast the speed limit of the stairs is released when they end (× acceleration, per second). */
+const STAIR_RELEASE = 0.4;
 /** Heel lift at toe-off (degrees) from which `walkLandingLead` applies in full. */
 const FULL_HEEL_LIFT = 45;
 /** Fraction of the swing over which the toes, bent at toe-off, return to their rest pose. */
@@ -201,6 +204,8 @@ export class LocomotionController {
   readonly jumping: JumpController;
   readonly body: BodyController;
   readonly feet: Record<Side, FootTarget>;
+  /** Stairs and steps: where the feet land and the height the body follows (see StairPlanner). */
+  readonly stairs: StairPlanner;
 
   /** Desired crouch (0 = standing, 1 = fully crouched). */
   targetCrouch = 0;
@@ -251,6 +256,8 @@ export class LocomotionController {
   private readonly footPrevious: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
   /** Duration of the last frame with the feet on the ground (s); 0 = there is no valid previous frame. */
   private lastFootDt = 0;
+  /** Speed limit of the stairs (m/s; Infinity = none), released gradually (see stairSpeedLimit). */
+  private stairLimit = Number.POSITIVE_INFINITY;
 
   /** In the air: how far the legs have already extended towards the landing (0–1). */
   private landingPrep = 0;
@@ -262,6 +269,8 @@ export class LocomotionController {
   private readonly sampleHit = createGroundHit();
   private readonly samplePos = new Vector3();
   private readonly sampleRot = new Quaternion();
+  private readonly sampleAxis = new Vector3();
+  private readonly solePoints = [new Vector3(), new Vector3(), new Vector3()];
   private readonly landingVelocity = new Vector3();
   private readonly midStanceDisplacement = new Vector3();
   private readonly midStanceVelocity = new Vector3();
@@ -317,6 +326,14 @@ export class LocomotionController {
     };
     this.legs = { left: makeLeg('left'), right: makeLeg('right') };
     this.feet = { left: createFootTarget('left'), right: createFootTarget('right') };
+
+    // Largo del pie (talón bajo el tobillo → articulación de los dedos), la media de los dos.
+    const footLength = (side: Side): number => {
+      const roll = this.legs[side].roll;
+      return Math.hypot(roll.toeLocal.x - roll.heelLocal.x, roll.toeLocal.y - roll.heelLocal.y, roll.toeLocal.z - roll.heelLocal.z);
+    };
+    this.stairs = new StairPlanner(detector, config, (footLength('left') + footLength('right')) / 2);
+    this.body.groundLine = (position, ground) => this.stairs.groundHeight(position, ground);
   }
 
   /** Velocidad deseada (m/s), entre 0 y config.runSpeed. */
@@ -356,6 +373,7 @@ export class LocomotionController {
     this.body.shift(offset);
     this.torso.shift(offset);
     this.touch.shift(offset);
+    this.stairs.shift(offset);
     for (const side of SIDES) {
       const foot = this.feet[side];
       foot.position.add(offset);
@@ -383,6 +401,8 @@ export class LocomotionController {
     this.settleBlend = 1;
     this.settleCheck.valid = false;
     this.lastFootDt = 0;
+    this.stairs.reset();
+    this.stairLimit = Number.POSITIVE_INFINITY;
     this.pivotApplied.left = 0;
     this.pivotApplied.right = 0;
     this.body.reset();
@@ -501,6 +521,7 @@ export class LocomotionController {
   update(dt: number): void {
     const { feet, rig } = this;
     this.updateVariation(dt);
+    this.stairs.update(dt);
     this.syncPlacementConfig();
     this.planner.syncStepWidth();
 
@@ -509,7 +530,7 @@ export class LocomotionController {
     const crouchStep = this.config.crouchRate * dt;
     this.crouch += Math.max(-crouchStep, Math.min(crouchStep, crouchTarget - this.crouch));
     const k = smoothstep(this.crouch);
-    this.body.speedLimit = this.config.runSpeed + (this.config.crouchMaxSpeed - this.config.runSpeed) * k;
+    this.body.speedLimit = Math.min(this.config.runSpeed + (this.config.crouchMaxSpeed - this.config.runSpeed) * k, this.stairSpeedLimit(dt));
 
     // 1–2. Cuerpo: velocidad y avance de la raíz sobre el suelo. Las caderas vuelven a su pose de
     //      reposo sin recalcular matrices: el cuerpo actualiza después todo el esqueleto.
@@ -722,6 +743,38 @@ export class LocomotionController {
     worldPosition(rig.hips, this.body.state.com);
   }
 
+  /**
+   * Speed limit over stairs (m/s): the one at which each step climbs one tread, and stopping in front of a
+   * riser it can't climb.
+   */
+  private stairSpeedLimit(dt: number): number {
+    const stairs = this.stairs;
+    let limit = Number.POSITIVE_INFINITY;
+    if (stairs.run > 0 && stairs.blend > 0) {
+      // Paso (velocidad / cadencia) igual a la huella: por bisección, la cadencia depende de la velocidad.
+      let lo = 0;
+      let hi = this.config.runSpeed;
+      for (let i = 0; i < 20; i++) {
+        const v = (lo + hi) / 2;
+        if (v / this.gait.stepFrequencyFor(v) > stairs.run) hi = v;
+        else lo = v;
+      }
+      limit = this.config.runSpeed + (lo - this.config.runSpeed) * stairs.blend;
+    }
+    // Al acabar la escalera, el límite se suelta poco a poco: acelerando de golpe desde el paso lento de
+    // la escalera, la pierna de atrás se quedaba lejos y las caderas se hundían.
+    if (limit > this.stairLimit) limit = this.stairLimit + STAIR_RELEASE * this.config.acceleration * dt;
+    this.stairLimit = limit >= this.config.runSpeed ? Number.POSITIVE_INFINITY : limit;
+    const ahead = stairs.wallAhead(this.body.state.position, this.body.state.forward);
+    if (Number.isFinite(ahead)) {
+      // Se para con los pies delante de la contrahuella: las puntas, a un talón de ella.
+      // Con la mitad de la deceleración: la frenada tiene una rampa (speedEasing) y se pasaba.
+      const room = Math.max(ahead - stairs.toeFront - stairs.heelBack, 0);
+      limit = Math.min(limit, Math.sqrt(this.config.deceleration * room));
+    }
+    return limit;
+  }
+
   private syncPlacementConfig(): void {
     this.placementConfig.castHeight = this.config.footProbeHeight;
     this.placementConfig.castDepth = this.config.footProbeDepth;
@@ -752,7 +805,8 @@ export class LocomotionController {
    *    and settled (double support).
    */
   private updateGaitMode(dt: number): void {
-    const wantsToMove = this.targetSpeed > 0 || this.speed > IDLE_SPEED * this.config.walkSpeed || this.body.isTurning();
+    // Frenado del todo por un límite (delante de un escalón que no puede subir), no quiere moverse.
+    const wantsToMove = (this.targetSpeed > 0 && this.body.speedLimit > 0) || this.speed > IDLE_SPEED * this.config.walkSpeed || this.body.isTurning();
     if (wantsToMove) {
       this.setGaitMode('walk');
       return;
@@ -777,10 +831,16 @@ export class LocomotionController {
     const maxStagger = IDLE_STAGGER * c.stepLength;
     let along = 0;
     for (const side of SIDES) {
-      const e = this.planner.settleError(this.feet[side], this.settleOffset);
+      // Sobre una escalera, el sitio del pie es el de la huella (sin raycasts de más, ver StairPlanner); si
+      // no es donde está, se recoloca aunque esté poco adelantado: estaría pisando un borde.
+      let onTread = false;
+      const e = this.planner.settleError(this.feet[side], this.settleOffset, (target, rotation) => {
+        onTread = this.planStairLanding(side, this.feet[side].planted, 0, target, rotation, false);
+      });
       const ahead = this.settleOffset.dot(forward);
       const across = Math.sqrt(Math.max(e.distance * e.distance - ahead * ahead, 0));
-      if (across >= c.idleStepThreshold || Math.abs(ahead) >= maxStagger || e.angle >= maxAngle) return false;
+      const maxAhead = onTread ? c.idleStepThreshold : maxStagger;
+      if (across >= c.idleStepThreshold || Math.abs(ahead) >= maxAhead || e.angle >= maxAngle) return false;
       along += ahead / 2;
     }
     return Math.abs(along) < Math.max(maxStagger / 2, c.idleStepThreshold);
@@ -895,12 +955,43 @@ export class LocomotionController {
       yaw,
       footYaw,
     );
+    this.planStairLanding(foot.side, swing.start, footYaw, swing.landing, swing.landingRotation);
 
     // El swing termina con la punta levantada: el PLANT la bajará pivotando sobre el talón.
     swing.end.copy(swing.landing);
     swing.endRotation.copy(swing.landingRotation);
     swing.heelStrike = this.heelStrike;
     this.legs[foot.side].roll.roll(swing.end, swing.endRotation, 'heel', -swing.heelStrike);
+  }
+
+  /**
+   * Over stairs or steps (see StairPlanner): moves the planned landing so that the whole foot rests on one
+   * tread.
+   */
+  private planStairLanding(
+    side: Side,
+    start: Vector3,
+    footYaw: number,
+    landing: Vector3,
+    landingRotation: Quaternion,
+    probe = true,
+  ): boolean {
+    const other = this.feet[side === 'left' ? 'right' : 'left'];
+    const placement = this.planner.placement(side);
+    const stanceAnkle = this.planner.placement(other.side).ankleHeight;
+    const moved = this.stairs.planLanding(
+      start,
+      other.planted,
+      other.planted.y - stanceAnkle,
+      landing,
+      placement.state,
+      placement.ankleHeight,
+      this.body.state.forward,
+      this.tmp,
+      probe,
+    );
+    if (moved) this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
+    return moved;
   }
 
   /**
@@ -1021,6 +1112,7 @@ export class LocomotionController {
    */
   private swingHeight(foot: FootTarget): number {
     const base = this.gait.mix(this.config.stepHeight, this.config.runStepHeight);
+    if (this.stairs.active) return base + Math.min(this.stairSwingExtra(foot, base), this.config.maxExtraStepHeight);
     const roll = this.legs[foot.side].roll;
     const n = CLEARANCE_SAMPLES;
     const toeY: number[] = [];
@@ -1042,6 +1134,42 @@ export class LocomotionController {
       if (deficit > 0) extra = Math.max(extra, deficit / Math.max(swingArc(i / n, 1 - this.gait.blend), 0.05));
     }
     return base + Math.min(extra, this.config.maxExtraStepHeight);
+  }
+
+  /**
+   * `swingHeight` over stairs: the same with the profile of the ground the StairPlanner already sampled
+   * (without raycasts) and with the whole sole: the back of the heel, the toe joint and the tips of the
+   * toes (on a step, the toes hit the nosing and the heel the edge behind).
+   */
+  private stairSwingExtra(foot: FootTarget, base: number): number {
+    const roll = this.legs[foot.side].roll;
+    const profile = this.stairs.profile;
+    const n = CLEARANCE_SAMPLES;
+    const walk = 1 - this.gait.blend;
+    // Puntos de la planta en el espacio del pie: detrás del talón, articulación de los dedos y punta.
+    const along = this.sampleAxis.subVectors(roll.toeLocal, roll.heelLocal).normalize();
+    const points = this.solePoints;
+    points[0].copy(roll.heelLocal).addScaledVector(along, -this.stairs.heelBack);
+    points[1].copy(roll.toeLocal);
+    points[2].copy(roll.heelLocal).addScaledVector(along, this.stairs.toeFront);
+    let extra = 0;
+    for (const local of points) {
+      let previousU = Number.NaN;
+      let previousY = 0;
+      for (let i = 1; i <= n; i++) {
+        evaluateSwing(foot.swing, i / n, base, this.samplePos, this.sampleRot, walk);
+        const p = this.tmp.copy(local).applyQuaternion(this.sampleRot).add(this.samplePos);
+        const u = profile.along(p);
+        if (!Number.isNaN(previousU)) {
+          // La muestra anterior debe librar el suelo entre ella y esta (ningún borde se cuela entre las dos).
+          const deficit = profile.maxHeight(previousU, u) + this.config.toeClearance - previousY;
+          if (deficit > 0) extra = Math.max(extra, deficit / Math.max(swingArc((i - 1) / n, walk), 0.05));
+        }
+        previousU = u;
+        previousY = p.y;
+      }
+    }
+    return extra;
   }
 
   /**

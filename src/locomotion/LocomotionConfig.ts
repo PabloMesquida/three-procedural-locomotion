@@ -215,6 +215,8 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   toeClearance: number;
   /** Maximum extra swing height to clear obstacles (m). */
   maxExtraStepHeight: number;
+  /** Highest step it climbs (m): a higher riser is a wall, and the character stops in front of it. */
+  maxStepUp: number;
   /** Height above the root from which the ground under the body is searched (m). */
   groundProbeHeight: number;
   /** Depth below the root down to which the ground is searched when walking (m). */
@@ -311,6 +313,7 @@ export const defaultLocomotionConfig: LocomotionConfig = {
 
   toeClearance: 0.02,
   maxExtraStepHeight: 0.3,
+  maxStepUp: 0.35,
   groundProbeHeight: 1.5,
   groundProbeDepth: 2.5,
   footProbeHeight: 0.5,
