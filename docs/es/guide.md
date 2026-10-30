@@ -349,6 +349,14 @@ el vacío: un hueco más corto que el pie, más bajo que las huellas de los dos 
 de huella a huella. Donde no hay suelo bajo la raíz (sobre un hueco), el cuerpo sigue la línea sobre las huellas.
 Un hueco sin suelo más ancho es un desnivel más hondo que `maxStepDown`: se para en el borde.
 
+También valen las escaleras en curva y de caracol, subiendo y bajando, hacia los dos lados: mientras el cuerpo
+gira, el suelo se mide a lo largo del arco que sigue el pie (alrededor del centro del giro) en vez de en línea
+recta, el aterrizaje se mueve por ese arco, y la profundidad de las huellas se toma por donde va el cuerpo (por
+dentro son más estrechas). El personaje no sigue la escalera solo: quien lo controla lo hace girar por ella
+(`targetHeading`; `moveTo` va en línea recta). En un caracol cerrado tiene que ir despacio: `turnSpeed`
+limita lo cerrado que puede girar (a 1 m/s y 60°/s, un radio de 1 m más o menos). Probado en caracoles de
+1–1,4 m y curvas de 5 m.
+
 Consultas al suelo por personaje: una por frame (bajo el cuerpo) y unas 15 al empezar cada paso (dónde aterriza
 y por dónde pasa la punta del pie). En una escalera, unas 50–90 por paso (el perfil del suelo por delante).
 Parado, si el suelo bajo los pies cambia sin que se mueva el cuerpo (un objeto que aparece, un cambio de
@@ -409,8 +417,7 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 ## Limitaciones actuales
 
 - Sin colisiones ni física (el cuerpo no choca con obstáculos); `moveTo` va en línea recta, sin pathfinding.
-- Escaleras: subir y bajar caminando por tramos rectos. Todavía no hay escaleras corriendo, en curva ni de
-  caracol. Al bajar, la pierna de delante apoya casi estirada
+- Escaleras: solo caminando (todavía no corriendo). Al bajar, la pierna de delante apoya casi estirada
   (una persona apoya con la rodilla doblada; ver [naturalidad](naturalness.md#escaleras)). Tampoco saltos
   planificados a otra altura.
 - Rigs probados: Mixamo y el metarig de Rigify. Otros rigs deben funcionar con su mapping, pero no están

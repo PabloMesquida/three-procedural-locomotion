@@ -124,6 +124,13 @@ const STAIR_TOE_STRIKE = 20 * DEG;
 const STAIR_MAX_HEEL_LIFT = 70 * DEG;
 /** Fraction of the reach limit of the leg the pushing foot is placed within. */
 const PUSH_OFF_MARGIN = 0.995;
+/**
+ * On stairs, while the body turns along an arc of radius below MAX (× stepLength), the ground is sampled along
+ * that arc (curved and spiral stairs); above it, in a straight line. The radius used is never below MIN
+ * (× stepLength).
+ */
+const MAX_STAIR_TURN_RADIUS = 40;
+const MIN_STAIR_TURN_RADIUS = 0.4;
 /** How fast the speed limit of the stairs is released when they end (× acceleration, per second). */
 const STAIR_RELEASE = 0.4;
 /** Heel lift at toe-off (degrees) from which `walkLandingLead` applies in full. */
@@ -295,6 +302,9 @@ export class LocomotionController {
   /** Highest ankle of each foot for the reach limit of the hips (see pushOffStairs). */
   private readonly reachAnkles: Record<Side, Vector3> = { left: new Vector3(), right: new Vector3() };
   private readonly pushPosition = new Vector3();
+  private readonly pushHip = new Vector3();
+  private readonly stairCenter = new Vector3();
+  private readonly stairTangent = new Vector3();
   private readonly pushRotation = new Quaternion();
 
   /** In the air: how far the legs have already extended towards the landing (0–1). */
@@ -1050,11 +1060,27 @@ export class LocomotionController {
       placement.state,
       placement.ankleHeight,
       this.body.state.forward,
+      this.turnCenter(this.stairCenter),
       this.tmp,
       probe,
     );
     if (moved) this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
     return moved;
+  }
+
+  /**
+   * Center of the turn of the body (world), if it is turning along an arc of less than MAX_STAIR_TURN_RADIUS
+   * (curved or spiral stairs); null if it goes straight. Its radius is speed / turn rate, at least
+   * MIN_STAIR_TURN_RADIUS.
+   */
+  private turnCenter(out: Vector3): Vector3 | null {
+    const s = this.body.state;
+    const curvature = s.angularVelocity / Math.max(s.speed, IDLE_SPEED * this.config.walkSpeed);
+    const step = this.config.stepLength;
+    if (Math.abs(curvature) * MAX_STAIR_TURN_RADIUS * step < 1) return null;
+    const radius = Math.max(1 / Math.abs(curvature), MIN_STAIR_TURN_RADIUS * step) * Math.sign(curvature);
+    // A la izquierda (giro positivo) o a la derecha del avance.
+    return out.set(s.position.x + s.forward.z * radius, 0, s.position.z - s.forward.x * radius);
   }
 
   /**
@@ -1134,7 +1160,8 @@ export class LocomotionController {
     for (const side of SIDES) {
       if (!this.canPushOff(side)) continue;
       const foot = this.feet[side];
-      const hip = worldPosition(this.legs[side].ik.leg.thigh, this.tmp);
+      // Propio: pushOffPose usa `tmp` (al pivotar el pie).
+      const hip = worldPosition(this.legs[side].ik.leg.thigh, this.pushHip);
       // Con un margen: justo en el límite, el IK se quedaba a milímetros.
       const reach = this.pelvis.maxLegReach(side, maxReach) * PUSH_OFF_MARGIN;
       if (hip.distanceTo(foot.position) <= reach) continue;
@@ -1279,7 +1306,8 @@ export class LocomotionController {
         if (k === 2) {
           const d = this.tipDirection.copy(along).applyQuaternion(this.sampleRot).setY(0);
           const length = d.length();
-          if (length > 1e-6) u += (toes * (d.x * profile.direction.x + d.z * profile.direction.z)) / length;
+          const t = profile.tangent(u, this.stairTangent);
+          if (length > 1e-6) u += (toes * (d.x * t.x + d.z * t.z)) / length / profile.pathScale(p);
         }
         if (!Number.isNaN(previousU)) {
           // La muestra anterior debe librar el suelo entre ella y esta (ningún borde se cuela entre las dos).

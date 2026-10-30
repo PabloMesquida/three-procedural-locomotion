@@ -34,6 +34,7 @@ const BLEND_TIME = 0.3;
  *    of the ground right under it, and the speed is limited so that each step climbs one tread;
  *  - a riser higher than `maxStepUp` is a wall, and a drop deeper than `maxStepDown` an edge it doesn't
  *    step down from: the feet stop before it and so does the body.
+ * On curved and spiral stairs, while the body turns, the ground is sampled along the arc each foot follows.
  * On ground without edges it does nothing (and doesn't sample).
  */
 export class StairPlanner {
@@ -92,21 +93,21 @@ export class StairPlanner {
 
   /** Moves the stored world positions (see `LocomotionController.shift`). */
   shift(offset: Vector3): void {
-    this.profile.origin.add(offset);
-    this.profile.shiftHeights(offset.y);
+    this.profile.shift(offset);
     this.wall.add(offset);
   }
 
   /**
-   * Distance from `position` (world) to the riser it can't climb (or the drop it can't step down), if it is
-   * ahead in the direction `forward`
-   * (within 45° of the direction the stairs were sampled in); Infinity otherwise.
+   * Distance from `position` (world) to the riser it can't climb (or the drop it can't step down), along the
+   * stairs, if it is ahead in the direction `forward` (within 45° of the stairs there); Infinity otherwise.
    */
   wallAhead(position: Vector3, forward: Vector3): number {
     if (Number.isNaN(this.wall.x)) return Number.POSITIVE_INFINITY;
-    const d = this.profile.direction;
+    const profile = this.profile;
+    const u = profile.along(position);
+    const d = profile.tangent(u, this.dir);
     if (forward.x * d.x + forward.z * d.z < Math.SQRT1_2) return Number.POSITIVE_INFINITY;
-    return (this.wall.x - position.x) * d.x + (this.wall.z - position.z) * d.z;
+    return (profile.along(this.wall) - u) * profile.pathScale(position);
   }
 
   /**
@@ -134,16 +135,20 @@ export class StairPlanner {
     const a = profile.line(u - h, reach);
     const b = profile.line(u + h, reach);
     if (Number.isNaN(a) || Number.isNaN(b)) return 0;
-    const facing = forward.x * profile.direction.x + forward.z * profile.direction.z;
-    return (((b - a) / (2 * h)) * facing * this.blend);
+    const d = profile.tangent(u, this.dir);
+    const facing = forward.x * d.x + forward.z * d.z;
+    // Por metro donde está (en una curva, por dentro la escalera es más empinada).
+    return (((b - a) / (2 * h)) * facing * this.blend) / profile.pathScale(position);
   }
 
   /**
    * Landing of a step over stairs. `start`: ankle of the foot that takes off; `stance`: ankle of the
    * planted one and the ground under it; `landing`: where it would land on its own (flat ankle, already on
    * the ground) with `ground`, the query of the ground its foot placement made there; `direction`:
-   * horizontal direction of travel. `probe`: if it doesn't know yet whether there are stairs, it may look
-   * for steps higher than the foot placement sees (two raycasts; see `levelChange`).
+   * horizontal direction of travel; `center`: center of the turn of the body, if it is turning (curved or
+   * spiral stairs: the ground is sampled along the arc the foot follows). `probe`: if it doesn't know yet
+   * whether there are stairs, it may look for steps higher than the foot placement sees (one raycast; see
+   * `levelChange`).
    * Returns the new desired ankle position in `out` (on the chosen tread) and true, or false if it doesn't
    * change (no edges, or the landing is already good).
    */
@@ -155,6 +160,7 @@ export class StairPlanner {
     ground: FootGroundState,
     ankleHeight: number,
     direction: Vector3,
+    center: Vector3 | null,
     out: Vector3,
     probe = true,
   ): boolean {
@@ -163,14 +169,16 @@ export class StairPlanner {
 
     const c = this.config;
     const profile = this.profile;
-    const p = this.tmp.set(start.x, 0, start.z);
-    const dir = this.horizontal(direction);
-    const uStance = (stance.x - p.x) * dir.x + (stance.z - p.z) * dir.z;
-    const uLanding = (landing.x - p.x) * dir.x + (landing.z - p.z) * dir.z;
-    const from = Math.min(0, uStance) - LOOK_BEHIND * c.stepLength;
+    // En una curva, por el círculo del aterrizaje: es por el que se mueve el pie al ajustarlo (aunque el centro
+    // del giro, que cambia de un momento a otro, no sea exactamente el de la escalera).
+    profile.setPath(center ? landing : start, this.horizontal(direction), center);
+    const uStart = profile.along(start);
+    const uStance = profile.along(stance);
+    const uLanding = profile.along(landing);
+    const from = Math.min(uStart, uStance) - LOOK_BEHIND * c.stepLength;
     const to = Math.max(uLanding, uStance) + this.toeFront + LOOK_AHEAD * c.stepLength;
     const startGround = start.y - ankleHeight;
-    profile.sample(this.detector, p, dir, from, to, SAMPLE_SPACING * this.footLength, edge, startGround, c.groundProbeHeight, c.groundProbeDepth);
+    profile.sample(this.detector, from, to, SAMPLE_SPACING * this.footLength, edge, startGround, c.groundProbeHeight, c.groundProbeDepth);
     // Huecos (escaleras sin contrahuella): más cortos que lo que el pie necesita para apoyarse.
     profile.markGaps(this.toeFront);
     this.active = profile.edges > 0;
@@ -213,17 +221,20 @@ export class StairPlanner {
       }
     }
     // Profundidad de los escalones: la más corta por delante del apoyo (desde un descansillo, la de la escalera
-    // que viene), de borde a borde de dos huellas seguidas (sin contrahuella, con el hueco).
+    // que viene), de borde a borde de dos huellas seguidas (sin contrahuella, con el hueco). En una curva, en
+    // el camino del cuerpo (entre los dos pies; por dentro las huellas son más estrechas).
+    const bodyScale = profile.pathScale(this.tmp.addVectors(start, stance).multiplyScalar(0.5));
     let previousStart = Number.NaN;
     for (let i = Math.max(stanceTread, 0); i < profile.count; i++) {
       const t = profile.treads[i];
       if (t.gap) continue;
-      const going = t.start - previousStart;
+      const going = (t.start - previousStart) * bodyScale;
       if (going < 2 * c.stepLength && (this.run === 0 || going < this.run)) this.run = going;
       previousStart = t.startEdge ? t.start : Number.NaN;
     }
     if (bestTread < 0 || Math.abs(best - uLanding) < 1e-4 * this.footLength) return false;
-    profile.point(best, out);
+    // Por su camino (en una curva, sin cambiar la distancia al centro).
+    profile.moveAlong(landing, best, out);
     out.y = treadHeight(profile.treads[bestTread], best) + ankleHeight;
     return true;
   }

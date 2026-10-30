@@ -345,6 +345,13 @@ the void: a gap shorter than the foot, lower than the treads on both sides, is s
 measured from tread to tread. Where there is no ground under the root (over a gap), the body follows the line
 over the treads. A wider gap without ground is a drop deeper than `maxStepDown`: it stops at the edge.
 
+Curved and spiral stairs work too, going up and down either way: while the body turns, the ground is sampled
+along the arc the foot follows (around the center of the turn) instead of in a straight line, the landing
+moves along that arc, and the depth of the treads is taken where the body goes (they are narrower inside).
+The character doesn't follow the stairs by itself: whoever controls it turns it along them (`targetHeading`;
+`moveTo` goes in a straight line). On a tight spiral it has to go slowly: `turnSpeed` limits how tight it
+can turn (at 1 m/s and 60°/s, a radius of about 1 m). Tested on spirals of 1–1.4 m and curves of 5 m.
+
 Ground queries per character: one per frame (under the body) and about 15 at the start of each step (where it
 lands and where the toes pass). On stairs, about 50–90 per step instead (the profile of the ground ahead). When
 standing still, if the ground under the feet changes without the body moving (an object that appears, a
@@ -407,8 +414,7 @@ measures it on your machine.
 
 - No collisions or physics (the body doesn't collide with obstacles); `moveTo` goes in a straight line, without
   pathfinding.
-- Stairs: walking up and down straight flights. There are no stairs when running, nor curved or spiral
-  stairs, yet. Going down, the leading leg lands almost straight (a person
+- Stairs: walking only (not running yet). Going down, the leading leg lands almost straight (a person
   lands with the knee bent; see [naturalness](naturalness.md#stairs)). No planned jumps to a different height
   either.
 - Tested rigs: Mixamo and the Rigify metarig. Other rigs should work with their mapping, but they are not

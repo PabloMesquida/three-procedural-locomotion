@@ -22,8 +22,9 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
   rumbo y los pies aterrizan ya orientados (o pivotan sobre la punta).
 - **Pies sobre el terreno**: talón → planta → punta, inclinación sobre baches y pendientes, escalones bajos,
   margen de la punta durante el swing.
-- **Escaleras, detectadas en la geometría**: sube y baja, un paso por escalón con el pie entero en la huella,
-  para cualquier medida hasta `maxStepUp` / `maxStepDown`; más allá se para ([guía](docs/es/guide.md#escaleras)).
+- **Escaleras, detectadas en la geometría**: sube y baja, rectas, en curva o de caracol, con o sin contrahuella;
+  un paso por escalón con el pie entero en la huella, para cualquier medida hasta `maxStepUp` / `maxStepDown`;
+  más allá se para ([guía](docs/es/guide.md#escaleras)).
 - **Agacharse, saltar y aterrizar** con preparación, impulso, recogida de pies y amortiguación.
 - **Torsión gradual** de brazos y piernas si el rig tiene huesos `twist` (opcionales): la muñeca y el tobillo
   no se retuercen de golpe ([esqueletos](docs/es/skeletons.md#huesos-de-torsión)).
@@ -124,8 +125,7 @@ Las mallas de los dos modelos son de [Human Base Meshes](https://www.blender.org
 ## Limitaciones
 
 - Cuerpo cinemático: sin colisiones ni física; `moveTo` va en línea recta, sin pathfinding.
-- Escaleras: subir y bajar caminando por tramos rectos (todavía no hay escaleras corriendo, en curva ni de
-  caracol). Sin saltos planificados a otra altura.
+- Escaleras: solo caminando (todavía no corriendo). Sin saltos planificados a otra altura.
 - Rigs verificados: Mixamo y metarig de Rigify. Otros deberían funcionar con su mapping, sin verificar.
 
 ## Cómo citar

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { BoxGeometry, Mesh, MeshBasicMaterial, type Object3D, Vector3 } from 'three';
+import { BoxGeometry, CylinderGeometry, Mesh, MeshBasicMaterial, type Object3D, type Quaternion, Vector3 } from 'three';
 
 import { createGroundHit, defaultConfig, RaycastGroundDetector, type Side } from '../src/index.ts';
-import { createWorld, SIDES, simulate, type World } from './helpers/sim.ts';
+import { createWorld, DEG, SIDES, simulate, type World } from './helpers/sim.ts';
 
 /** Primer borde, a esta distancia por delante del personaje (m, hacia −Z). */
 const START = 2;
@@ -87,12 +87,81 @@ interface StairRun {
   alternates: boolean;
 }
 
+/** El pie está plano: lo que lo separa de su pose apoyada es solo un giro sobre la vertical (el pivote). */
+function flat(foot: { rotation: Quaternion; plantedRotation: Quaternion }): boolean {
+  const relative = foot.rotation.clone().multiply(foot.plantedRotation.clone().invert());
+  return new Vector3(0, 1, 0).applyQuaternion(relative).angleTo(new Vector3(0, 1, 0)) < 1e-3;
+}
+
+interface SpiralOptions {
+  /** Radio de la escalera (m) y radio por el que se camina (m). */
+  outer: number;
+  walkRadius: number;
+  /** Ángulo de cada escalón (°) y contrahuella (m). */
+  stepDeg: number;
+  rise: number;
+  count: number;
+  down?: boolean;
+  /** Gira hacia la derecha (por defecto, hacia la izquierda). */
+  right?: boolean;
+}
+
 /**
- * Camina recto a 1 m/s durante `seconds` s y mide los pies contra la escalera de contrahuella `rise`. Con
- * `underAnkle`, el talón se mide bajo el tobillo (sin contrahuella, en una huella corta sobresale sobre el
- * hueco, como el de una persona).
+ * Escalera en curva o de caracol, de cuñas macizas: el centro, a un lado del personaje (que mira hacia −Z), a
+ * `walkRadius`; el primer escalón, 45° más allá. Hacia arriba acaba en un rellano de 30°; hacia abajo
+ * empieza en uno. Devuelve la altura a la que termina.
  */
-function climb(world: World, rise: number, seconds: number, underAnkle = false): StairRun {
+function addSpiral(terrain: Object3D, o: SpiralOptions): number {
+  const side = o.right ? -1 : 1;
+  const material = new MeshBasicMaterial();
+  // Cuña de `height` m entre los ángulos a0 y a1 (°, desde la posición inicial hacia donde gira).
+  const wedge = (height: number, a0: number, a1: number): void => {
+    // Segmentos para que el borde no se aparte más de 1 mm del círculo.
+    const segments = Math.max(4, Math.ceil(((a1 - a0) * DEG) / (2 * Math.acos(1 - 0.001 / o.outer))));
+    const thetaStart = side > 0 ? 90 + a0 : 270 - a1;
+    const mesh = new Mesh(new CylinderGeometry(o.outer, o.outer, height, segments, 1, false, thetaStart * DEG, (a1 - a0) * DEG), material);
+    mesh.position.set(-side * o.walkRadius, height / 2, 0);
+    terrain.add(mesh);
+  };
+  const start = 45;
+  const top = o.rise * o.count;
+  if (o.down) {
+    wedge(top, -8, start);
+    for (let i = 1; i < o.count; i++) wedge(o.rise * (o.count - i), start + o.stepDeg * (i - 1), start + o.stepDeg * i);
+  } else {
+    for (let i = 0; i < o.count - 1; i++) wedge(o.rise * (i + 1), start + o.stepDeg * i, start + o.stepDeg * (i + 1));
+    wedge(top, start + o.stepDeg * (o.count - 1), start + o.stepDeg * (o.count - 1) + 30);
+  }
+  terrain.updateMatrixWorld(true);
+  return o.down ? 0 : top;
+}
+
+/**
+ * Lleva al personaje por la circunferencia de `walkRadius`, como haría quien lo controla, y lo para 15°
+ * después del último escalón.
+ */
+function steerAround(o: SpiralOptions): (human: World['human']) => void {
+  const side = o.right ? -1 : 1;
+  const cx = -side * o.walkRadius;
+  const stop = (45 + o.stepDeg * (o.count - 1) + 15) * DEG;
+  let turned = 0;
+  let last = 0;
+  return (human) => {
+    const p = human.position;
+    const angle = Math.atan2(-p.z, side * (p.x - cx));
+    turned += Math.atan2(Math.sin(angle - last), Math.cos(angle - last));
+    last = angle;
+    human.targetHeading = side * (turned + 1.5 * (Math.hypot(p.x - cx, p.z) - o.walkRadius));
+    if (turned > stop) human.targetSpeed = 0;
+  };
+}
+
+/**
+ * Camina a 1 m/s durante `seconds` s (en línea recta, o guiado por `steer` cada frame) y mide los pies contra
+ * la escalera de contrahuella `rise`. Con `underAnkle`, el talón se mide bajo el tobillo (sin contrahuella, en
+ * una huella corta sobresale sobre el hueco, como el de una persona).
+ */
+function climb(world: World, rise: number, seconds: number, underAnkle = false, steer?: (human: World['human']) => void): StairRun {
   const { human, terrain } = world;
   const loco = human.locomotion;
   const detector = new RaycastGroundDetector([terrain]);
@@ -100,14 +169,16 @@ function climb(world: World, rise: number, seconds: number, underAnkle = false):
   const ground = (p: Vector3): number => (detector.castDown(new Vector3(p.x, p.y + 2, p.z), 5, hit) ? hit.point.y : Number.NEGATIVE_INFINITY);
   const result: StairRun = { worstStance: 0, worstSwing: 0, landings: [], slip: 0, stanceIK: 0, alternates: true };
   const previous: Record<Side, string> = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+  steer?.(human);
   const r = simulate(world, seconds, [[0, (h) => { h.targetSpeed = 1; }]], {
     onFrame: () => {
+      steer?.(human);
       for (const side of SIDES) {
         const foot = loco.feet[side];
         if (foot.phase === 'PLANTED') {
           // Con el pie ya plano (al pararse, se aplana poco a poco desde el talón levantado).
           const { heel, tip } = sole(world, side, underAnkle);
-          if (foot.rotation.angleTo(foot.plantedRotation) < 1e-3) result.worstStance = Math.max(result.worstStance, Math.abs(heel.y - ground(heel)), Math.abs(tip.y - ground(tip)));
+          if (flat(foot)) result.worstStance = Math.max(result.worstStance, Math.abs(heel.y - ground(heel)), Math.abs(tip.y - ground(tip)));
           if (previous[side] !== 'PLANTED') result.landings.push(Math.round(ground(foot.position) / rise));
         } else if (foot.phase === 'SWING') {
           for (const bone of [human.rig[side].toe!, human.rig[side].foot]) {
@@ -172,6 +243,37 @@ describe('escaleras', () => {
         const steps = new Set(r.landings.filter((s) => s > 0 && s < COUNT));
         assert.equal(steps.size, COUNT - 1, `no pisó todas las huellas: ${r.landings.join(' ')}`);
         assert.ok(Math.abs(world.human.position.y - end) < 0.02, `no llegó al final (raíz a ${world.human.position.y.toFixed(2)} m)`);
+      });
+    }
+  }
+
+  // En curva y de caracol: quien lo controla lo lleva girando por la escalera.
+  const spirals: [string, SpiralOptions][] = [
+    ['de caracol (radio 1,4 m, a 0,85 m del centro)', { outer: 1.4, walkRadius: 0.85, stepDeg: 22.5, rise: 0.18, count: 12 }],
+    ['de caracol hacia la derecha', { outer: 1.4, walkRadius: 0.85, stepDeg: 22.5, rise: 0.18, count: 12, right: true }],
+    ['en curva (radio 5 m)', { outer: 5, walkRadius: 3.5, stepDeg: 6, rise: 0.17, count: 10 }],
+  ];
+  for (const [name, spiral] of spirals) {
+    for (const down of [false, true]) {
+      it(`${down ? 'baja' : 'sube'} una escalera ${name}: un escalón por paso, el pie entero en la huella`, () => {
+        const o = { ...spiral, down };
+        let end = 0;
+        const world = createWorld({
+          buildTerrain: (terrain) => { end = addSpiral(terrain, o); },
+          place: (model, scene) => { model.position.y = down ? o.rise * o.count : 0; scene.add(model); },
+        });
+        const r = climb(world, o.rise, 11, false, steerAround(o));
+        assert.ok(r.slip < 1e-6, `un pie apoyado se deslizó ${(r.slip * 1000).toFixed(2)} mm`);
+        assert.ok(r.stanceIK < 0.001, `error de IK en apoyo ${(r.stanceIK * 1000).toFixed(2)} mm`);
+        assert.ok(r.alternates, 'pasos no alternados');
+        assert.ok(r.worstStance < 0.01, `un pie apoyado sobresale de la huella o se mete en el escalón ${(r.worstStance * 100).toFixed(1)} cm`);
+        assert.ok(r.worstSwing < 0.005, `un pie en el aire se mete en la escalera ${(r.worstSwing * 100).toFixed(1)} cm`);
+        for (let i = 1; i < r.landings.length; i++) {
+          assert.ok(Math.abs(r.landings[i] - r.landings[i - 1]) <= 1, `se saltó un escalón: ${r.landings.join(' ')}`);
+        }
+        const steps = new Set(r.landings.filter((s) => s > 0 && s < o.count));
+        assert.equal(steps.size, o.count - 1, `no pisó todos los escalones: ${r.landings.join(' ')}`);
+        assert.ok(Math.abs(world.human.position.y - end) < 0.05, `no llegó al final (raíz a ${world.human.position.y.toFixed(2)} m de ${end.toFixed(2)})`);
       });
     }
   }
