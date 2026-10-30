@@ -28,7 +28,8 @@ const BLEND_TIME = 0.3;
  * Stairs and steps, detected from the geometry (nothing has to be marked):
  *  - when a step would land on a change of level (an edge under the foot or between the feet), it samples
  *    the profile of the ground along the direction of travel (GroundProfile) and moves the landing so that
- *    the whole foot rests on one tread, without skipping any tread it can step on;
+ *    the whole foot rests on one tread, without skipping any tread it can step on (the gaps between the
+ *    treads of stairs without risers are stepped over);
  *  - while there are edges ahead, the root follows a smooth line over the treads (`groundHeight`) instead
  *    of the ground right under it, and the speed is limited so that each step climbs one tread;
  *  - a riser higher than `maxStepUp` is a wall, and a drop deeper than `maxStepDown` an edge it doesn't
@@ -109,13 +110,15 @@ export class StairPlanner {
   }
 
   /**
-   * Height the root follows at `position` (world), given the ground right under it: over stairs, the line
-   * over the treads (blended in and out with `blend`); elsewhere, that ground.
+   * Height the root follows at `position` (world), given the ground right under it (NaN if there is none):
+   * over stairs, the line over the treads (blended in and out with `blend`; all of it if there is no
+   * ground); elsewhere, that ground.
    */
   groundHeight(position: Vector3, ground: number): number {
     if (this.blend <= 0 || this.profile.edges === 0) return ground;
     const line = this.profile.line(this.profile.along(position), LINE_REACH * this.config.stepLength);
-    return Number.isNaN(line) ? ground : ground + (line - ground) * this.blend;
+    if (Number.isNaN(line)) return ground;
+    return Number.isNaN(ground) ? line : ground + (line - ground) * this.blend;
   }
 
   /**
@@ -168,6 +171,8 @@ export class StairPlanner {
     const to = Math.max(uLanding, uStance) + this.toeFront + LOOK_AHEAD * c.stepLength;
     const startGround = start.y - ankleHeight;
     profile.sample(this.detector, p, dir, from, to, SAMPLE_SPACING * this.footLength, edge, startGround, c.groundProbeHeight, c.groundProbeDepth);
+    // Huecos (escaleras sin contrahuella): más cortos que lo que el pie necesita para apoyarse.
+    profile.markGaps(this.toeFront);
     this.active = profile.edges > 0;
     this.run = 0;
     this.wall.x = Number.NaN;
@@ -179,10 +184,14 @@ export class StairPlanner {
     const margin = EDGE_MARGIN * this.footLength;
     let best = Number.NaN;
     let bestTread = -1;
+    // Última huella que se puede pisar (los huecos se saltan): la contrahuella se mide desde ella.
+    let solid = -1;
     for (let i = 0; i < profile.count; i++) {
       const t = profile.treads[i];
+      if (t.gap) continue;
       const height = treadHeight(t, (t.start + t.end) / 2);
-      const riser = i > 0 ? t.startHeight - profile.treads[i - 1].endHeight : 0;
+      const riser = solid >= 0 ? t.startHeight - profile.treads[solid].endHeight : 0;
+      solid = i;
       if ((riser > c.maxStepUp || riser < -c.maxStepDown) && t.start > uStance) {
         // Contrahuella demasiado alta (una pared) o desnivel demasiado hondo: ni esta huella ni las de después.
         profile.point(t.start, this.wall);
@@ -203,12 +212,15 @@ export class StairPlanner {
         if (t.start > uStance && Math.abs(height - stanceHeight) >= edge) break;
       }
     }
-    // Profundidad de los escalones: la de la huella entera más corta por delante del apoyo (desde un
-    // descansillo, la de la escalera que viene).
+    // Profundidad de los escalones: la más corta por delante del apoyo (desde un descansillo, la de la escalera
+    // que viene), de borde a borde de dos huellas seguidas (sin contrahuella, con el hueco).
+    let previousStart = Number.NaN;
     for (let i = Math.max(stanceTread, 0); i < profile.count; i++) {
       const t = profile.treads[i];
-      const depth = t.end - t.start;
-      if (t.startEdge && t.endEdge && depth < 2 * c.stepLength && (this.run === 0 || depth < this.run)) this.run = depth;
+      if (t.gap) continue;
+      const going = t.start - previousStart;
+      if (going < 2 * c.stepLength && (this.run === 0 || going < this.run)) this.run = going;
+      previousStart = t.startEdge ? t.start : Number.NaN;
     }
     if (bestTread < 0 || Math.abs(best - uLanding) < 1e-4 * this.footLength) return false;
     profile.point(best, out);

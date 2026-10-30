@@ -4,6 +4,10 @@ import { createGroundHit, type GroundDetector } from './GroundDetector.ts';
 
 /** Bisection steps to locate an edge between two samples (the error halves each time). */
 const EDGE_REFINE_STEPS = 5;
+/** How many times a jump can be split in two when the bisection finds a third level in it. */
+const MAX_SPLITS = 3;
+/** Where there is no ground, the profile takes it this far below where it starts (m): lower than anything. */
+const HOLE_DEPTH = 1000;
 /** Most samples of a profile. */
 const MAX_SAMPLES = 96;
 
@@ -20,6 +24,8 @@ export interface Tread {
   /** Whether `start` / `end` is a real edge (false: the end of the sampled range). */
   startEdge: boolean;
   endEdge: boolean;
+  /** A gap between two higher treads, too short to step on (see `markGaps`): it is stepped over. */
+  gap: boolean;
 }
 
 /**
@@ -40,13 +46,17 @@ export class GroundProfile {
   private readonly probe = new Vector3();
   private castHeight = 0;
   private castDepth = 0;
+  private edgeHeight = 0;
+  private holeHeight = 0;
+  /** Tread being built while sampling. */
+  private tread!: Tread;
 
   /**
    * Samples the ground from `from` to `to` (m along `direction` from `origin`) every `spacing` m. Each
    * sample looks for the ground from `castHeight` above the previous one (the first, above `startHeight`)
    * down to `castDepth` below it: it follows the ground however much it rises or falls in total, without
-   * starting inside a high step or above a ceiling. Where there is no ground, the line is cut: what comes
-   * after is not used.
+   * starting inside a high step or above a ceiling. Where there is no ground (a gap over the void, a
+   * cliff) it is taken as a hole lower than anything, and it goes on looking for the ground beyond.
    */
   sample(
     detector: GroundDetector,
@@ -65,46 +75,86 @@ export class GroundProfile {
     this.castHeight = castHeight;
     this.castDepth = castDepth;
     this.count = 0;
+    this.edgeHeight = edgeHeight;
     const n = Math.min(Math.max(Math.ceil((to - from) / spacing), 1), MAX_SAMPLES - 1);
     const step = (to - from) / n;
+    // Altura con la que se apunta un hueco sin suelo: la misma en todo el perfil, por debajo de todo.
+    this.holeHeight = startHeight - HOLE_DEPTH;
     let previous = this.heightAt(detector, from, startHeight);
-    if (!Number.isFinite(previous)) return;
-    let tread = this.addTread(from, previous, false);
+    // Última altura con suelo: desde ella se busca el siguiente (sobre un hueco no hay a qué seguir).
+    let solid = Number.isFinite(previous) ? previous : startHeight;
+    if (!Number.isFinite(previous)) previous = this.holeHeight;
+    this.tread = this.addTread(from, previous, false);
     for (let i = 1; i <= n; i++) {
       const u = from + i * step;
-      const h = this.heightAt(detector, u, previous);
-      if (!Number.isFinite(h)) break;
-      let edge = Number.NaN;
-      let loHeight = previous;
-      if (Math.abs(h - previous) >= edgeHeight) {
-        // Borde entre las dos muestras: se busca por bisección (cada punto, del lado cuya altura se parece más).
-        let lo = u - step;
-        let hi = u;
-        let hiHeight = h;
-        for (let k = 0; k < EDGE_REFINE_STEPS; k++) {
-          const mid = (lo + hi) / 2;
-          const hm = this.heightAt(detector, mid, Math.max(previous, h));
-          if (Number.isFinite(hm) && Math.abs(hm - previous) < Math.abs(hm - h)) {
-            lo = mid;
-            loHeight = hm;
-          } else {
-            hi = mid;
-            hiHeight = hm;
-          }
-        }
-        // Un escalón sigue siendo un salto entre dos puntos muy juntos; una pendiente fuerte (un bache), no.
-        if (Math.abs(hiHeight - loHeight) >= edgeHeight / 2) edge = (lo + hi) / 2;
-      }
-      if (!Number.isNaN(edge)) {
-        tread.end = edge;
-        tread.endHeight = loHeight;
-        tread.endEdge = true;
-        tread = this.addTread(edge, h, true);
-      } else {
-        tread.end = u;
-        tread.endHeight = h;
-      }
+      let h = this.heightAt(detector, u, solid);
+      const noGround = !Number.isFinite(h);
+      if (noGround) h = this.holeHeight;
+      this.span(detector, u - step, previous, u, h, Math.max(solid, h), 0);
       previous = h;
+      if (!noGround) solid = h;
+    }
+  }
+
+  /**
+   * The ground from `a` (height `ha`) to `b` (height `hb`), the end of the current tread. If they differ by an
+   * edge or more, it locates the jump by bisection (each point goes to the side whose height it matches) and,
+   * if it is a step (still a jump between two very close points, not a steep slope), ends the current tread
+   * there and starts another one. If a point is below both sides or above both, there is another level in between (the gap
+   * between two treads without risers, or a narrow tread): the jump is split there, and each half is solved the
+   * same way. The bisection always closes in on that level, so it doesn't escape between two samples.
+   */
+  private span(detector: GroundDetector, a: number, ha: number, b: number, hb: number, near: number, splits: number): void {
+    if (Math.abs(hb - ha) < this.edgeHeight) {
+      this.tread.end = b;
+      this.tread.endHeight = hb;
+      return;
+    }
+    let lo = a;
+    let hi = b;
+    let loHeight = ha;
+    let hiHeight = hb;
+    for (let k = 0; k < EDGE_REFINE_STEPS; k++) {
+      const mid = (lo + hi) / 2;
+      let hm = this.heightAt(detector, mid, near);
+      if (!Number.isFinite(hm)) hm = this.holeHeight;
+      // Otro nivel: por debajo de los dos lados (un hueco) o por encima. Entre medias es una pendiente.
+      const outside = hm < Math.min(ha, hb) - this.edgeHeight || hm > Math.max(ha, hb) + this.edgeHeight;
+      if (outside && splits < MAX_SPLITS) {
+        this.span(detector, lo, loHeight, mid, hm, near, splits + 1);
+        this.span(detector, mid, hm, hi, hb, near, splits + 1);
+        return;
+      }
+      if (Math.abs(hm - ha) < Math.abs(hm - hb)) {
+        lo = mid;
+        loHeight = hm;
+      } else {
+        hi = mid;
+        hiHeight = hm;
+      }
+    }
+    const t = this.tread;
+    if (Math.abs(hiHeight - loHeight) < this.edgeHeight / 2) {
+      t.end = b;
+      t.endHeight = hb;
+      return;
+    }
+    const edge = (lo + hi) / 2;
+    t.end = edge;
+    t.endHeight = loHeight;
+    t.endEdge = true;
+    this.tread = this.addTread(edge, hb, true);
+  }
+
+  /**
+   * Marks as gaps the treads lower than both neighbors (by an edge or more) and shorter than `maxLength`:
+   * the gaps between the treads of stairs without risers, which are stepped over.
+   */
+  markGaps(maxLength: number): void {
+    for (let i = 1; i < this.count - 1; i++) {
+      const t = this.treads[i];
+      const low = Math.max(t.startHeight, t.endHeight) + this.edgeHeight;
+      t.gap = t.end - t.start < maxLength && this.treads[i - 1].endHeight >= low && this.treads[i + 1].startHeight >= low;
     }
   }
 
@@ -167,8 +217,8 @@ export class GroundProfile {
 
   /**
    * Smooth line over the treads (world height at `u`; NaN outside the profile): through the middle of each
-   * tread shorter than 2·`reach` and, on longer ones, flat up to `reach` from each edge. It rises like the
-   * stairs on average, without steps.
+   * tread shorter than 2·`reach` and, on longer ones, flat up to `reach` from each edge; over the gaps. It
+   * rises like the stairs on average, without steps.
    */
   line(u: number, reach: number): number {
     if (this.count === 0 || u < this.treads[0].start || u > this.treads[this.count - 1].end) return Number.NaN;
@@ -177,6 +227,7 @@ export class GroundProfile {
     let previousH = Number.NaN;
     for (let i = 0; i < this.count; i++) {
       const t = this.treads[i];
+      if (t.gap) continue;
       const short = t.end - t.start < 2 * reach && t.startEdge && t.endEdge;
       const a = short ? (t.start + t.end) / 2 : t.startEdge ? Math.min(t.start + reach, t.end) : t.start;
       const b = short ? a : t.endEdge ? Math.max(t.end - reach, a) : t.end;
@@ -191,7 +242,7 @@ export class GroundProfile {
 
   private addTread(start: number, height: number, edge: boolean): Tread {
     if (this.treads.length <= this.count) {
-      this.treads.push({ start: 0, end: 0, startHeight: 0, endHeight: 0, startEdge: false, endEdge: false });
+      this.treads.push({ start: 0, end: 0, startHeight: 0, endHeight: 0, startEdge: false, endEdge: false, gap: false });
     }
     const t = this.treads[this.count++];
     t.start = start;
@@ -200,6 +251,7 @@ export class GroundProfile {
     t.endHeight = height;
     t.startEdge = edge;
     t.endEdge = false;
+    t.gap = false;
     return t;
   }
 

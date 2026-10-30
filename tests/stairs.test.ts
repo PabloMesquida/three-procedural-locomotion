@@ -17,32 +17,60 @@ function addBlock(terrain: Object3D, height: number, zNear: number, zFar: number
   terrain.add(mesh);
 }
 
+/** Placa de 4 cm de grosor con la cara de arriba a `height` m, de z = `zNear` a z = `zFar`. */
+function addSlab(terrain: Object3D, height: number, zNear: number, zFar: number): void {
+  const mesh = new Mesh(new BoxGeometry(1.6, 0.04, zNear - zFar), new MeshBasicMaterial());
+  mesh.position.set(0, height - 0.02, (zNear + zFar) / 2);
+  terrain.add(mesh);
+}
+
+interface StairsOptions {
+  down?: boolean;
+  /** Sin contrahuella: huellas de 4 cm de grosor con este hueco horizontal entre una y otra (m). */
+  gap?: number;
+  /** Sin suelo al alcance debajo de la escalera (el plano del terreno baja a −5 m). */
+  overVoid?: boolean;
+}
+
 /**
- * Tramo recto de escalera hacia −Z, de bloques macizos, con `COUNT` contrahuellas de `rise` y huellas de
- * `run` (m). Hacia arriba: arranca en el suelo y acaba en un rellano de 8 m. Hacia abajo: el personaje
- * empieza en un rellano y baja hasta el suelo. Devuelve la altura a la que termina.
+ * Tramo recto de escalera hacia −Z con `COUNT` contrahuellas de `rise` y huellas de `run` (m), de bloques
+ * macizos o sin contrahuella. Hacia arriba: arranca en el suelo y acaba en un rellano de 8 m. Hacia abajo: el
+ * personaje empieza en un rellano y baja hasta el suelo. Devuelve la altura a la que termina.
  */
-function addStairs(terrain: Object3D, rise: number, run: number, down = false): number {
+function addStairs(terrain: Object3D, rise: number, run: number, options: StairsOptions = {}): number {
+  const { down = false, gap } = options;
+  const tread = (height: number, zNear: number, zFar: number): void => {
+    if (gap === undefined) addBlock(terrain, height, zNear, zFar);
+    else addSlab(terrain, height, zNear - gap / 2, zFar + gap / 2);
+  };
   if (down) {
     addBlock(terrain, rise * COUNT, 3, -START);
-    for (let i = 1; i < COUNT; i++) addBlock(terrain, rise * (COUNT - i), -START - run * (i - 1), -START - run * i);
+    for (let i = 1; i < COUNT; i++) tread(rise * (COUNT - i), -START - run * (i - 1), -START - run * i);
   } else {
-    for (let i = 0; i < COUNT - 1; i++) addBlock(terrain, rise * (i + 1), -START - run * i, -START - run * (i + 1));
+    for (let i = 0; i < COUNT - 1; i++) tread(rise * (i + 1), -START - run * i, -START - run * (i + 1));
     addBlock(terrain, rise * COUNT, -START - run * (COUNT - 1), -START - run * (COUNT - 1) - 8);
+  }
+  if (options.overVoid) {
+    terrain.children[0].position.y = -5;
+    if (down) addSlab(terrain, 0, -START - run * (COUNT - 1), -START - run * (COUNT - 1) - 8);
+    else addSlab(terrain, 0, 5, -START);
   }
   terrain.updateMatrixWorld(true);
   return down ? 0 : rise * COUNT;
 }
 
-/** Talón (detrás del tobillo) y punta de los dedos de un pie, a la altura de la planta (world). */
-function sole(world: World, side: Side): { heel: Vector3; tip: Vector3 } {
+/**
+ * Talón (detrás del tobillo; con `underAnkle`, bajo el tobillo) y punta de los dedos de un pie, a la altura
+ * de la planta (world).
+ */
+function sole(world: World, side: Side, underAnkle = false): { heel: Vector3; tip: Vector3 } {
   const { human } = world;
   const loco = human.locomotion;
   const ankle = human.rig[side].foot.getWorldPosition(new Vector3());
   const dir = human.rig[side].toe!.getWorldPosition(new Vector3()).sub(ankle).setY(0).normalize();
   const y = loco.feet[side].position.y - loco.planner.placement(side).ankleHeight;
   return {
-    heel: ankle.clone().addScaledVector(dir, -loco.stairs.heelBack).setY(y),
+    heel: ankle.clone().addScaledVector(dir, underAnkle ? 0 : -loco.stairs.heelBack).setY(y),
     tip: ankle.clone().addScaledVector(dir, loco.stairs.toeFront).setY(y),
   };
 }
@@ -59,8 +87,12 @@ interface StairRun {
   alternates: boolean;
 }
 
-/** Camina recto a 1 m/s durante `seconds` s y mide los pies contra la escalera de contrahuella `rise`. */
-function climb(world: World, rise: number, seconds: number): StairRun {
+/**
+ * Camina recto a 1 m/s durante `seconds` s y mide los pies contra la escalera de contrahuella `rise`. Con
+ * `underAnkle`, el talón se mide bajo el tobillo (sin contrahuella, en una huella corta sobresale sobre el
+ * hueco, como el de una persona).
+ */
+function climb(world: World, rise: number, seconds: number, underAnkle = false): StairRun {
   const { human, terrain } = world;
   const loco = human.locomotion;
   const detector = new RaycastGroundDetector([terrain]);
@@ -74,7 +106,7 @@ function climb(world: World, rise: number, seconds: number): StairRun {
         const foot = loco.feet[side];
         if (foot.phase === 'PLANTED') {
           // Con el pie ya plano (al pararse, se aplana poco a poco desde el talón levantado).
-          const { heel, tip } = sole(world, side);
+          const { heel, tip } = sole(world, side, underAnkle);
           if (foot.rotation.angleTo(foot.plantedRotation) < 1e-3) result.worstStance = Math.max(result.worstStance, Math.abs(heel.y - ground(heel)), Math.abs(tip.y - ground(tip)));
           if (previous[side] !== 'PLANTED') result.landings.push(Math.round(ground(foot.position) / rise));
         } else if (foot.phase === 'SWING') {
@@ -101,7 +133,7 @@ describe('escaleras', () => {
     it(`${down ? 'baja' : 'sube'} ${Math.round(rise * 100)} × ${Math.round(run * 100)} cm: un escalón por paso, el pie entero en la huella, sin atravesarla`, () => {
       let end = 0;
       const world = createWorld({
-        buildTerrain: (terrain) => { end = addStairs(terrain, rise, run, down); },
+        buildTerrain: (terrain) => { end = addStairs(terrain, rise, run, { down }); },
         // Bajando, empieza arriba (desde el suelo, el rellano queda fuera de la sonda de la raíz).
         place: (model, scene) => { model.position.y = down ? rise * COUNT : 0; scene.add(model); },
       });
@@ -120,6 +152,28 @@ describe('escaleras', () => {
       assert.ok(Math.abs(world.human.position.y - end) < 0.02, `no llegó al final (raíz a ${world.human.position.y.toFixed(2)} m de ${end.toFixed(2)})`);
     });
   }
+  }
+
+  // Sin contrahuella: con el suelo debajo y sobre el vacío (sin suelo al alcance bajo la escalera).
+  for (const down of [false, true]) {
+    for (const overVoid of [false, true]) {
+      it(`${down ? 'baja' : 'sube'} sin contrahuella (huecos de 4 cm${overVoid ? ', sobre el vacío' : ''}): salta los huecos y pisa todas las huellas`, () => {
+        const rise = 0.17;
+        let end = 0;
+        const world = createWorld({
+          buildTerrain: (terrain) => { end = addStairs(terrain, rise, 0.28, { down, gap: 0.04, overVoid }); },
+          place: (model, scene) => { model.position.y = down ? rise * COUNT : 0; scene.add(model); },
+        });
+        const r = climb(world, rise, 12, true);
+        assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001 && r.alternates, 'marcha sucia');
+        assert.ok(r.worstStance < 0.01, `un pie apoyado pisa el hueco o se mete en la huella ${(r.worstStance * 100).toFixed(1)} cm`);
+        assert.ok(r.worstSwing < 0.005, `un pie en el aire se mete en la escalera ${(r.worstSwing * 100).toFixed(1)} cm`);
+        assert.ok(world.human.locomotion.body.state.grounded, 'se quedó sin suelo');
+        const steps = new Set(r.landings.filter((s) => s > 0 && s < COUNT));
+        assert.equal(steps.size, COUNT - 1, `no pisó todas las huellas: ${r.landings.join(' ')}`);
+        assert.ok(Math.abs(world.human.position.y - end) < 0.02, `no llegó al final (raíz a ${world.human.position.y.toFixed(2)} m)`);
+      });
+    }
   }
 
   it('una contrahuella más alta que maxStepUp es una pared: se para delante, quieto y sin meter los pies', () => {

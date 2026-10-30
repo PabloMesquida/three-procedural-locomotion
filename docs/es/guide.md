@@ -344,6 +344,11 @@ Sirve cualquier medida de escalón hasta esos límites (probado de 10 × 40 cm a
 La forma del paso, la inclinación y el apoyo se comparan con capturas de movimiento de personas en escaleras
 (CMU).
 
+También valen las escaleras sin contrahuella (huellas sueltas con un hueco entre ellas), con suelo debajo o sobre
+el vacío: un hueco más corto que el pie, más bajo que las huellas de los dos lados, se salta, y el escalón se mide
+de huella a huella. Donde no hay suelo bajo la raíz (sobre un hueco), el cuerpo sigue la línea sobre las huellas.
+Un hueco sin suelo más ancho es un desnivel más hondo que `maxStepDown`: se para en el borde.
+
 Consultas al suelo por personaje: una por frame (bajo el cuerpo) y unas 15 al empezar cada paso (dónde aterriza
 y por dónde pasa la punta del pie). En una escalera, unas 50–90 por paso (el perfil del suelo por delante).
 Parado, si el suelo bajo los pies cambia sin que se mueva el cuerpo (un objeto que aparece, un cambio de
@@ -405,7 +410,7 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 
 - Sin colisiones ni física (el cuerpo no choca con obstáculos); `moveTo` va en línea recta, sin pathfinding.
 - Escaleras: subir y bajar caminando por tramos rectos. Todavía no hay escaleras corriendo, en curva ni de
-  caracol, ni escaleras sin contrahuella (huellas sueltas). Al bajar, la pierna de delante apoya casi estirada
+  caracol. Al bajar, la pierna de delante apoya casi estirada
   (una persona apoya con la rodilla doblada; ver [naturalidad](naturalness.md#escaleras)). Tampoco saltos
   planificados a otra altura.
 - Rigs probados: Mixamo y el metarig de Rigify. Otros rigs deben funcionar con su mapping, pero no están

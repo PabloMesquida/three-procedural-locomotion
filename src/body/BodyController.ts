@@ -88,8 +88,9 @@ export class BodyController {
    */
   accelerationScale = 1;
   /**
-   * Height the root follows when walking, from the ground under it (world) and its position: by default,
-   * that ground. Over stairs, a smooth line over the treads (see StairPlanner).
+   * Height the root follows when walking, from the ground under it (world; NaN if there is none) and its
+   * position: by default, that ground. Over stairs, a smooth line over the treads (see StairPlanner), also
+   * where there is no ground under the root (over the gap between two treads without a riser).
    */
   groundLine: ((position: Vector3, ground: number) => number) | null = null;
   /** Turn rate (rad/s) at the end of the last prediction (`predict`). */
@@ -473,10 +474,13 @@ export class BodyController {
     const p = this.pos;
     const { groundProbeHeight } = this.config;
     this.tmp.set(p.x, p.y + groundProbeHeight, p.z);
-    this.state.grounded = this.detector.castDown(this.tmp, groundProbeHeight + depth, this.rootHit);
+    const hit = this.detector.castDown(this.tmp, groundProbeHeight + depth, this.rootHit);
+    // Sin suelo bajo la raíz (sobre el hueco de una escalera sin contrahuella), la línea de la escalera si la sigue.
+    const ground = hit ? this.rootHit.point.y : Number.NaN;
+    const target = this.groundLine ? this.groundLine(p, ground) : ground;
+    this.state.grounded = Number.isFinite(target);
     if (this.state.grounded) {
-      this.state.groundHeight = this.rootHit.point.y;
-      const target = this.groundLine ? this.groundLine(p, this.rootHit.point.y) : this.rootHit.point.y;
+      this.state.groundHeight = hit ? ground : target;
       p.y += (target - p.y) * blend;
     }
   }
