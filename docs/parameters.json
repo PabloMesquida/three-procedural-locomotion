@@ -1179,6 +1179,15 @@
         "constructionOnly": false
       },
       {
+        "name": "maxStepDown",
+        "doc": {
+          "en": "Deepest step it goes down (m): from a deeper drop it doesn't step down, it stops at the edge.",
+          "es": "Escalón más hondo que baja (m): de un desnivel más hondo no baja, se para en el borde."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
         "name": "groundProbeHeight",
         "doc": {
           "en": "Height above the root from which the ground under the body is searched (m).",

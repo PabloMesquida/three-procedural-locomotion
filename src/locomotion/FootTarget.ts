@@ -44,6 +44,11 @@ export interface SwingState {
   retargetFrom: number;
   previousEnd: Vector3;
   previousEndRotation: Quaternion;
+  /**
+   * Going down a step of some stairs: fraction of the swing during which the foot moves forward at the
+   * height of the tread it leaves, before dropping (see `evaluateSwing`). 0 = it isn't going down a step.
+   */
+  dropDelay: number;
 }
 
 /** Where a foot is (or where it is going). All in world space; the position is that of the ankle. */
@@ -84,6 +89,7 @@ export function createFootTarget(side: Side): FootTarget {
       retargetFrom: 1,
       previousEnd: new Vector3(),
       previousEndRotation: new Quaternion(),
+      dropDelay: 0,
     },
     steps: 0,
   };
@@ -116,7 +122,8 @@ const TOE_UP_DELAY = 0.15;
  *  - on top, an arc of height `height` is added, peaking shortly after toe-off;
  *  - the toes rise gradually, after a short delay: it lands on the heel with the toes up.
  * When running, the foot first rises and then moves forward, with the arc at mid-swing and the toes
- * raised early. When stepping up, it always rises first (so as not to hit the edge).
+ * raised early. When stepping up, it always rises first (so as not to hit the edge); when stepping down
+ * some stairs (`dropDelay`), it first moves forward over the edge and then drops.
  * When running it starts with no velocity; in every case it lands with none (see `swingArc`).
  */
 export function evaluateSwing(
@@ -169,7 +176,9 @@ function swingBlend(swing: SwingState, t: number, walk: number): { s: number; k:
   const delayed = smoothstep((t - LIFT_DELAY) / (1 - 2 * LIFT_DELAY));
   return {
     s: goingUp ? delayed : mix(delayed, smoothstep(t), walk),
-    k: goingUp ? smoothstep(t / 0.6) : mix(smoothstep((t - 0.4) / 0.6), smoothstep(t), walk),
+    k: goingUp
+      ? smoothstep(t / 0.6)
+      : mix(smoothstep((t - 0.4) / 0.6), swing.dropDelay > 0 ? smoothstep((t - swing.dropDelay) / (1 - swing.dropDelay)) : smoothstep(t), walk),
     turn: mix(smoothstep(t / 0.5), smoothstep((t - TOE_UP_DELAY) / (1 - TOE_UP_DELAY)), walk),
   };
 }

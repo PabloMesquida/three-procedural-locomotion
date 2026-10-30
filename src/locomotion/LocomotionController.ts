@@ -94,6 +94,23 @@ const CLEARANCE_SAMPLES = 12;
 const AIR_TUCK_TIME = 0.15;
 /** Minimum time to go from a flat foot to full push-off with the toes (s). */
 const TOE_OFF_RAMP = 0.1;
+/**
+ * Walking down a step, fraction of the swing during which the foot moves forward without dropping: at least
+ * MIN_DROP_DELAY (mocap of stairs, CMU: at mid-swing it hasn't started dropping yet; at 75 %, it has dropped
+ * 60 %) and more if the back of the heel hasn't passed the edge by then, up to MAX_DROP_DELAY.
+ */
+const MIN_DROP_DELAY = 0.45;
+const MAX_DROP_DELAY = 0.8;
+/**
+ * Extra forward lean requested for the trunk on stairs, per unit of slope (degrees; rise / run): going up
+ * and going down. Measured on the trunk (pelvis → neck) it gives what the mocap of stairs shows (CMU),
+ * relative to walking on the flat: ≈ +7° going up and ≈ +2.5° going down on stairs of slope 0.6 (17 × 28
+ * cm); the spine takes only part of the requested lean.
+ */
+const STAIR_LEAN_UP = 25;
+const STAIR_LEAN_DOWN = 12;
+/** Time constant with which the lean follows the slope (s): the slope of the line changes in corners. */
+const STAIR_LEAN_TIME = 0.3;
 /** How fast the speed limit of the stairs is released when they end (× acceleration, per second). */
 const STAIR_RELEASE = 0.4;
 /** Heel lift at toe-off (degrees) from which `walkLandingLead` applies in full. */
@@ -258,6 +275,8 @@ export class LocomotionController {
   private lastFootDt = 0;
   /** Speed limit of the stairs (m/s; Infinity = none), released gradually (see stairSpeedLimit). */
   private stairLimit = Number.POSITIVE_INFINITY;
+  /** Extra lean of the trunk on stairs (rad), following the slope (see STAIR_LEAN_UP). */
+  private stairLean = 0;
 
   /** In the air: how far the legs have already extended towards the landing (0–1). */
   private landingPrep = 0;
@@ -270,6 +289,7 @@ export class LocomotionController {
   private readonly samplePos = new Vector3();
   private readonly sampleRot = new Quaternion();
   private readonly sampleAxis = new Vector3();
+  private readonly tipDirection = new Vector3();
   private readonly solePoints = [new Vector3(), new Vector3(), new Vector3()];
   private readonly landingVelocity = new Vector3();
   private readonly midStanceDisplacement = new Vector3();
@@ -403,6 +423,7 @@ export class LocomotionController {
     this.lastFootDt = 0;
     this.stairs.reset();
     this.stairLimit = Number.POSITIVE_INFINITY;
+    this.stairLean = 0;
     this.pivotApplied.left = 0;
     this.pivotApplied.right = 0;
     this.body.reset();
@@ -693,6 +714,10 @@ export class LocomotionController {
       leg.roll.bendToe(this.toeBend[side]);
     }
     // 8. Torso: contrarrotación, compensación, inclinación y cabeza estable.
+    //    En escaleras, algo más inclinado (más subiendo que bajando).
+    const slope = Math.min(Math.max(this.stairs.slope(bodyState.position, bodyState.forward), -1), 1);
+    const stairLean = (slope > 0 ? STAIR_LEAN_UP * slope : -STAIR_LEAN_DOWN * slope) * DEG;
+    this.stairLean += (stairLean - this.stairLean) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
     this.torso.update({
       forward: bodyState.forward,
       pelvis: this.pelvis.angles,
@@ -701,7 +726,7 @@ export class LocomotionController {
       speed: bodyState.speed,
       angularVelocity: bodyState.angularVelocity,
       dt,
-      extraLean: ((cfg.walkLean + (cfg.runLean - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean,
+      extraLean: ((cfg.walkLean + (cfg.runLean - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean + this.stairLean,
       airborne: bodyState.airborne,
       headOffset: { yaw: this.variationNow.headYaw, pitch: this.variationNow.headPitch },
     });
@@ -956,11 +981,20 @@ export class LocomotionController {
       footYaw,
     );
     this.planStairLanding(foot.side, swing.start, footYaw, swing.landing, swing.landingRotation);
+    // Subiendo o bajando un escalón, el pie apoya plano (en el mocap de escaleras, ±3°), y bajando, avanza
+    // antes de bajar (ver evaluateSwing).
+    const level = this.stairs.active ? swing.landing.y - foot.planted.y : 0;
+    swing.dropDelay = 0;
+    if (level <= -this.stairs.edgeHeight) {
+      // No baja hasta que el talón pasa el borde (caminando, el pie avanza smoothstep(t) del camino).
+      const pass = inverseSmoothstep(this.stairs.dropFraction(swing.start, swing.landing));
+      swing.dropDelay = clamp(pass, MIN_DROP_DELAY, MAX_DROP_DELAY);
+    }
 
     // El swing termina con la punta levantada: el PLANT la bajará pivotando sobre el talón.
     swing.end.copy(swing.landing);
     swing.endRotation.copy(swing.landingRotation);
-    swing.heelStrike = this.heelStrike;
+    swing.heelStrike = Math.abs(level) >= this.stairs.edgeHeight ? 0 : this.heelStrike;
     this.legs[foot.side].roll.roll(swing.end, swing.endRotation, 'heel', -swing.heelStrike);
   }
 
@@ -1139,27 +1173,36 @@ export class LocomotionController {
   /**
    * `swingHeight` over stairs: the same with the profile of the ground the StairPlanner already sampled
    * (without raycasts) and with the whole sole: the back of the heel, the toe joint and the tips of the
-   * toes (on a step, the toes hit the nosing and the heel the edge behind).
+   * toes (on a step, the toes hit the nosing and the heel the edge behind). The tips of the toes are taken
+   * horizontally ahead of the toe joint: the toes bend, so with the heel raised they don't go down with the
+   * foot.
    */
   private stairSwingExtra(foot: FootTarget, base: number): number {
     const roll = this.legs[foot.side].roll;
     const profile = this.stairs.profile;
     const n = CLEARANCE_SAMPLES;
     const walk = 1 - this.gait.blend;
-    // Puntos de la planta en el espacio del pie: detrás del talón, articulación de los dedos y punta.
-    const along = this.sampleAxis.subVectors(roll.toeLocal, roll.heelLocal).normalize();
+    const along = this.sampleAxis.subVectors(roll.toeLocal, roll.heelLocal);
+    const toes = this.stairs.toeFront - along.length();
+    along.normalize();
+    // Puntos de la planta en el espacio del pie: detrás del talón, articulación de los dedos y (desde ella) punta.
     const points = this.solePoints;
     points[0].copy(roll.heelLocal).addScaledVector(along, -this.stairs.heelBack);
     points[1].copy(roll.toeLocal);
-    points[2].copy(roll.heelLocal).addScaledVector(along, this.stairs.toeFront);
+    points[2].copy(roll.toeLocal);
     let extra = 0;
-    for (const local of points) {
+    for (let k = 0; k < points.length; k++) {
       let previousU = Number.NaN;
       let previousY = 0;
       for (let i = 1; i <= n; i++) {
         evaluateSwing(foot.swing, i / n, base, this.samplePos, this.sampleRot, walk);
-        const p = this.tmp.copy(local).applyQuaternion(this.sampleRot).add(this.samplePos);
-        const u = profile.along(p);
+        const p = this.tmp.copy(points[k]).applyQuaternion(this.sampleRot).add(this.samplePos);
+        let u = profile.along(p);
+        if (k === 2) {
+          const d = this.tipDirection.copy(along).applyQuaternion(this.sampleRot).setY(0);
+          const length = d.length();
+          if (length > 1e-6) u += (toes * (d.x * profile.direction.x + d.z * profile.direction.z)) / length;
+        }
         if (!Number.isNaN(previousU)) {
           // La muestra anterior debe librar el suelo entre ella y esta (ningún borde se cuela entre las dos).
           const deficit = profile.maxHeight(previousU, u) + this.config.toeClearance - previousY;
@@ -1424,6 +1467,11 @@ function createAirFoot(): AirFoot {
 function smoothstep(x: number): number {
   const t = Math.min(Math.max(x, 0), 1);
   return t * t * (3 - 2 * t);
+}
+
+/** The `x` (0–1) at which `smoothstep(x)` is `y`. */
+function inverseSmoothstep(y: number): number {
+  return 0.5 - Math.sin(Math.asin(1 - 2 * Math.min(Math.max(y, 0), 1)) / 3);
 }
 
 function clamp(x: number, min: number, max: number): number {

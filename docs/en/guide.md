@@ -327,13 +327,17 @@ Stairs and steps are detected from the geometry, with nothing to mark: when a st
 level, the character samples the ground ahead along its direction of travel, finds the edges, and:
 
 - puts each foot on one tread, whole (the heel overhangs only if the tread is shorter than the foot), without
-  skipping any: one step per tread;
-- slows down so that each step climbs one tread, and speeds up again gradually when the stairs end;
-- the body follows a smooth line over the treads instead of the ground right under it, and the foot in the air
-  clears the edges with the whole sole (heel and tips of the toes);
-- a riser higher than `maxStepUp` (0.35 m by default, scaled with the size) is a wall: it stops in front of it.
+  skipping any: one step per tread, up or down;
+- slows down so that each step takes one tread, and speeds up again gradually when the stairs end;
+- the body follows a smooth line over the treads instead of the ground right under it and leans forward a
+  little (more going up than down), and the foot in the air clears the edges with the whole sole (heel and
+  tips of the toes): going up it rises first; going down it first moves forward over the edge and then drops;
+  on a step the foot lands flat, not on the heel;
+- a riser higher than `maxStepUp` is a wall: it stops in front of it; from a drop deeper than `maxStepDown`
+  it doesn't step down: it stops at the edge (both 0.35 m by default, scaled with the size).
 
-Any size of step works up to that limit (tested from 10 × 40 cm to 30 × 30 cm).
+Any size of step works up to those limits (tested from 10 × 40 cm to 30 × 30 cm, up and down). The shape of the
+step, the lean and the landing are compared with motion capture of people on stairs (CMU).
 
 Ground queries per character: one per frame (under the body) and about 15 at the start of each step (where it
 lands and where the toes pass). On stairs, about 50–90 per step instead (the profile of the ground ahead). When
@@ -397,8 +401,8 @@ measures it on your machine.
 
 - No collisions or physics (the body doesn't collide with obstacles); `moveTo` goes in a straight line, without
   pathfinding.
-- Stairs: walking up straight flights. Going down works but isn't tuned yet (the foot can brush the edges);
-  there are no stairs when running, curved or spiral stairs, or stairs without risers (separate treads) yet.
-  No planned jumps to a different height either.
+- Stairs: walking up and down straight flights. There are no stairs when running, curved or spiral stairs,
+  or stairs without risers (separate treads) yet. The stance knee bends more than in the motion capture
+  (≈ 80° going up and ≈ 95° going down, against 55° and 68°). No planned jumps to a different height either.
 - Tested rigs: Mixamo and the Rigify metarig. Other rigs should work with their mapping, but they are not
   verified (see [skeletons](skeletons.md)).

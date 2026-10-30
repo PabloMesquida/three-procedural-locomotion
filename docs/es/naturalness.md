@@ -39,6 +39,7 @@ Las capturas no se versionan (licencia de terceros). Se descargan a `recursos/mo
 | 36, 39, 47 | `36.asf`, `36_02.amc`, `36_03.amc`, `36_09.amc`, `39.asf`, `39_11.amc`, `47.asf`, `47_01.amc` | ir, dar la vuelta y volver |
 | 69 | `69.asf`, `69_06.amc`, `69_07.amc`, `69_08.amc`, `69_13.amc` | caminar y dar la vuelta (repetido); girar en el sitio |
 | 144, 13, 14, 81, 22 | `144.asf`, `144_22.amc`–`144_25.amc`, `13.asf`, `13_10.amc`, `13_12.amc`, `14.asf`, `14_07.amc`–`14_09.amc`, `81.asf`, `81_10.amc`, `22.asf`, `22_18.amc` | alcanzar a los lados y arriba; empujar algo alto; apoyar las manos (para tocar al pasar) |
+| 83, 111, 113, 114, 143 | `83.asf`, `83_27.amc`–`83_32.amc`, `83_34.amc`, `83_35.amc`, `111.asf`, `111_27.amc`, `113.asf`, `113_19.amc`, `113_20.amc`, `114.asf`, `114_07.amc`–`114_09.amc`, `143.asf`, `143_17.amc` | escaleras: subir (83); subir y bajar (el resto; 111, 113 y 114 son mujeres embarazadas o recién paridas) |
 
 ```bash
 npm run mocap                  # caminar normal: mocap frente a librería, curva a curva
@@ -305,6 +306,27 @@ vuelve a aparecer:
   se alejaba mientras volvía y el brazo daba un latigazo hacia atrás);
 - el IK del brazo recibe el eje de la bisagra del codo tal como lo dobla el balanceo (si lo deducía del punto
   hacia el que apunta el codo, la torsión del antebrazo cambiaba de un frame a otro).
+
+## Escaleras
+
+Las tomas de escaleras de CMU son tramos cortos (2–3 escalones de unos 12–19 cm; las medidas no están
+documentadas: salen de la altura a la que el tobillo se queda quieto). Cada swing se clasifica en subir, bajar o
+llano, y se compara con la librería en una escalera de 17 × 28 cm:
+
+| | Mocap, subir | Mocap, bajar | Librería, subir | Librería, bajar |
+|---|---|---|---|---|
+| Altura del pie a mitad del swing (fracción del desnivel; < 0: por encima del inicio) | 1,48 | −0,33 | 1,8 | −0,5 |
+| Altura del pie al 75 % del swing | 1,33 | 0,60 | 1,6 | −0,3 |
+| Ángulo del pie al apoyar (°, + punta arriba) | 0 | −3 | 0 | 0 |
+| Inclinación del tronco respecto al llano (°) | +7 | +2,5 | +7 | +2,4 |
+| Flexión máxima de la rodilla de apoyo (°) | 55 | 68 | ≈ 80 | ≈ 95 |
+
+Lo que se cambió a partir de esto: en un escalón el pie apoya plano (en llano apoya de talón, con la punta
+arriba); al bajar, primero avanza por encima del borde y luego baja (antes bajaba desde el principio y cortaba
+el borde); y el tronco se inclina hacia delante según la pendiente de la escalera. Al bajar, la librería baja
+más tarde que el mocap: espera a que la parte de atrás del talón haya pasado el borde. La rodilla de apoyo se
+dobla más que en el mocap: la altura de las caderas la limita la pierna de atrás, que llega a la huella de
+abajo; pendiente.
 
 ## Saltos de pose
 

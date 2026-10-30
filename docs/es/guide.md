@@ -330,14 +330,18 @@ Las escaleras y los escalones se detectan en la geometría, sin marcar nada: cua
 cambio de nivel, el personaje mide el suelo por delante en su dirección de avance, encuentra los bordes y:
 
 - apoya cada pie en una huella, entero (el talón sobresale solo si la huella es más corta que el pie), sin
-  saltarse ninguna: un paso por escalón;
-- frena para que cada paso suba un escalón, y vuelve a acelerar poco a poco cuando la escalera termina;
-- el cuerpo sigue una línea suave sobre las huellas en vez del suelo justo debajo, y el pie en el aire libra los
-  bordes con toda la planta (talón y punta de los dedos);
-- una contrahuella más alta que `maxStepUp` (0,35 m por defecto, escalado con el tamaño) es una pared: se para
-  delante.
+  saltarse ninguna: un paso por escalón, subiendo o bajando;
+- frena para que cada paso avance un escalón, y vuelve a acelerar poco a poco cuando la escalera termina;
+- el cuerpo sigue una línea suave sobre las huellas en vez del suelo justo debajo y se inclina algo hacia
+  delante (más al subir que al bajar), y el pie en el aire libra los bordes con toda la planta (talón y punta
+  de los dedos): al subir, sube primero; al bajar, primero avanza por encima del borde y luego baja; en un
+  escalón el pie apoya plano, no de talón;
+- una contrahuella más alta que `maxStepUp` es una pared: se para delante; de un desnivel más hondo que
+  `maxStepDown` no baja: se para en el borde (los dos, 0,35 m por defecto, escalados con el tamaño).
 
-Sirve cualquier medida de escalón hasta ese límite (probado de 10 × 40 cm a 30 × 30 cm).
+Sirve cualquier medida de escalón hasta esos límites (probado de 10 × 40 cm a 30 × 30 cm, subiendo y bajando).
+La forma del paso, la inclinación y el apoyo se comparan con capturas de movimiento de personas en escaleras
+(CMU).
 
 Consultas al suelo por personaje: una por frame (bajo el cuerpo) y unas 15 al empezar cada paso (dónde aterriza
 y por dónde pasa la punta del pie). En una escalera, unas 50–90 por paso (el perfil del suelo por delante).
@@ -399,8 +403,8 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 ## Limitaciones actuales
 
 - Sin colisiones ni física (el cuerpo no choca con obstáculos); `moveTo` va en línea recta, sin pathfinding.
-- Escaleras: subir caminando por tramos rectos. Bajar funciona pero aún no está ajustado (el pie puede rozar los
-  bordes); todavía no hay escaleras corriendo, en curva ni de caracol, ni escaleras sin contrahuella (huellas
-  sueltas). Tampoco saltos planificados a otra altura.
+- Escaleras: subir y bajar caminando por tramos rectos. Todavía no hay escaleras corriendo, en curva ni de
+  caracol, ni escaleras sin contrahuella (huellas sueltas). La rodilla de apoyo se dobla más que en las capturas
+  (≈ 80° al subir y ≈ 95° al bajar, frente a 55° y 68°). Tampoco saltos planificados a otra altura.
 - Rigs probados: Mixamo y el metarig de Rigify. Otros rigs deben funcionar con su mapping, pero no están
   verificados (ver [esqueletos](skeletons.md)).

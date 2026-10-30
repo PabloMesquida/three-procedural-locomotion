@@ -6,25 +6,32 @@ import { BoxGeometry, Mesh, MeshBasicMaterial, type Object3D, Vector3 } from 'th
 import { createGroundHit, defaultConfig, RaycastGroundDetector, type Side } from '../src/index.ts';
 import { createWorld, SIDES, simulate, type World } from './helpers/sim.ts';
 
-/** Primera contrahuella, a esta distancia por delante del personaje (m, hacia −Z). */
+/** Primer borde, a esta distancia por delante del personaje (m, hacia −Z). */
 const START = 2;
 const COUNT = 8;
 
+/** Bloque macizo de `height` m, de z = `zNear` a z = `zFar` (zFar < zNear). */
+function addBlock(terrain: Object3D, height: number, zNear: number, zFar: number): void {
+  const mesh = new Mesh(new BoxGeometry(1.6, height, zNear - zFar), new MeshBasicMaterial());
+  mesh.position.set(0, height / 2, (zNear + zFar) / 2);
+  terrain.add(mesh);
+}
+
 /**
- * Tramo recto de escalera hacia −Z, de bloques macizos: `COUNT` contrahuellas de `rise` y huellas de `run`
- * (m), y arriba un rellano de 8 m. Devuelve la altura del rellano.
+ * Tramo recto de escalera hacia −Z, de bloques macizos, con `COUNT` contrahuellas de `rise` y huellas de
+ * `run` (m). Hacia arriba: arranca en el suelo y acaba en un rellano de 8 m. Hacia abajo: el personaje
+ * empieza en un rellano y baja hasta el suelo. Devuelve la altura a la que termina.
  */
-function addStairs(terrain: Object3D, rise: number, run: number): number {
-  const material = new MeshBasicMaterial();
-  const block = (height: number, zNear: number, zFar: number): void => {
-    const mesh = new Mesh(new BoxGeometry(1.6, height, zNear - zFar), material);
-    mesh.position.set(0, height / 2, (zNear + zFar) / 2);
-    terrain.add(mesh);
-  };
-  for (let i = 0; i < COUNT - 1; i++) block(rise * (i + 1), -START - run * i, -START - run * (i + 1));
-  block(rise * COUNT, -START - run * (COUNT - 1), -START - run * (COUNT - 1) - 8);
+function addStairs(terrain: Object3D, rise: number, run: number, down = false): number {
+  if (down) {
+    addBlock(terrain, rise * COUNT, 3, -START);
+    for (let i = 1; i < COUNT; i++) addBlock(terrain, rise * (COUNT - i), -START - run * (i - 1), -START - run * i);
+  } else {
+    for (let i = 0; i < COUNT - 1; i++) addBlock(terrain, rise * (i + 1), -START - run * i, -START - run * (i + 1));
+    addBlock(terrain, rise * COUNT, -START - run * (COUNT - 1), -START - run * (COUNT - 1) - 8);
+  }
   terrain.updateMatrixWorld(true);
-  return rise * COUNT;
+  return down ? 0 : rise * COUNT;
 }
 
 /** Talón (detrás del tobillo) y punta de los dedos de un pie, a la altura de la planta (world). */
@@ -45,7 +52,7 @@ interface StairRun {
   worstStance: number;
   /** Lo más que la articulación de los dedos o el tobillo se metió en la escalera en el aire (m, ≥ 0). */
   worstSwing: number;
-  /** Escalón (0 = suelo de abajo) de cada aterrizaje, en orden. */
+  /** Escalón (0 = el suelo) de cada aterrizaje, en orden. */
   landings: number[];
   slip: number;
   stanceIK: number;
@@ -87,26 +94,32 @@ function climb(world: World, rise: number, seconds: number): StairRun {
 }
 
 describe('escaleras', () => {
-  // Contrahuella × huella (m): baja y larga, estándar, empinada y casi tan alta como maxStepUp.
+  // Contrahuella × huella (m): baja y larga, estándar, empinada y casi tan alta como maxStepUp/maxStepDown.
   const sizes: [number, number][] = [[0.1, 0.4], [0.17, 0.28], [0.22, 0.25], [0.3, 0.3]];
+  for (const down of [false, true]) {
   for (const [rise, run] of sizes) {
-    it(`sube ${Math.round(rise * 100)} × ${Math.round(run * 100)} cm: un escalón por paso, el pie entero en la huella, sin atravesarla`, () => {
-      let top = 0;
-      const world = createWorld({ buildTerrain: (terrain) => { top = addStairs(terrain, rise, run); } });
+    it(`${down ? 'baja' : 'sube'} ${Math.round(rise * 100)} × ${Math.round(run * 100)} cm: un escalón por paso, el pie entero en la huella, sin atravesarla`, () => {
+      let end = 0;
+      const world = createWorld({
+        buildTerrain: (terrain) => { end = addStairs(terrain, rise, run, down); },
+        // Bajando, empieza arriba (desde el suelo, el rellano queda fuera de la sonda de la raíz).
+        place: (model, scene) => { model.position.y = down ? rise * COUNT : 0; scene.add(model); },
+      });
       const r = climb(world, rise, 12);
       assert.ok(r.slip < 1e-6, `un pie apoyado se deslizó ${(r.slip * 1000).toFixed(2)} mm`);
       assert.ok(r.stanceIK < 0.001, `error de IK en apoyo ${(r.stanceIK * 1000).toFixed(2)} mm`);
       assert.ok(r.alternates, 'pasos no alternados');
       assert.ok(r.worstStance < 0.01, `un pie apoyado sobresale de la huella o se mete en el escalón ${(r.worstStance * 100).toFixed(1)} cm`);
       assert.ok(r.worstSwing < 0.005, `un pie en el aire se mete en la escalera ${(r.worstSwing * 100).toFixed(1)} cm`);
-      // De uno en uno: ningún pie aterriza más de un escalón por encima del anterior, y pisa todos.
+      // De uno en uno: ningún pie aterriza más de un escalón más allá que el anterior, y pisa todos.
       for (let i = 1; i < r.landings.length; i++) {
-        assert.ok(r.landings[i] - r.landings[i - 1] <= 1, `se saltó un escalón: ${r.landings.join(' ')}`);
+        assert.ok(Math.abs(r.landings[i] - r.landings[i - 1]) <= 1, `se saltó un escalón: ${r.landings.join(' ')}`);
       }
       const steps = new Set(r.landings.filter((s) => s > 0 && s < COUNT));
       assert.equal(steps.size, COUNT - 1, `no pisó todos los escalones: ${r.landings.join(' ')}`);
-      assert.ok(Math.abs(world.human.position.y - top) < 0.02, `no llegó arriba (raíz a ${world.human.position.y.toFixed(2)} m de ${top.toFixed(2)})`);
+      assert.ok(Math.abs(world.human.position.y - end) < 0.02, `no llegó al final (raíz a ${world.human.position.y.toFixed(2)} m de ${end.toFixed(2)})`);
     });
+  }
   }
 
   it('una contrahuella más alta que maxStepUp es una pared: se para delante, quieto y sin meter los pies', () => {
@@ -120,6 +133,19 @@ describe('escaleras', () => {
     for (const side of SIDES) {
       const { tip } = sole(world, side);
       assert.ok(tip.z > -START, `la punta del pie ${side} pasó la contrahuella (z ${tip.z.toFixed(2)})`);
+    }
+  });
+
+  it('de un desnivel más hondo que maxStepDown no baja: se para en el borde, quieto', () => {
+    const drop = defaultConfig.maxStepDown + 0.05;
+    const world = createWorld({ buildTerrain: (terrain) => addBlock(terrain, drop, 3, -START) });
+    const r = climb(world, drop, 8);
+    assert.equal(world.human.gaitMode, 'idle');
+    assert.ok(Math.abs(world.human.position.y - drop) < 0.01, `bajó (raíz a ${world.human.position.y.toFixed(2)} m)`);
+    assert.ok(r.worstStance < 0.01, `un pie apoyado sobresale del borde ${(r.worstStance * 100).toFixed(1)} cm`);
+    for (const side of SIDES) {
+      const { tip } = sole(world, side);
+      assert.ok(tip.z > -START, `la punta del pie ${side} pasó el borde (z ${tip.z.toFixed(2)})`);
     }
   });
 });

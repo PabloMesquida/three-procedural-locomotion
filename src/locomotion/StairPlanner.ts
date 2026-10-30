@@ -19,6 +19,8 @@ const LOOK_BEHIND = 1;
 const LOOK_AHEAD = 1;
 /** On treads longer than this (× stepLength) the line over the stairs is flat, except near the edges. */
 const LINE_REACH = 0.5;
+/** Half the distance over which the slope of the line is measured (× foot length). */
+const SLOPE_SPAN = 0.5;
 /** Time for the body to start or stop following the line over the stairs (s). */
 const BLEND_TIME = 0.3;
 
@@ -29,7 +31,8 @@ const BLEND_TIME = 0.3;
  *    the whole foot rests on one tread, without skipping any tread it can step on;
  *  - while there are edges ahead, the root follows a smooth line over the treads (`groundHeight`) instead
  *    of the ground right under it, and the speed is limited so that each step climbs one tread;
- *  - a riser higher than `maxStepUp` is a wall: the feet stop in front of it and so does the body.
+ *  - a riser higher than `maxStepUp` is a wall, and a drop deeper than `maxStepDown` an edge it doesn't
+ *    step down from: the feet stop before it and so does the body.
  * On ground without edges it does nothing (and doesn't sample).
  */
 export class StairPlanner {
@@ -40,7 +43,7 @@ export class StairPlanner {
   blend = 0;
   /** Depth of the treads of the stairs (m; 0 = no flight of stairs, a single step or none). */
   run = 0;
-  /** Position (world) of the first riser it can't climb; NaN if none. */
+  /** Position (world) of the first riser it can't climb or drop it can't step down; NaN if none. */
   readonly wall = new Vector3(Number.NaN, 0, 0);
 
   private readonly config: LocomotionConfig;
@@ -55,6 +58,11 @@ export class StairPlanner {
     this.detector = detector;
     this.config = config;
     this.footLength = footLength;
+  }
+
+  /** Jump in height that counts as an edge (m). */
+  get edgeHeight(): number {
+    return EDGE_HEIGHT * this.footLength;
   }
 
   /** The heel extends this far behind the ankle (m). */
@@ -89,7 +97,8 @@ export class StairPlanner {
   }
 
   /**
-   * Distance from `position` (world) to the riser it can't climb, if it is ahead in the direction `forward`
+   * Distance from `position` (world) to the riser it can't climb (or the drop it can't step down), if it is
+   * ahead in the direction `forward`
    * (within 45° of the direction the stairs were sampled in); Infinity otherwise.
    */
   wallAhead(position: Vector3, forward: Vector3): number {
@@ -107,6 +116,23 @@ export class StairPlanner {
     if (this.blend <= 0 || this.profile.edges === 0) return ground;
     const line = this.profile.line(this.profile.along(position), LINE_REACH * this.config.stepLength);
     return Number.isNaN(line) ? ground : ground + (line - ground) * this.blend;
+  }
+
+  /**
+   * Slope of the line over the treads at `position` in the direction `forward` (rise / run; + uphill),
+   * weighted with `blend`; 0 if it isn't following one.
+   */
+  slope(position: Vector3, forward: Vector3): number {
+    const profile = this.profile;
+    if (this.blend <= 0 || profile.edges === 0) return 0;
+    const reach = LINE_REACH * this.config.stepLength;
+    const u = profile.along(position);
+    const h = SLOPE_SPAN * this.footLength;
+    const a = profile.line(u - h, reach);
+    const b = profile.line(u + h, reach);
+    if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+    const facing = forward.x * profile.direction.x + forward.z * profile.direction.z;
+    return (((b - a) / (2 * h)) * facing * this.blend);
   }
 
   /**
@@ -129,7 +155,7 @@ export class StairPlanner {
     out: Vector3,
     probe = true,
   ): boolean {
-    const edge = EDGE_HEIGHT * this.footLength;
+    const edge = this.edgeHeight;
     if (!this.active && !this.levelChange(stance, stanceGround, landing, ground, direction, edge, probe)) return false;
 
     const c = this.config;
@@ -157,8 +183,8 @@ export class StairPlanner {
       const t = profile.treads[i];
       const height = treadHeight(t, (t.start + t.end) / 2);
       const riser = i > 0 ? t.startHeight - profile.treads[i - 1].endHeight : 0;
-      if (riser > c.maxStepUp && t.start > uStance) {
-        // Contrahuella demasiado alta: es una pared; ni esta huella ni las de después.
+      if ((riser > c.maxStepUp || riser < -c.maxStepDown) && t.start > uStance) {
+        // Contrahuella demasiado alta (una pared) o desnivel demasiado hondo: ni esta huella ni las de después.
         profile.point(t.start, this.wall);
         this.wall.y = height;
         // El cuerpo no sigue la línea hacia lo que no puede subir.
@@ -177,18 +203,34 @@ export class StairPlanner {
         if (t.start > uStance && Math.abs(height - stanceHeight) >= edge) break;
       }
     }
-    // Profundidad de los escalones: la de la primera huella entera por delante del apoyo.
+    // Profundidad de los escalones: la de la huella entera más corta por delante del apoyo (desde un
+    // descansillo, la de la escalera que viene).
     for (let i = Math.max(stanceTread, 0); i < profile.count; i++) {
       const t = profile.treads[i];
-      if (t.startEdge && t.endEdge && t.end - t.start < 2 * c.stepLength) {
-        this.run = t.end - t.start;
-        break;
-      }
+      const depth = t.end - t.start;
+      if (t.startEdge && t.endEdge && depth < 2 * c.stepLength && (this.run === 0 || depth < this.run)) this.run = depth;
     }
     if (bestTread < 0 || Math.abs(best - uLanding) < 1e-4 * this.footLength) return false;
     profile.point(best, out);
     out.y = treadHeight(profile.treads[bestTread], best) + ankleHeight;
     return true;
+  }
+
+  /**
+   * Going down from `start` to `landing` (world ankles, of the step just planned): fraction of the
+   * horizontal path the foot must cover before it starts to drop, so that the back of the heel has passed
+   * the edge of the tread it lands on (0 if there is none).
+   */
+  dropFraction(start: Vector3, landing: Vector3): number {
+    const profile = this.profile;
+    const u0 = profile.along(start);
+    const u1 = profile.along(landing);
+    const i = profile.treadIndex(u1);
+    if (u1 - u0 < 1e-6 || i <= 0) return 0;
+    const t = profile.treads[i];
+    if (!t.startEdge || t.start <= u0) return 0;
+    const pass = t.start + this.heelBack + EDGE_MARGIN * this.footLength - u0;
+    return Math.min(Math.max(pass / (u1 - u0), 0), 1);
   }
 
   /**

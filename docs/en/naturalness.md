@@ -39,6 +39,7 @@ The captures are not versioned (third-party license). They are downloaded to `re
 | 36, 39, 47 | `36.asf`, `36_02.amc`, `36_03.amc`, `36_09.amc`, `39.asf`, `39_11.amc`, `47.asf`, `47_01.amc` | walk, turn around and come back |
 | 69 | `69.asf`, `69_06.amc`, `69_07.amc`, `69_08.amc`, `69_13.amc` | walking and turning around (repeated); turning in place |
 | 144, 13, 14, 81, 22 | `144.asf`, `144_22.amc`–`144_25.amc`, `13.asf`, `13_10.amc`, `13_12.amc`, `14.asf`, `14_07.amc`–`14_09.amc`, `81.asf`, `81_10.amc`, `22.asf`, `22_18.amc` | reaching to the sides and up; pushing something high; resting the hands (for touching in passing) |
+| 83, 111, 113, 114, 143 | `83.asf`, `83_27.amc`–`83_32.amc`, `83_34.amc`, `83_35.amc`, `111.asf`, `111_27.amc`, `113.asf`, `113_19.amc`, `113_20.amc`, `114.asf`, `114_07.amc`–`114_09.amc`, `143.asf`, `143_17.amc` | stairs: going up (83); going up and down (the rest; 111, 113 and 114 are pregnant or postpartum women) |
 
 ```bash
 npm run mocap                  # normal walking: mocap vs library, curve by curve
@@ -309,6 +310,26 @@ walls and railings on both sides, with both models. The resting hand without sli
   point fixed, the body moved away while it came back and the arm whipped backwards);
 - the arm IK receives the axis of the elbow hinge as the swing bends it (if it derived it from the point
   the elbow aims at, the forearm twist changed from one frame to the next).
+
+## Stairs
+
+The CMU stair takes are short flights (2–3 steps of about 12–19 cm; the dimensions are not documented: they
+come from the height at which the ankle stands still). Each swing is classified as going up, going down or
+level, and compared with the library on 17 × 28 cm stairs:
+
+| | Mocap, up | Mocap, down | Library, up | Library, down |
+|---|---|---|---|---|
+| Foot height at mid-swing (fraction of the rise; < 0: above the start) | 1.48 | −0.33 | 1.8 | −0.5 |
+| Foot height at 75 % of the swing | 1.33 | 0.60 | 1.6 | −0.3 |
+| Foot angle at landing (°, + toes up) | 0 | −3 | 0 | 0 |
+| Trunk lean relative to the flat (°) | +7 | +2.5 | +7 | +2.4 |
+| Highest knee bend of the stance leg (°) | 55 | 68 | ≈ 80 | ≈ 95 |
+
+What was changed from it: on a step the foot lands flat (on the flat it lands on the heel, toes up); going
+down, it first moves forward over the edge and then drops (before, it dropped from the start and cut the
+nosing); and the trunk leans forward with the slope of the stairs. Going down, the library drops later than the
+mocap: it waits until the back of the heel has passed the edge. The stance knee bends more than in the mocap:
+the height of the hips is limited by the trailing leg, which reaches the lower tread; pending.
 
 ## Pose jumps
 
