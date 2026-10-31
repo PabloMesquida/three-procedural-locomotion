@@ -319,20 +319,29 @@ escalones de unos 16 cm: 83_31–83_35 y 114). El apoyo es mientras los dedos es
 | Altura del pie a mitad del swing (fracción del desnivel; < 0: por encima del inicio) | 1,48 | −0,33 | 2,2 | −0,6 |
 | Altura del pie al 75 % del swing | 1,33 | 0,60 | 1,4 | −0,3 |
 | Inclinación del tronco respecto al llano (°) | +7 | +2,5 | +7 | +2,2 |
+| Pasos por segundo | 1,34 | 1,57 | 1,40 | 1,60 |
+| Fracción del ciclo con el pie en el suelo | 0,63 | 0,56 | 0,64 | 0,56 |
 | Flexión de la rodilla de apoyo al apoyar (°) | 47 | 36 | 53 | 15 |
-| Flexión máxima de la rodilla de apoyo (°) | 48 | 40 | 55 | 75 |
+| Flexión de la rodilla a mitad del apoyo (°) | 34 | 34 | 11 | 36 |
+| Flexión máxima de la rodilla de apoyo (°) | 48 | 40 | 55 | 78 |
 
 Lo que se cambió a partir de esto: en un escalón el pie no apoya de talón (en llano sí, con la punta arriba): al
 subir apoya plano y al bajar de antepié, con el talón levantado 20°, que luego baja; al bajar, primero avanza por
 encima del borde y luego baja (antes bajaba desde el principio y cortaba el borde); el tronco se inclina hacia
 delante según la pendiente de la escalera; y al subir, el pie de atrás levanta el talón lo que haga falta (hasta
-70°) para empujar, así las caderas no se quedan bajas: la rodilla de delante apoyaba a ≈ 66°.
+70°) para empujar, así las caderas no se quedan bajas: la rodilla de delante apoyaba a ≈ 66°. Al bajar, con la
+cadencia y el apoyo de caminar en llano (1,42 pasos/s, 0,61 del ciclo en el suelo), cada pie se quedaba mucho
+tiempo en su huella mientras el cuerpo bajaba la escalera, con la rodilla casi recta (19° a mitad del apoyo) y
+plegándose al final: ahora baja con la cadencia y el apoyo del mocap, y la rodilla de apoyo se mantiene doblada a
+33° mientras lleva el peso.
 
 Lo que sigue distinto: al bajar, la librería baja más tarde que el mocap (espera a que la parte de atrás del
-talón haya pasado el borde) y apoya con la pierna casi estirada, estirándose hacia abajo, mientras que una persona
-apoya ya con la rodilla doblada; la flexión llega después en la pierna de atrás, al final de su apoyo (75°; en la
-literatura clínica, 80–90° en ese momento; en el mocap sale menos porque los dedos ruedan pronto sobre el borde y
-el apoyo, medido con los dedos quietos, termina antes).
+talón haya pasado el borde) y apoya con la pierna casi estirada (15°), estirándose hacia abajo, mientras que en el
+mocap la rodilla ya está doblada (≈ 36°) cuando los dedos se quedan quietos; al final del apoyo la pierna de atrás
+se dobla mucho (78°; en la literatura clínica, 80–90° en ese momento; en el mocap sale menos porque los dedos
+ruedan pronto sobre el borde y el apoyo, medido con los dedos quietos, termina antes). Se probó mantener el
+cuerpo a la altura del pie de apoyo y bajarlo solo al pasar el peso al otro: la pierna apoyaba aún más estirada
+(9°).
 
 ## Saltos de pose
 

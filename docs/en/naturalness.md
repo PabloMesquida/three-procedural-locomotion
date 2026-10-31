@@ -323,20 +323,29 @@ with steps of about 16 cm: 83_31–83_35 and 114). The stance is when the toes s
 | Foot height at mid-swing (fraction of the rise; < 0: above the start) | 1.48 | −0.33 | 2.2 | −0.6 |
 | Foot height at 75 % of the swing | 1.33 | 0.60 | 1.4 | −0.3 |
 | Trunk lean relative to the flat (°) | +7 | +2.5 | +7 | +2.2 |
+| Steps per second | 1.34 | 1.57 | 1.40 | 1.60 |
+| Fraction of the cycle with the foot on the ground | 0.63 | 0.56 | 0.64 | 0.56 |
 | Knee bend of the stance leg when it lands (°) | 47 | 36 | 53 | 15 |
-| Highest knee bend of the stance leg (°) | 48 | 40 | 55 | 75 |
+| Knee bend halfway through the stance (°) | 34 | 34 | 11 | 36 |
+| Highest knee bend of the stance leg (°) | 48 | 40 | 55 | 78 |
 
 What was changed from it: on a step the foot doesn't land on the heel (on the flat it does, toes up): going
 up it lands flat and going down on the ball of the foot, with the heel raised 20°, which it then lowers; going
 down, it first moves forward over the edge and then drops (before, it dropped from the start and cut the
 nosing); the trunk leans forward with the slope of the stairs; and going up, the trailing foot raises its heel
 as much as needed (up to 70°) to push off, so the hips don't stay low: the leading knee landed at ≈ 66°.
+Going down, with the cadence and the stance of level walking (1.42 steps/s, 0.61 of the cycle on the ground),
+each foot stayed long on its tread while the body went down the stairs, with its knee almost straight (19°
+halfway through the stance) and folding at the end: now it goes down at the cadence and with the stance of
+the mocap, and the stance knee keeps 33° bent while it bears the weight.
 
 What is still different: going down, the library drops later than the mocap (it waits until the back of the
-heel has passed the edge) and lands with the leg almost straight, reaching down, while a person lands with
-the knee already bent; the bend then comes in the trailing leg at the end of its stance (75°; in the clinical
-literature, 80–90° at that moment; in the mocap it is smaller because the toes roll over the edge early and
-the stance, measured with the toes still, ends before).
+heel has passed the edge) and lands with the leg almost straight (15°), reaching down, while in the mocap the
+knee is already bent (≈ 36°) when the toes stop; at the end of the stance the trailing leg bends a lot (78°; in
+the clinical literature, 80–90° at that moment; in the mocap it is smaller because the toes roll over the edge
+early and the stance, measured with the toes still, ends before). Holding the body at the height of the stance
+foot and dropping it only when the weight passes to the other one was tried: the leg landed even straighter
+(9°).
 
 ## Pose jumps
 

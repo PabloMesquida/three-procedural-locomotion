@@ -175,7 +175,7 @@ export class GaitController {
     const maxStep = c.stepLength + (c.runStepLength - c.stepLength) * r;
     // Cada pie da un paso por ciclo (= 2 pasos): gira ω·2/f entre dos apoyos suyos.
     const turnLimit = (2 * Math.abs(angularSpeed)) / ((c.maxTurnPerStep * this.turnPerStepScale * Math.PI) / 180);
-    return Math.max(f, speed / maxStep, turnLimit);
+    return Math.max(f, speed / maxStep, turnLimit, this.minFrequency);
   }
 
   /** Swing duration (s) of a foot with duty factor `duty`. */
@@ -196,6 +196,8 @@ export class GaitController {
   frequencyScale = 1;
   /** Multiplier of `maxTurnPerStep` (e.g. when pivoting to turn around, set by MoveToController). */
   turnPerStepScale = 1;
+  /** Fewest steps per second (e.g. going down stairs, set by LocomotionController); 0 = no minimum. */
+  minFrequency = 0;
 
   /** Cycles per second (each cycle contains one step of each foot). */
   cycleFrequency(speed: number, angularSpeed = 0): number {

@@ -131,6 +131,17 @@ const PUSH_OFF_MARGIN = 0.995;
  */
 const MAX_STAIR_TURN_RADIUS = 40;
 const MIN_STAIR_TURN_RADIUS = 0.4;
+/**
+ * Going down stairs, as in the mocap of stairs (CMU, steps of ~16 cm): steps per second (on the flat, the
+ * same people walk at ~1.7), fraction of the cycle with the foot on the ground (the trailing foot takes off
+ * earlier), and knee bend of the stance leg (°), which it keeps while bearing the weight. All of it in the
+ * measure of `stairDescent`.
+ */
+const STAIR_DOWN_FREQUENCY = 1.57;
+const STAIR_DOWN_DUTY = 0.56;
+const STAIR_DOWN_KNEE = 33;
+/** Slope of the stairs (rise / run) from which it is fully going down (`stairDescent` = 1). */
+const STAIR_DOWN_SLOPE = 0.3;
 /** How fast the speed limit of the stairs is released when they end (× acceleration, per second). */
 const STAIR_RELEASE = 0.4;
 /** Heel lift at toe-off (degrees) from which `walkLandingLead` applies in full. */
@@ -297,6 +308,8 @@ export class LocomotionController {
   private stairLimit = Number.POSITIVE_INFINITY;
   /** Extra lean of the trunk on stairs (rad), following the slope (see STAIR_LEAN_UP). */
   private stairLean = 0;
+  /** How much it is going down stairs (0–1), following the slope (see STAIR_DOWN_FREQUENCY). */
+  private stairDescent = 0;
   /** Heel lift of each foot pushing off up some stairs (rad, 0 = none; see pushOffStairs). */
   private readonly pushOff: Record<Side, number> = { left: 0, right: 0 };
   /** Highest ankle of each foot for the reach limit of the hips (see pushOffStairs). */
@@ -453,6 +466,8 @@ export class LocomotionController {
     this.stairs.reset();
     this.stairLimit = Number.POSITIVE_INFINITY;
     this.stairLean = 0;
+    this.stairDescent = 0;
+    this.gait.minFrequency = 0;
     this.pivotApplied.left = 0;
     this.pivotApplied.right = 0;
     this.body.reset();
@@ -572,6 +587,7 @@ export class LocomotionController {
     const { feet, rig } = this;
     this.updateVariation(dt);
     this.stairs.update(dt);
+    this.updateStairDescent(dt);
     this.syncPlacementConfig();
     this.planner.syncStepWidth();
 
@@ -621,7 +637,9 @@ export class LocomotionController {
           // pierna de atrás se estiraba y las caderas se hundían).
           this.body.predict(this.gait.stanceDuration(this.speed, angularSpeed), this.midStanceDisplacement, this.midStanceVelocity);
           const fastest = Math.max(this.speed, this.midStanceVelocity.length());
-          this.gait.duty[event.side] = this.gait.dutyFor(this.gait.runFactor(fastest));
+          const duty = this.gait.dutyFor(this.gait.runFactor(fastest));
+          // Bajando una escalera, el pie de atrás despega antes (menos tiempo apoyado).
+          this.gait.duty[event.side] = duty + (Math.min(STAIR_DOWN_DUTY, duty) - duty) * this.stairDescent;
         } else {
           this.beginSwing(foot, dt);
         }
@@ -835,6 +853,17 @@ export class LocomotionController {
       limit = Math.min(limit, Math.sqrt(this.config.deceleration * room));
     }
     return limit;
+  }
+
+  /**
+   * How much it is going down stairs (`stairDescent`, 0–1): from the slope of the line over the treads in
+   * the direction of travel, followed smoothly. It sets the cadence, the stance and the knees of the descent.
+   */
+  private updateStairDescent(dt: number): void {
+    const s = this.body.state;
+    const target = Math.min(Math.max(-this.stairs.slope(s.position, s.forward) / STAIR_DOWN_SLOPE, 0), 1);
+    this.stairDescent += (target - this.stairDescent) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
+    this.gait.minFrequency = STAIR_DOWN_FREQUENCY * this.stairDescent;
   }
 
   private syncPlacementConfig(): void {
@@ -1490,6 +1519,8 @@ export class LocomotionController {
       const speed = Math.min(this.speed / cfg.walkSpeed, MAX_KNEE_SPEED_FACTOR);
       bend += (cfg.stanceKneeBend - cfg.standKneeBend + cfg.loadingKneeBend * loading) * speed;
       bend += PRE_SWING_BEND * smoothstep((u - PRE_SWING_START) / (1 - PRE_SWING_START));
+      // Bajando una escalera, la rodilla de apoyo va doblada todo el apoyo.
+      bend += (Math.max(bend, STAIR_DOWN_KNEE) - bend) * this.stairDescent;
     }
     return (bend * Math.PI) / 180;
   }
