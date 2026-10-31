@@ -161,6 +161,53 @@ describe('tocar superficies al pasar (touchables)', () => {
     assert.ok(run.drift < 0.001 && run.jerk < 2, `mano ${(run.drift * 1000).toFixed(1)} mm, tirón ${run.jerk.toFixed(1)} °/frame²`);
   });
 
+  it('pared con una pilastra: desliza la mano hasta poco antes, la suelta sin pasar por encima y la vuelve a apoyar después', () => {
+    const world = createWorld({ human: { config: { variation: 0 } } });
+    const { human } = world;
+    const start = human.position.clone();
+    const forward = human.locomotion.body.state.forward.clone();
+    const wall = addSurface(world, 'pared', 'right', 0.65, 5); // de 1 a 9 m, la cara a 0,55 m
+    // Pilastra que sobresale 4 cm de la pared, de 4,85 a 5,15 m.
+    const pilaster = new Mesh(new BoxGeometry(0.28, 2.5, 0.3), new MeshBasicMaterial());
+    pilaster.position.copy(wall.position);
+    pilaster.quaternion.copy(wall.quaternion);
+    world.scene.add(pilaster);
+    pilaster.updateMatrixWorld(true);
+    human.touchables = [wall, pilaster];
+    const out = new Vector3().crossVectors(forward, UP);
+    const hand = (human.locomotion.touch as unknown as { hands: Record<Side, { point: Vector3 }> }).hands.right;
+    // Cada apoyo: hasta dónde llega la mano (m hacia delante) y cuánto cambia su distancia al camino (m).
+    const contacts: { reach: number; minLateral: number; maxLateral: number }[] = [];
+    let wasContact = false;
+    simulate(world, 9, [[0, (h) => { h.targetSpeed = 1.2; }]], {
+      onFrame: () => {
+        const contact = human.touchPhase('right') === 'contact';
+        if (contact) {
+          const offset = hand.point.clone().sub(start);
+          const lateral = offset.dot(out);
+          if (!wasContact) contacts.push({ reach: -Infinity, minLateral: lateral, maxLateral: lateral });
+          const c = contacts.at(-1)!;
+          c.reach = Math.max(c.reach, offset.dot(forward));
+          c.minLateral = Math.min(c.minLateral, lateral);
+          c.maxLateral = Math.max(c.maxLateral, lateral);
+        }
+        wasContact = contact;
+      },
+    });
+    assert.ok(contacts.length > 0, 'no la toca');
+    // El primer apoyo, en la pared: la suelta antes de que la mano llegue a la pilastra.
+    assert.ok(contacts[0].reach < 4.8, `la mano llega a ${contacts[0].reach.toFixed(2)} m (la pilastra empieza a 4,85 m)`);
+    // Ningún apoyo pasa de la pared a la pilastra o al revés (la mano iría por encima del saliente).
+    for (const c of contacts) {
+      assert.ok(c.maxLateral - c.minLateral < 0.01, `apoyada, la mano cambia ${((c.maxLateral - c.minLateral) * 100).toFixed(1)} cm de profundidad`);
+    }
+    // Pasada la pilastra, la vuelve a apoyar en la pared (la cara, a 0,55 m; la de la pilastra, a 0,51 m).
+    assert.ok(
+      contacts.some((c) => c.reach > 5.5 && c.minLateral > 0.53),
+      `apoyos: ${contacts.map((c) => `${c.reach.toFixed(2)} m a ${c.minLateral.toFixed(2)} m`).join(', ')}`,
+    );
+  });
+
   it('baranda: apoya la palma encima (hacia abajo) y la desliza por ella', () => {
     const world = createWorld({ human: { config: { variation: 0 } } });
     const railing = addSurface(world, 'baranda', 'left', 0.45, 5);
@@ -172,6 +219,69 @@ describe('tocar superficies al pasar (touchables)', () => {
     assert.ok(run.palmGap < 0.003, `la palma se separa ${(run.palmGap * 1000).toFixed(1)} mm`);
     assert.ok(run.jerk < 2.5, `tirón de ${run.jerk.toFixed(1)} °/frame²`);
   });
+
+  // Al pie o, con el gesto activado a los 2,5 s, a mitad de la subida (la mano estaba ocupada): ahí el hombro
+  // sube mientras la mano va a la baranda, y la baranda en pendiente no es la vertical de la palma.
+  for (const [from, label, minimum] of [[0, 'al empezar a subir', 1.5], [2.5, 'a mitad de la subida', 1]] as const) {
+    it(`escalera con baranda (postes y pilar al arranque): la apoya ${label} y la desliza hasta arriba`, () => {
+      // Escalera de 17 × 28 cm hacia −Z (donde mira el personaje) y rellano; a la derecha, la baranda a 1 m sobre
+      // los bordes de los escalones, con pasamanos intermedio, tres postes y un pilar al pie.
+      const rise = 0.17, stairRun = 0.28, count = 8, start = 1.5;
+      const world = createWorld({
+        human: { config: { variation: 0 } },
+        buildTerrain: (terrain) => {
+          const block = (height: number, z0: number, z1: number): void => {
+            const mesh = new Mesh(new BoxGeometry(1.2, height, z0 - z1), new MeshBasicMaterial());
+            mesh.position.set(0, height / 2, (z0 + z1) / 2);
+            terrain.add(mesh);
+          };
+          for (let i = 0; i < count - 1; i++) block(rise * (i + 1), -start - stairRun * i, -start - stairRun * (i + 1));
+          block(rise * count, -start - stairRun * (count - 1), -start - stairRun * (count - 1) - 8);
+          terrain.updateMatrixWorld(true);
+        },
+      });
+      const { human } = world;
+      const x = 0.45;
+      const z0 = -start, z1 = -start - stairRun * (count - 1);
+      const y0 = rise, y1 = rise * count;
+      const length = Math.hypot(z1 - z0, y1 - y0);
+      const parts: Mesh[] = [];
+      const add = (geometry: BoxGeometry, px: number, py: number, pz: number, tilt = 0): Mesh => {
+        const mesh = new Mesh(geometry, new MeshBasicMaterial());
+        mesh.position.set(px, py, pz);
+        mesh.rotation.x = tilt;
+        world.scene.add(mesh);
+        mesh.updateMatrixWorld(true);
+        parts.push(mesh);
+        return mesh;
+      };
+      const tilt = Math.atan2(y1 - y0, z0 - z1); // sube hacia −Z
+      const rail = add(new BoxGeometry(0.05, 0.05, length), x, (y0 + y1) / 2 + 1, (z0 + z1) / 2, tilt);
+      add(new BoxGeometry(0.05, 0.025, length), x, (y0 + y1) / 2 + 0.5, (z0 + z1) / 2, tilt);
+      for (const t of [0, 0.5, 1]) add(new BoxGeometry(0.04, 1 + rise, 0.04), x, y0 + (y1 - y0) * t - rise + (1 + rise) / 2, z0 + (z1 - z0) * t);
+      add(new BoxGeometry(0.18, 1.1, 0.18), x + 0.05, 0.55, z0 + 0.15);
+      human.touchables = parts;
+      const hand = (human.locomotion.touch as unknown as { hands: Record<Side, { object: unknown }> }).hands.right;
+      let onRail = 0;
+      let contactStart: Vector3 | null = null;
+      const touched: unknown[] = [];
+      human.on('touch', () => touched.push(hand.object));
+      human.autoTouch = from === 0;
+      simulate(world, 8, [[0, (h) => { h.targetSpeed = 1; }], [from, (h) => { h.autoTouch = true; }]], {
+        onFrame: () => {
+          const resting = human.touchPhase('right') === 'contact' && hand.object === rail;
+          if (resting) {
+            contactStart ??= human.position.clone();
+            onRail = Math.max(onRail, horizontalDistance(human.position, contactStart));
+          } else contactStart = null;
+        },
+      });
+      // Solo la baranda (ni la cabeza del pilar, ni el costado del pasamanos, ni un poste), y hasta arriba (el tramo
+      // mide 1,96 m en horizontal).
+      assert.ok(touched.length > 0 && touched.every((o) => o === rail), `toca ${touched.map((o) => (o === rail ? 'baranda' : 'otra cosa')).join(', ')}`);
+      assert.ok(onRail > minimum, `apoyada en la baranda ${onRail.toFixed(2)} m`);
+    });
+  }
 
   it('no toca lo que no alcanza, corriendo, ni con autoTouch apagado', () => {
     const far = createWorld({ human: { config: { variation: 0 } } });

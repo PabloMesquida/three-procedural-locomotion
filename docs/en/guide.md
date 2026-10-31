@@ -205,8 +205,10 @@ human.touchSlide = false;         // touch and let go, without sliding the hand 
 ```
 
 With `touchables` it searches by itself, with short rays from where the shoulder will be when the gesture
-ends: walls and columns to the side or a little ahead (horizontal rays at chest height) and railings at hip
-height (downward rays), but not faces it is walking straight into. It touches each object once while it stays
+ends (also going up or down stairs or a ramp): walls and columns to the side or a little ahead (horizontal rays
+at chest height), with room for the palm (not a thin post or the side of a handrail), and railings at hip height
+(downward rays) that go on ahead (not the top of a newel post), but not faces it is walking straight into. It
+touches each object once while it stays
 close (it doesn't touch a long wall at every step), with each hand on its own side (it can keep one on the wall
 and touch columns with the other), walking or standing; not while running or in the air. It doesn't try what is
 out of the hand's reach: it doesn't overstretch the arm.
@@ -217,8 +219,10 @@ hand goes from its swing to the surface in ~0.75 s with a bell-shaped speed prof
 spread (in the direction the wrist turns least: up on a wall to the side, outwards on a railing). Walking along a
 wall or a railing, it slides the hand along it while it stays alongside: it starts still, picks up the body's
 speed and moves next to the shoulder, against the surface (on a wall, gradually lowering to waist height); when
-the surface ends (the end of the wall, a corner) it lets go. A column is too curved to slide on: it touches it
-and lets go once it is behind, as with `touchSlide = false`. Standing still, it lets go after a moment. The hand
+the surface ends (the end of the wall, a corner) or stops being smooth (a step, or something sticking out ahead,
+like a pilaster, before the fingers get there) it lets go, and once past it rests the hand again. A column is
+too curved to slide on: it touches it and lets go once it is behind, as with `touchSlide = false`. Standing
+still, it lets go after a moment. The hand
 hangs down again in ~0.7 s, starting from where it was and with the speed it had. The other arm keeps swinging.
 
 By hand:

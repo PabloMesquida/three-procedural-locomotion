@@ -261,7 +261,14 @@ What the mocap doesn't decide, chosen by hand:
   arrived with the arm straight and let go right away.
 - **When**: it starts when the shoulder, at the current speed, will be beside the point when the gesture
   ends, with the point 20 % of the arm ahead; it lets go when the point is 15 % behind (or, standing still,
-  after `touchHoldTime`).
+  after `touchHoldTime`). Going up or down stairs or a ramp, it also counts how fast the ground under the body
+  rises (the height of the root, smoothed over 0.2 s): without it, going up stairs the shoulder ended up ~20 cm
+  higher than predicted and the hand didn't reach the railing.
+- **What**: a wall or column has to leave room for the palm (go on 8 % of the arm, ~4.5 cm, above, below and to
+  the sides of the point): not a thin post or the side of a handrail, which going up stairs rises ahead into the
+  horizontal rays. A railing has to go on half an arm ahead: not the top of a newel post. When the hand rests on
+  a sloping railing, it follows its real normal, not the vertical it rests the palm with (with that one, the
+  first stretch looked very curved and it stopped sliding).
 - **The palm** faces the surface and the fingers point wherever the wrist rotates least relative to how the
   swing holds it (it tries 12 directions with the arm already solved): up on a wall to the side, outwards
   on a railing. With the fingers always pointing up, a wall to the right required rotating the palm ~180°
@@ -287,6 +294,14 @@ alongside. There is no mocap of this either; it is chosen so that it looks like 
   the surface is very curved (the normal turns more than 1 rad per arm length traveled, radius < ~0.5 m: a
   column). On a column, going around it, the hand couldn't follow the body and the arm stretched sideways
   until it let go abruptly (up to 10 °/frame²); now it touches it and lets go when passing;
+- it only slides along a more or less smooth surface: it lets go at a step of more than 3 % of the arm
+  (~1.7 cm), outwards or inwards, and before reaching something that sticks out (a pilaster, a frame): a ray
+  that skims the surface, at that height, looks a quarter of an arm (~14 cm) ahead of the hand. Before, the
+  hand climbed onto the protrusion and carried on over it, as if the fingers didn't hit it. Once past the
+  protrusion, it rests the hand on the same wall again (on a wall with pilasters, between them); and while
+  walking it doesn't start touching where it would have to let go right away: it follows the surface (every
+  0.15 arm lengths, as when sliding) and only touches if it can slide at least an arm length (~55 cm) without a
+  step or anything sticking out (or until it ends or is a column, where it touches and lets go);
 - the way back starts from where the wrist really is and with the velocity it has (after IK), not from the
   requested point: if the point was already out of reach, starting from it stopped the arm abruptly.
 

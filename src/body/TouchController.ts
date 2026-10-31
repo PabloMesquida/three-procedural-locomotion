@@ -42,6 +42,11 @@ export interface TouchMotion {
   forward: Vector3;
   /** Velocity of the body (world, m/s). */
   velocity: Vector3;
+  /**
+   * How fast the ground under the body rises (m/s, − going down): on stairs and slopes, where the shoulder
+   * will be when the hand gets there.
+   */
+  climb: number;
   /** Can it touch now? Walking or standing, with the feet on the ground (not running or jumping). */
   allowed: boolean;
   /** Standing still: lets go as soon as the minimum time has passed. */
@@ -140,6 +145,17 @@ export const TOUCH_FINGER_CURL = 0.2;
 const SEARCH_DROP = 0.3;
 /** Search directions: from outwards (0°) to almost forward. */
 const SEARCH_ANGLES = [0, 25, 50, 75].map((a) => a * DEG);
+/**
+ * A wall or column has to go on at least this far above, below and to each side of the point (× arm: ~4.5 cm)
+ * to rest the palm on it: not the side of a railing (it is touched from above), which going up stairs rises
+ * ahead into the rays, nor a thin post.
+ */
+const WALL_MIN_HALF_SIZE = 0.08;
+/**
+ * Walking (and sliding), the top of a railing has to go on at least this far ahead (× arm: ~27 cm): not the
+ * top of a newel post.
+ */
+const RAIL_MIN_LENGTH = 0.5;
 /** Railings: outward offset and forward lead of the downward rays (× arm). */
 const RAIL_OUT = [0.3, 0.45, 0.6];
 const RAIL_AHEAD = [0, 0.25];
@@ -195,6 +211,28 @@ const SLIDE_PROBE = 0.2;
 const SLIDE_MAX_BEND = 1;
 /** Sliding: the surface ends if the normal suddenly turns more than this (cosine: a corner). */
 const SLIDE_MIN_NORMAL = 0.5;
+/**
+ * Sliding: the surface stops being smooth at a step of more than this, outwards or inwards (× arm: ~1.7 cm),
+ * such as a pilaster or a recess. The hand lets go instead of going over it.
+ */
+const SLIDE_MAX_STEP = 0.03;
+/**
+ * Sliding: how far ahead of the hand it looks for something sticking out of the surface (× arm: ~14 cm),
+ * just above it (SLIDE_MAX_STEP): it lets go before the fingers get there.
+ */
+const SLIDE_LOOKAHEAD = 0.25;
+/**
+ * … and it counts if it faces the hand more than this (cosine: 45°). Not 30°: on a railing up some stairs, the
+ * hand starts with the normal vertical and the railing itself rises ahead at ~31°.
+ */
+const SLIDE_FACING = 0.7;
+/**
+ * Walking (and sliding), it only touches a surface where the hand could slide at least this far (× arm:
+ * ~55 cm) before a step or something sticking out, following it every SLIDE_SAMPLE (× arm). The end of a wall
+ * or a column is fine: there it touches and lets go.
+ */
+const TOUCH_CLEAR_AHEAD = 1;
+const SLIDE_SAMPLE = 0.15;
 /** Smoothing of the real velocity of the wrist (s). */
 const ACTUAL_VELOCITY_TIME = 0.03;
 /** Sliding: smoothing of the normal and of the hand's velocity (s). */
@@ -251,7 +289,8 @@ export class TouchController {
   /**
    * Objects touched on its own that are still close, with the time they have been out of sight (s): they
    * are not repeated until lost from sight (a long wall, once, even if it touches something else in
-   * between). Without an object, the last point touched.
+   * between), unless it let go because the surface stopped being smooth (`rough`). Without an object, the
+   * last point touched.
    */
   private readonly recent = new Map<unknown, number>();
   private readonly seenNow = new Set<unknown>();
@@ -259,6 +298,13 @@ export class TouchController {
   private hasLastPoint = false;
 
   private readonly hit: SurfaceHit = createSurfaceHit();
+  /** For smoothAhead (it runs in the middle of the search, which uses `hit`, `origin` and `dir`). */
+  private readonly probeHit: SurfaceHit = createSurfaceHit();
+  private readonly probeOrigin = new Vector3();
+  private readonly probeDir = new Vector3();
+  private readonly probePoint = new Vector3();
+  private readonly probeNormal = new Vector3();
+  private readonly probeAlong = new Vector3();
   private readonly shoulder = new Vector3();
   private readonly predicted = new Vector3();
   private readonly later = new Vector3();
@@ -390,7 +436,7 @@ export class TouchController {
   update(motion: TouchMotion, detector: SurfaceDetector | null): void {
     this.touched.length = 0;
     this.forward.copy(motion.forward);
-    this.velocity.copy(motion.velocity).setY(0);
+    this.velocity.copy(motion.velocity).setY(motion.climb);
     const c = this.config;
     const dt = motion.dt;
     this.dt = dt;
@@ -414,7 +460,12 @@ export class TouchController {
           hand.time = 0;
           hand.weight = 1;
           hand.slideNormal.copy(hand.normal);
-          hand.slideRawNormal.copy(hand.normal);
+          // La normal de verdad de la superficie, para seguirla al deslizar: en una baranda en pendiente no es
+          // la vertical con la que se apoya la palma (con esa, el primer tramo parecía muy curvo, como una
+          // columna, y dejaba de deslizar).
+          this.origin.copy(hand.point).addScaledVector(hand.normal, SLIDE_PROBE * hand.armLength);
+          const found = detector !== null && detector.cast(this.origin, this.b.copy(hand.normal).negate(), 2 * SLIDE_PROBE * hand.armLength, this.hit);
+          hand.slideRawNormal.copy(found ? this.hit.normal : hand.normal);
           this.touched.push({ side: hand.side, point: hand.point });
         }
       } else if (hand.phase === 'contact') {
@@ -582,7 +633,7 @@ export class TouchController {
       const arm = hand.armLength;
       this.predictShoulder(hand, motion, this.predicted);
       this.outward(hand, motion.forward, this.out);
-      const consider = (normal: Vector3): void => {
+      const consider = (normal: Vector3, minLength = 0): void => {
         if (known() || hand.phase !== 'none') return;
         // Caminando, lo que queda al lado: no la cara que tiene de frente (el extremo de una pared).
         if (!motion.still && normal.dot(motion.forward) < -FACING) return;
@@ -591,11 +642,13 @@ export class TouchController {
         const reach = this.a.distanceTo(this.predicted) / arm;
         if (reach > this.config.touchMaxReach || reach < MIN_REACH) return;
         // Y que pueda quedarse apoyada el tiempo mínimo antes de tener que soltar por estirar el brazo.
-        this.later.set(motion.velocity.x, 0, motion.velocity.z).multiplyScalar(this.config.touchHoldTime).add(this.predicted);
+        this.later.set(motion.velocity.x, motion.climb, motion.velocity.z).multiplyScalar(this.config.touchHoldTime).add(this.predicted);
         if (this.a.distanceTo(this.later) / arm > MAX_STRETCH) return;
         const lead = this.b.subVectors(this.hit.point, this.predicted).dot(motion.forward) / arm;
         const score = Math.abs(reach - PREFERRED_REACH) + 0.5 * Math.abs(lead - PREFERRED_LEAD);
-        if (score < best.score) {
+        // Caminando, no donde la mano tendría que soltar enseguida (justo antes de una pilastra). Con la normal
+        // de verdad: la de una baranda en pendiente no es la vertical.
+        if (score < best.score && (motion.still || !this.slide || this.smoothAhead(this.hit.point, this.hit.normal, motion.forward, arm, detector, minLength))) {
           best.score = score;
           best.point.copy(this.hit.point);
           best.normal.copy(normal);
@@ -608,7 +661,8 @@ export class TouchController {
       for (const angle of SEARCH_ANGLES) {
         this.dir.copy(this.out).multiplyScalar(Math.cos(angle)).addScaledVector(motion.forward, Math.sin(angle));
         if (!detector.cast(this.origin, this.dir, this.config.touchMaxReach * arm, this.hit)) continue;
-        if (Math.abs(this.hit.normal.y) < 0.7 && this.hit.normal.dot(this.dir) < -0.3) consider(this.hit.normal);
+        const wall = Math.abs(this.hit.normal.y) < 0.7 && this.hit.normal.dot(this.dir) < -0.3;
+        if (wall && this.wideEnough(this.origin, this.dir, this.config.touchMaxReach * arm, arm, detector)) consider(this.hit.normal);
         else known();
       }
       // Barandas: rayos hacia abajo al lado, desde la altura del hombro; su parte de arriba, plana.
@@ -616,7 +670,7 @@ export class TouchController {
         for (const ahead of RAIL_AHEAD) {
           this.origin.copy(this.predicted).addScaledVector(this.out, outside * arm).addScaledVector(motion.forward, ahead * arm);
           if (!detector.cast(this.origin, this.b.set(0, -1, 0), arm, this.hit)) continue;
-          if (this.hit.normal.y > 0.8 && this.hit.distance > 0.2 * arm) consider(this.c.set(0, 1, 0));
+          if (this.hit.normal.y > 0.8 && this.hit.distance > 0.2 * arm) consider(this.c.set(0, 1, 0), RAIL_MIN_LENGTH);
           else known();
         }
       }
@@ -721,7 +775,8 @@ export class TouchController {
    * point towards the side of the shoulder (somewhat ahead), only along the surface (the bobbing of the
    * body doesn't move it sideways or up and down), and a short ray sticks it back onto it. It starts still
    * (it has just touched) and accelerates until it moves with the body, beside the shoulder. Returns false
-   * if the surface ended: the ray doesn't find it or hits a corner.
+   * if the surface ended or stops being smooth: the ray doesn't find it, hits a corner or a step, or
+   * something sticks out of it just ahead of the hand.
    */
   private slideAlong(hand: Hand, motion: TouchMotion, detector: SurfaceDetector, dt: number): boolean {
     const arm = hand.armLength;
@@ -730,6 +785,11 @@ export class TouchController {
     const along = this.slideTangent.copy(motion.forward).addScaledVector(n, -motion.forward.dot(n));
     if (along.lengthSq() < 1e-4) return true; // camina hacia la superficie: no hay hacia dónde deslizar
     along.normalize();
+    // Algo que sobresale justo por delante (una pilastra, un marco): suelta antes de que lleguen los dedos. El
+    // rayo va rozando la superficie, por encima de lo que se considera liso; solo cuenta lo que se le pone de
+    // frente (no la propia superficie, si se curva hacia él).
+    this.origin.copy(hand.point).addScaledVector(n, SLIDE_MAX_STEP * arm);
+    if (detector.cast(this.origin, along, SLIDE_LOOKAHEAD * arm, this.hit) && this.hit.normal.dot(along) < -SLIDE_FACING) return this.rough(hand);
     // Muelle crítico hacia el punto de reposo, que se mueve con el cuerpo: con su velocidad en el
     // amortiguador, la mano no se queda atrás (con un muelle simple, ~25 cm, y en una baranda baja eso
     // estiraba el brazo).
@@ -752,6 +812,8 @@ export class TouchController {
     // Una esquina: la normal gira de golpe respecto a la del rayo anterior (sin suavizar: en una columna de
     // caras planas, deprisa, la suavizada se quedaba atrás y parecía una esquina).
     if (this.hit.normal.dot(hand.slideRawNormal) < SLIDE_MIN_NORMAL) return false;
+    // Un escalón (la superficie salta hacia fuera o hacia dentro, respecto al plano de antes): ya no es lisa.
+    if (Math.abs(this.a.subVectors(this.hit.point, hand.point).dot(hand.slideRawNormal)) > SLIDE_MAX_STEP * arm) return this.rough(hand);
     // Muy curva (una columna): no se desliza, se toca y se suelta al pasar. Rodeándola, la mano no podía seguir
     // al cuerpo y el brazo se estiraba de lado hasta soltar de golpe.
     const moved = this.hit.point.distanceTo(hand.point);
@@ -776,6 +838,60 @@ export class TouchController {
     hand.point.copy(this.hit.point);
     const finger = this.finger.copy(hand.fingerLocal).applyQuaternion(hand.rotation);
     hand.wrist.copy(hand.point).addScaledVector(n, hand.palmThickness).addScaledVector(finger, -hand.palmLength);
+    return true;
+  }
+
+  /**
+   * The surface stops being smooth (a step, something sticking out ahead): stops sliding and forgets the
+   * object, so that it can touch it again once past (a wall with pilasters, between them). Returns false.
+   */
+  private rough(hand: Hand): boolean {
+    if (hand.object !== undefined) this.recent.delete(hand.object);
+    return false;
+  }
+
+  /**
+   * Whether the wall hit by a search ray (from `origin` along `dir`) goes on WALL_MIN_HALF_SIZE above, below and
+   * to each side: the same ray, moved that far, also finds a wall.
+   */
+  private wideEnough(origin: Vector3, dir: Vector3, maxDistance: number, arm: number, detector: SurfaceDetector): boolean {
+    const side = this.probeAlong.crossVectors(dir, UP).normalize();
+    for (const offset of [UP, side]) {
+      for (const sign of [-1, 1]) {
+        this.probeOrigin.copy(origin).addScaledVector(offset, sign * WALL_MIN_HALF_SIZE * arm);
+        if (!detector.cast(this.probeOrigin, dir, maxDistance, this.probeHit) || Math.abs(this.probeHit.normal.y) >= 0.7) return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Whether the hand could slide from `point` (on a surface with `normal`), in the direction of travel, at
+   * least TOUCH_CLEAR_AHEAD without a step or something sticking out: following the surface every
+   * SLIDE_SAMPLE, as slideAlong does. Where it ends or turns a corner is fine past `minLength` (× arm), and
+   * where it curves too much (a column), always: the hand would let go there anyway.
+   */
+  private smoothAhead(point: Vector3, normal: Vector3, forward: Vector3, arm: number, detector: SurfaceDetector, minLength = 0): boolean {
+    const along = this.probeAlong.copy(forward).addScaledVector(normal, -forward.dot(normal));
+    if (along.lengthSq() < 1e-4) return true;
+    along.normalize();
+    const hit = this.probeHit;
+    this.probeOrigin.copy(point).addScaledVector(normal, SLIDE_MAX_STEP * arm);
+    if (detector.cast(this.probeOrigin, along, TOUCH_CLEAR_AHEAD * arm, hit) && hit.normal.dot(along) < -SLIDE_FACING) return false;
+    const p = this.probePoint.copy(point);
+    const n = this.probeNormal.copy(normal);
+    const step = SLIDE_SAMPLE * arm;
+    for (let d = step; d <= TOUCH_CLEAR_AHEAD * arm + 1e-9; d += step) {
+      this.probeOrigin.copy(p).addScaledVector(along, step).addScaledVector(n, SLIDE_PROBE * arm);
+      const ends = !detector.cast(this.probeOrigin, this.probeDir.copy(n).negate(), 2 * SLIDE_PROBE * arm, hit);
+      if (ends || hit.normal.dot(n) < SLIDE_MIN_NORMAL) return d - step >= minLength * arm - 1e-9;
+      // (Antes que el escalón: en una columna, un trozo más allá la superficie ya queda unos centímetros
+      // más adentro.)
+      if (hit.normal.angleTo(n) > SLIDE_SAMPLE * SLIDE_MAX_BEND) return true;
+      if (Math.abs(this.probeDir.subVectors(hit.point, p).dot(n)) > SLIDE_MAX_STEP * arm) return false;
+      p.copy(hit.point);
+      n.copy(hit.normal);
+    }
     return true;
   }
 
@@ -851,7 +967,7 @@ export class TouchController {
   /** Where the shoulder will be when the gesture ends, if the body keeps the same velocity. */
   private predictShoulder(hand: Hand, motion: TouchMotion, out: Vector3): Vector3 {
     worldPosition(hand.bones.upperArm, out);
-    return out.addScaledVector(this.a.copy(motion.velocity).setY(0), this.config.touchReachTime);
+    return out.addScaledVector(this.a.copy(motion.velocity).setY(motion.climb), this.config.touchReachTime);
   }
 
   /** Hand on the side of the point. */

@@ -259,7 +259,14 @@ Lo que el mocap no decide, y está elegido a mano:
   sin la fase del paso: con más margen, la mano llegaba con el brazo recto y soltaba enseguida.
 - **Cuándo**: empieza cuando el hombro, a la velocidad de ahora, quedará a su lado al terminar el gesto, con el
   punto un 20 % del brazo por delante; suelta cuando el punto queda un 15 % por detrás (o, parado, tras
-  `touchHoldTime`).
+  `touchHoldTime`). Subiendo o bajando una escalera o una rampa, cuenta también lo que sube el suelo bajo el
+  cuerpo (la altura de la raíz, suavizada 0,2 s): sin eso, subiendo una escalera el hombro quedaba ~20 cm más
+  arriba de lo previsto y la mano no llegaba a la baranda.
+- **Qué**: una pared o columna tiene que dar sitio a la palma (seguir un 8 % del brazo, ~4,5 cm, por encima, por
+  debajo y a los lados del punto): no un poste fino ni el costado de un pasamanos, que subiendo una escalera
+  queda por delante a la altura de los rayos horizontales. Una baranda tiene que seguir medio brazo por delante:
+  no la cabeza de un pilar. Al apoyar la mano en una baranda en pendiente, sigue su normal de verdad, no la
+  vertical con la que apoya la palma (con esa, el primer tramo parecía muy curvo y dejaba de deslizar).
 - **La palma** mira la superficie y los dedos van hacia donde menos gira la muñeca respecto a como la lleva el
   balanceo (prueba 12 direcciones con el brazo ya resuelto): arriba en una pared al lado, hacia fuera en una
   baranda. Con los dedos siempre hacia arriba, una pared a la derecha pedía girar la palma ~180° respecto al
@@ -284,6 +291,14 @@ lado. Tampoco hay mocap de esto; está elegido para que se vea como una mano que
   superficie es muy curva (la normal gira más de 1 rad por brazo recorrido, radio < ~0,5 m: una columna). En
   una columna, rodeándola, la mano no podía seguir al cuerpo y el brazo se estiraba de lado hasta soltar de golpe
   (hasta 10 °/frame²); ahora la toca y la suelta al pasar;
+- solo desliza por una superficie más o menos lisa: suelta si da un escalón de más de un 3 % del brazo (~1,7 cm)
+  hacia fuera o hacia dentro, y antes de llegar a algo que sobresalga (una pilastra, un marco): un rayo que va
+  rozando la superficie, a esa altura, mira un cuarto de brazo (~14 cm) por delante de la mano. Antes, la mano
+  se subía al saliente y seguía por encima, como si los dedos no chocaran con él. Pasado el saliente, vuelve a
+  apoyarla en la misma pared (en una pared con pilastras, entre ellas); y caminando no empieza a tocar donde
+  tendría que soltar enseguida: sigue la superficie (cada 0,15 brazos, como al deslizar) y solo toca si puede
+  deslizar al menos un brazo (~55 cm) sin un escalón ni nada que sobresalga (o hasta que se acaba o es una
+  columna, donde la toca y la suelta);
 - la vuelta parte de donde está la muñeca de verdad y con la velocidad que lleva (tras el IK), no del punto
   pedido: si el punto ya quedaba fuera de alcance, partir de él frenaba el brazo de golpe.
 

@@ -171,6 +171,8 @@ const RUN_ARM_SWING_BACK = 0.7;
 const MAX_ARM_SWING_GAIN = 1.4;
 /** Running blend from which it doesn't touch (and lets go): the hand doesn't rest on things while running. */
 const TOUCH_MAX_RUN_BLEND = 0.3;
+/** Smoothing of how fast the ground under the body rises or falls (s; for touching, see `climb`). */
+const CLIMB_TIME = 0.2;
 /**
  * Pivot of the planted foot: if the body turns more than PIVOT_TWIST relative to it (e.g. the foot that
  * was already on the ground when a turn starts), the foot rotates on the toes by however much exceeds that
@@ -310,6 +312,9 @@ export class LocomotionController {
   private stairLean = 0;
   /** How much it is going down stairs (0–1), following the slope (see STAIR_DOWN_FREQUENCY). */
   private stairDescent = 0;
+  /** How fast the ground under the body rises (m/s, smoothed; − going down) and the root height last frame. */
+  private climb = 0;
+  private lastRootHeight = Number.NaN;
   /** Heel lift of each foot pushing off up some stairs (rad, 0 = none; see pushOffStairs). */
   private readonly pushOff: Record<Side, number> = { left: 0, right: 0 };
   /** Highest ankle of each foot for the reach limit of the hips (see pushOffStairs). */
@@ -436,6 +441,7 @@ export class LocomotionController {
     this.torso.shift(offset);
     this.touch.shift(offset);
     this.stairs.shift(offset);
+    this.lastRootHeight += offset.y;
     for (const side of SIDES) {
       const foot = this.feet[side];
       foot.position.add(offset);
@@ -467,6 +473,8 @@ export class LocomotionController {
     this.stairLimit = Number.POSITIVE_INFINITY;
     this.stairLean = 0;
     this.stairDescent = 0;
+    this.climb = 0;
+    this.lastRootHeight = Number.NaN;
     this.gait.minFrequency = 0;
     this.pivotApplied.left = 0;
     this.pivotApplied.right = 0;
@@ -796,7 +804,15 @@ export class LocomotionController {
     // a la velocidad): el paso ya aporta √v (la separación de los pies respecto a la de walkSpeed),
     // y esto, otra √v.
     const walkSwing = c.armSwing * Math.min(Math.sqrt(bodyState.speed / c.walkSpeed), MAX_ARM_SWING_GAIN);
-    // Tocar: caminando o parado, con los pies en el suelo.
+    // Tocar: caminando o parado, con los pies en el suelo. Subiendo o bajando (escaleras, rampas), lo que
+    // sube el suelo bajo el cuerpo: dónde estará el hombro cuando llegue la mano (sin esto, subiendo una
+    // escalera quedaba ~20 cm más arriba de lo previsto y la mano no llegaba a la baranda).
+    const rootHeight = bodyState.position.y;
+    if (bodyState.airborne) this.climb = 0;
+    else if (dt > 0 && Number.isFinite(this.lastRootHeight)) {
+      this.climb += ((rootHeight - this.lastRootHeight) / dt - this.climb) * (1 - Math.exp(-dt / CLIMB_TIME));
+    }
+    this.lastRootHeight = rootHeight;
     this.touch.update(this.touchMotion(dt), this.surfaces);
     this.arms.update({
       forward: bodyState.forward,
@@ -879,6 +895,7 @@ export class LocomotionController {
       dt,
       forward: state.forward,
       velocity: state.velocity,
+      climb: this.climb,
       allowed: !state.airborne && this.jumping.phase === 'GROUNDED' && this.gait.blend < TOUCH_MAX_RUN_BLEND,
       still: this.gait.mode === 'idle',
     };

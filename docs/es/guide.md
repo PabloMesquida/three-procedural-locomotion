@@ -204,9 +204,11 @@ human.autoTouch = false;          // no tocar solo (por defecto, sí)
 human.touchSlide = false;         // tocar y soltar, sin deslizar la mano (por defecto, desliza)
 ```
 
-Con `touchables` busca solo, con rayos cortos desde donde estará el hombro al terminar el gesto: paredes y
-columnas al lado o algo por delante (rayos horizontales a la altura del pecho) y barandas a la altura de la
-cadera (rayos hacia abajo), y no las caras que tiene de frente. Toca cada objeto una vez mientras siga cerca
+Con `touchables` busca solo, con rayos cortos desde donde estará el hombro al terminar el gesto (también
+subiendo o bajando una escalera o una rampa): paredes y columnas al lado o algo por delante (rayos horizontales a
+la altura del pecho), con sitio para la palma (no un poste fino ni el costado de un pasamanos), y barandas a la
+altura de la cadera (rayos hacia abajo) que sigan por delante (no la cabeza de un pilar), y no las caras que tiene
+de frente. Toca cada objeto una vez mientras siga cerca
 (una pared larga no la toca a cada paso), con cada mano por su lado (puede ir con una en la pared y tocar
 columnas con la otra), caminando o parado; corriendo o en el aire, no. Lo que queda lejos de la mano no lo
 intenta: no estira el brazo de más.
@@ -217,8 +219,10 @@ mitad y se estira al final); se apoya con la palma hacia la superficie y los ded
 gira la muñeca: arriba en una pared al lado, hacia fuera en una baranda). Caminando junto a una pared o una
 baranda, la desliza por ella mientras siga al lado: arranca quieta, se pone a la velocidad del cuerpo y va junto
 al hombro, pegada a la superficie (en una pared, bajando poco a poco a la altura de la cintura); cuando la
-superficie se acaba (el final de la pared, una esquina) la suelta. Una columna es demasiado curva para deslizar:
-la toca y, cuando queda atrás, la suelta, igual que con `touchSlide = false`. Parado, suelta tras un momento.
+superficie se acaba (el final de la pared, una esquina) o deja de ser lisa (un escalón, o algo que sobresale por
+delante, como una pilastra, antes de que lleguen los dedos) la suelta, y pasado el saliente la vuelve a apoyar.
+Una columna es demasiado curva para deslizar: la toca y, cuando queda atrás, la suelta, igual que con
+`touchSlide = false`. Parado, suelta tras un momento.
 La mano vuelve a colgar en ~0,7 s, partiendo de donde estaba y con la velocidad que llevaba. El brazo del otro
 lado sigue balanceándose.
 
