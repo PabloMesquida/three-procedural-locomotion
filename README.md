@@ -91,17 +91,26 @@ level of the soles ([details](docs/en/skeletons.md#model-requirements)).
 
 ## Installing in another project
 
-`three` is a *peer dependency*: your project provides it (tested from r150 to r186).
+`three` is a *peer dependency*: your project provides it (tested from r150 to r186). There are no other
+dependencies.
 
-**Fixed version (recommended):**
+**From GitHub, at a fixed version (recommended):**
+
+```bash
+npm install three github:PabloMesquida/three-procedural-locomotion#v0.1.0
+```
+
+npm downloads the repository at that tag and builds the library while installing it (`prepare` script). To
+update it, install another tag.
+
+**From a local copy of the repository, by packing it:**
 
 ```bash
 # in this folder
 npm pack                      # builds and generates three-procedural-locomotion-0.1.0.tgz
 
 # in your project
-npm install three
-npm install ../path/to/three-procedural-locomotion/three-procedural-locomotion-0.1.0.tgz
+npm install three ../path/to/three-procedural-locomotion/three-procedural-locomotion-0.1.0.tgz
 ```
 
 To update it: bump `version` in `package.json`, run `npm pack` and install the `.tgz` again.

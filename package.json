@@ -59,7 +59,7 @@
     "mocap": "node scripts/mocap.mjs",
     "bench": "node scripts/bench.mjs",
     "docs": "node scripts/gen-docs.mjs",
-    "prepack": "npm run build"
+    "prepare": "npm run build"
   },
   "peerDependencies": {
     "three": ">=0.150.0"

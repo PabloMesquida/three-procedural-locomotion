@@ -45,6 +45,6 @@ jobs:
           PH_MODEL: modelos/human.glb
           PH_MAPPING: rigify
 
-      # `prepack` builds the library into dist/ first.
+      # `prepare` builds the library into dist/ first.
       - name: Build and pack
         run: npm pack --dry-run

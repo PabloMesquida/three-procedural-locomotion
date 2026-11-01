@@ -83,17 +83,26 @@ origen a la altura de las plantas ([detalles](docs/es/skeletons.md#requisitos-de
 
 ## Instalar en otro proyecto
 
-`three` es una *peer dependency*: la pone tu proyecto (probada de la r150 a la r186).
+`three` es una *peer dependency*: la pone tu proyecto (probada de la r150 a la r186). No tiene más
+dependencias.
 
-**Versión fija (recomendada):**
+**Desde GitHub, en una versión fija (recomendado):**
+
+```bash
+npm install three github:PabloMesquida/three-procedural-locomotion#v0.1.0
+```
+
+npm descarga el repositorio en esa etiqueta y compila la librería al instalarla (script `prepare`). Para
+actualizarla, instala otra etiqueta.
+
+**Desde una copia local del repositorio, empaquetándola:**
 
 ```bash
 # en esta carpeta
 npm pack                      # compila y genera three-procedural-locomotion-0.1.0.tgz
 
 # en tu proyecto
-npm install three
-npm install ../ruta/a/three-procedural-locomotion/three-procedural-locomotion-0.1.0.tgz
+npm install three ../ruta/a/three-procedural-locomotion/three-procedural-locomotion-0.1.0.tgz
 ```
 
 Para actualizarla: sube `version` en `package.json`, `npm pack` y vuelve a instalar el `.tgz`.

@@ -17,6 +17,11 @@
 
 Requires Node 20.19+ or 22.12+.
 
+The library is built by the `prepare` script, which npm runs with `npm install` in this folder, with
+`npm pack` and when another project installs it from GitHub (`github:PabloMesquida/three-procedural-locomotion#vX.Y.Z`).
+To release a version: bump `version` in `package.json`, commit, create the tag `vX.Y.Z` and push it
+(`git push origin vX.Y.Z`).
+
 ## How it works
 
 Every frame, from top to bottom:

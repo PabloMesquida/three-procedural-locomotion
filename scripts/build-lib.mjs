@@ -1,5 +1,5 @@
 // Compila la librería (src/ → dist/): JavaScript ESM + tipos .d.ts.
-// Uso: npm run build   (también se ejecuta antes de `npm pack`)
+// Uso: npm run build   (también con `npm pack` y al instalar la librería desde GitHub: script `prepare`)
 import { execFileSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { createRequire } from 'node:module';

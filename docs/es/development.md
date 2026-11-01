@@ -17,6 +17,11 @@
 
 Requiere Node 20.19+ o 22.12+.
 
+La librería la compila el script `prepare`, que npm ejecuta con `npm install` en esta carpeta, con `npm pack` y
+cuando otro proyecto la instala desde GitHub (`github:PabloMesquida/three-procedural-locomotion#vX.Y.Z`). Para
+publicar una versión: sube `version` en `package.json`, haz commit, crea la etiqueta `vX.Y.Z` y súbela
+(`git push origin vX.Y.Z`).
+
 ## Cómo funciona
 
 Cada frame, de arriba abajo:
