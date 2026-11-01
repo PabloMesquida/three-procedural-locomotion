@@ -365,7 +365,8 @@ standing still, if the ground under the feet changes without the body moving (an
 
 `update(dt)` splits long frames into steps of at most `maxTimeStep` and never simulates more than
 `maxFrameTime` per call: the motion does not depend on the frame rate and a stall (switching tabs) does not
-cause a jump. Pass the real `dt` (`clock.getDelta()`); `dt ≤ 0` does nothing.
+cause a jump. Pass the real `dt`, in seconds: the time since the previous frame, for example from the `time`
+that `renderer.setAnimationLoop` passes to each frame. `dt ≤ 0` does nothing.
 
 ## Walking in place and floating origin
 

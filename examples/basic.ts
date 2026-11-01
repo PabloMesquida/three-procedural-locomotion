@@ -12,7 +12,6 @@
  */
 import {
   AmbientLight,
-  Clock,
   DirectionalLight,
   Mesh,
   MeshStandardMaterial,
@@ -115,10 +114,12 @@ function updateKeyboard(): void {
 }
 
 // ---------- Loop ----------
-const clock = new Clock();
-renderer.setAnimationLoop(() => {
+let lastTime: number | null = null; // ms, from the time setAnimationLoop passes to each frame
+renderer.setAnimationLoop((time: number) => {
+  const dt = lastTime === null ? 0 : (time - lastTime) / 1000;
+  lastTime = time;
   updateKeyboard(); // commands first…
-  human.update(clock.getDelta()); // …then the simulation…
+  human.update(dt); // …then the simulation…
   camera.position.copy(human.position).add(new Vector3(0, 2.2, 4.5)); // …the camera follows the character…
   camera.lookAt(human.position.x, human.position.y + 1, human.position.z);
   renderer.render(scene, camera); // …and it is drawn

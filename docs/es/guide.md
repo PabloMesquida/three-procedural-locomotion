@@ -370,7 +370,8 @@ Parado, si el suelo bajo los pies cambia sin que se mueva el cuerpo (un objeto q
 
 `update(dt)` divide los frames largos en pasos de como mucho `maxTimeStep` y nunca simula más de
 `maxFrameTime` por llamada: el movimiento no depende de los fps y un parón (cambiar de pestaña) no provoca un
-salto. Pasa el `dt` real (`clock.getDelta()`); `dt ≤ 0` no hace nada.
+salto. Pasa el `dt` real, en segundos: el tiempo desde el frame anterior, por ejemplo a partir del `time` que
+`renderer.setAnimationLoop` pasa a cada frame. `dt ≤ 0` no hace nada.
 
 ## Caminar en el sitio y origen flotante
 
