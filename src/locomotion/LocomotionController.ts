@@ -10,6 +10,7 @@ import { worldPosition, worldQuaternion } from '../core/pose.ts';
 import { LegIK } from '../ik/LegIK.ts';
 import type { TwoBoneIKResult } from '../ik/TwoBoneIK.ts';
 import type { HumanRig, Side } from '../rig/HumanRig.ts';
+import { measureFeet } from '../rig/measureFeet.ts';
 import { defaultFootPlacementConfig, FootPlacement, type FootPlacementConfig } from '../terrain/FootPlacement.ts';
 import { createGroundHit, type GroundDetector } from '../terrain/GroundDetector.ts';
 import type { SurfaceDetector } from '../terrain/SurfaceDetector.ts';
@@ -405,7 +406,12 @@ export class LocomotionController {
       const roll = this.legs[side].roll;
       return Math.hypot(roll.toeLocal.x - roll.heelLocal.x, roll.toeLocal.y - roll.heelLocal.y, roll.toeLocal.z - roll.heelLocal.z);
     };
-    this.stairs = new StairPlanner(detector, config, (footLength('left') + footLength('right')) / 2);
+    // Hasta dónde llegan la punta y el talón, medidos en la malla del modelo (el más largo de los dos pies).
+    const measured = measureFeet(rig, forward);
+    const extent = measured.left && measured.right
+      ? { front: Math.max(measured.left.front, measured.right.front), back: Math.max(measured.left.back, measured.right.back) }
+      : (measured.left ?? measured.right);
+    this.stairs = new StairPlanner(detector, config, (footLength('left') + footLength('right')) / 2, extent);
     this.body.groundLine = (position, ground) => this.stairs.groundHeight(position, ground);
   }
 

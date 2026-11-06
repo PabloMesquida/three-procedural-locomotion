@@ -362,6 +362,12 @@ Sirve cualquier medida de escalón hasta esos límites (probado de 10 × 40 cm a
 La forma del paso, la inclinación y el apoyo se comparan con capturas de movimiento de personas en escaleras
 (CMU).
 
+Para que la punta de los pies no entre en una contrahuella ni el talón quede colgando de un borde, al crear el
+personaje mide en la malla del modelo hasta dónde llegan sus pies por delante del tobillo y por detrás (la
+planta y el zapato: los vértices que mueven el pie, los dedos o la pierna, por debajo del tobillo). Los modelos
+varían mucho: con la articulación de los dedos muy atrás, la punta puede quedar a 25 cm del tobillo. Sin mallas
+(solo el esqueleto) supone las proporciones habituales.
+
 También valen las escaleras sin contrahuella (huellas sueltas con un hueco entre ellas), con suelo debajo o sobre
 el vacío: un hueco más corto que el pie, más bajo que las huellas de los dos lados, se salta, y el escalón se mide
 de huella a huella. Donde no hay suelo bajo la raíz (sobre un hueco), el cuerpo sigue la línea sobre las huellas.

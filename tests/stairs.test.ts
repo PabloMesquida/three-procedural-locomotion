@@ -1,10 +1,23 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { BoxGeometry, CylinderGeometry, Mesh, MeshBasicMaterial, type Object3D, type Quaternion, Vector3 } from 'three';
+import {
+  BoxGeometry,
+  BufferGeometry,
+  CylinderGeometry,
+  Float32BufferAttribute,
+  Mesh,
+  MeshBasicMaterial,
+  type Object3D,
+  type Quaternion,
+  Skeleton,
+  SkinnedMesh,
+  Uint16BufferAttribute,
+  Vector3,
+} from 'three';
 
-import { createGroundHit, defaultConfig, RaycastGroundDetector, type Side } from '../src/index.ts';
-import { createWorld, DEG, SIDES, simulate, type World } from './helpers/sim.ts';
+import { createGroundHit, defaultConfig, mapHumanRig, RaycastGroundDetector, type Side } from '../src/index.ts';
+import { createWorld, DEG, MODEL_MAPPING, SIDES, simulate, type World } from './helpers/sim.ts';
 
 /** Primer borde, a esta distancia por delante del personaje (m, hacia −Z). */
 const START = 2;
@@ -73,6 +86,41 @@ function sole(world: World, side: Side, underAnkle = false): { heel: Vector3; ti
     heel: ankle.clone().addScaledVector(dir, underAnkle ? 0 : -loco.stairs.heelBack).setY(y),
     tip: ankle.clone().addScaledVector(dir, loco.stairs.toeFront).setY(y),
   };
+}
+
+/**
+ * Pone al modelo una malla con piel mínima, en los huesos de los pies: vértices de la planta con la punta a
+ * `front` m delante del tobillo y el talón a `back` m detrás (para medirla: ver measureFeet).
+ */
+function addFeetMesh(model: Object3D, front: number, back: number): void {
+  model.updateMatrixWorld(true);
+  const { rig } = mapHumanRig(model, MODEL_MAPPING);
+  const positions: number[] = [];
+  const indices: number[] = [];
+  const weights: number[] = [];
+  SIDES.forEach((side, bone) => {
+    const ankle = rig[side].foot.getWorldPosition(new Vector3());
+    const dir = rig[side].toe!.getWorldPosition(new Vector3()).sub(ankle).setY(0).normalize();
+    const across = new Vector3(-dir.z, 0, dir.x).multiplyScalar(0.04);
+    for (const d of [front, -back, 0]) {
+      for (const s of [-1, 1]) {
+        for (const y of [0.005, 0.03]) {
+          const p = model.worldToLocal(ankle.clone().addScaledVector(dir, d).addScaledVector(across, s).setY(model.position.y + y));
+          positions.push(p.x, p.y, p.z);
+          indices.push(bone, 0, 0, 0);
+          weights.push(1, 0, 0, 0);
+        }
+      }
+    }
+  });
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('skinIndex', new Uint16BufferAttribute(indices, 4));
+  geometry.setAttribute('skinWeight', new Float32BufferAttribute(weights, 4));
+  const mesh = new SkinnedMesh(geometry, new MeshBasicMaterial());
+  model.add(mesh);
+  model.updateMatrixWorld(true);
+  mesh.bind(new Skeleton([rig.left.foot, rig.right.foot]));
 }
 
 interface StairRun {
@@ -466,6 +514,53 @@ describe('escaleras', () => {
     }
     assert.deepEqual(problems, []);
   });
+
+  // Un pie largo por delante de la articulación de los dedos, como el del modelo del diorama (la punta a 25 cm
+  // del tobillo y el talón bajo él): medido en la malla, la punta no entra en las contrahuellas. Antes se
+  // suponían las proporciones (la punta a 1,35 pies del tobillo, unos 16 cm) y, subiendo escalones de 25 × 35
+  // cm, entraba 7,5 cm.
+  for (const down of [false, true]) {
+    it(`${down ? 'bajando' : 'subiendo'} escalones de 25 × 35 cm con un pie largo, medido en la malla: la punta no entra en la contrahuella`, () => {
+      const rise = 0.25;
+      const run = 0.35;
+      const front = 0.25;
+      const world = createWorld({
+        buildTerrain: (terrain) => addStairs(terrain, rise, run, { down }),
+        place: (model, scene) => {
+          if (down) model.position.y = rise * COUNT;
+          scene.add(model);
+          addFeetMesh(model, front, 0.01);
+        },
+      });
+      const { human, terrain } = world;
+      assert.ok(Math.abs(human.locomotion.stairs.toeFront - front) < 1e-3, `midió la punta a ${human.locomotion.stairs.toeFront.toFixed(3)} m`);
+      assert.ok(Math.abs(human.locomotion.stairs.heelBack - 0.01) < 1e-3, `midió el talón a ${human.locomotion.stairs.heelBack.toFixed(3)} m`);
+      const detector = new RaycastGroundDetector([terrain]);
+      const hit = createGroundHit();
+      const ground = (p: Vector3): number => (detector.castDown(new Vector3(p.x, p.y + 0.6, p.z), 5, hit) ? hit.point.y : Number.NEGATIVE_INFINITY);
+      let worst = 0;
+      let top = 0;
+      simulate(world, 9, [[0, (h) => { h.targetSpeed = 1; }]], {
+        onFrame: () => {
+          top = Math.max(top, Math.abs(human.position.y - (down ? rise * COUNT : 0)));
+          for (const side of SIDES) {
+            const foot = human.locomotion.feet[side];
+            if (foot.phase !== 'PLANTED' && foot.phase !== 'PLANT') continue;
+            const ankle = human.rig[side].foot.getWorldPosition(new Vector3());
+            const dir = human.rig[side].toe!.getWorldPosition(new Vector3()).sub(ankle).setY(0).normalize();
+            const sole = foot.planted.y - human.locomotion.planner.placement(side).ankleHeight + 0.01;
+            const tip = ankle.clone().addScaledVector(dir, front).setY(sole);
+            // Dentro de un escalón: cuánto (en horizontal) hasta salir de él.
+            let d = 0;
+            while (d < 0.4 && ground(tip.clone().addScaledVector(dir, -d)) - sole > 0.05) d += 0.005;
+            worst = Math.max(worst, d);
+          }
+        },
+      });
+      assert.ok(top > rise * (COUNT - 1), 'no recorrió la escalera');
+      assert.ok(worst < 0.01, `la punta entró ${(worst * 100).toFixed(1)} cm en una contrahuella`);
+    });
+  }
 
   it('de un desnivel más hondo que maxStepDown no baja: se para en el borde, quieto', () => {
     const drop = defaultConfig.maxStepDown + 0.05;

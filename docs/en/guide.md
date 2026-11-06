@@ -359,6 +359,12 @@ level, the character samples the ground ahead along its direction of travel, fin
 Any size of step works up to those limits (tested from 10 × 40 cm to 30 × 30 cm, up and down). The shape of the
 step, the lean and the landing are compared with motion capture of people on stairs (CMU).
 
+So that the tips of the toes don't go into a riser nor the heel hang over an edge, when the character is created
+it measures how far its feet reach ahead of the ankle and behind it on the model's mesh (the sole and the shoe:
+the vertices the foot, the toes or the shin move, below the ankle). Models differ a lot: with a toe joint
+placed far back, the tips can be 25 cm ahead of the ankle. Without meshes (only the skeleton) it assumes the
+usual proportions.
+
 Stairs without risers (separate treads with a gap between them) also work, with the ground under them or over
 the void: a gap shorter than the foot, lower than the treads on both sides, is stepped over, and the step is
 measured from tread to tread. Where there is no ground under the root (over a gap), the body follows the line

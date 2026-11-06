@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 
+import type { FootExtent } from '../rig/measureFeet.ts';
 import type { FootGroundState } from '../terrain/FootPlacement.ts';
 import { createGroundHit, type GroundDetector, type GroundHit } from '../terrain/GroundDetector.ts';
 import { GroundProfile, treadHeight } from '../terrain/GroundProfile.ts';
@@ -11,7 +12,10 @@ const EDGE_HEIGHT = 0.12;
 const SAMPLE_SPACING = 0.25;
 /** Margin between the foot and an edge (× foot length). */
 const EDGE_MARGIN = 0.1;
-/** The heel sticks out this much behind the ankle, and the toes this much ahead of the toe joint (× foot length). */
+/**
+ * Without a measure of the foot on the model's mesh (see measureFeet): the heel sticks out this much behind
+ * the ankle, and the toes this much ahead of the toe joint (× foot length).
+ */
 const HEEL_BACK = 0.3;
 const TOE_TIP = 0.35;
 /** The profile starts this far behind the foot that takes off and ends this far beyond the landing (× stepLength). */
@@ -131,10 +135,14 @@ export class StairPlanner {
   private readonly lookedAt = new Vector3(Number.NaN, 0, 0);
   private readonly lookedDirection = new Vector3();
 
-  constructor(detector: GroundDetector, config: LocomotionConfig, footLength: number) {
+  /** The foot measured on the model's mesh, if it could be (see measureFeet). */
+  private readonly extent: FootExtent | null;
+
+  constructor(detector: GroundDetector, config: LocomotionConfig, footLength: number, extent: FootExtent | null = null) {
     this.detector = detector;
     this.config = config;
     this.footLength = footLength;
+    this.extent = extent;
   }
 
   /** Jump in height that counts as an edge (m). */
@@ -142,14 +150,14 @@ export class StairPlanner {
     return EDGE_HEIGHT * this.footLength;
   }
 
-  /** The heel extends this far behind the ankle (m). */
+  /** The heel extends this far behind the ankle (m): measured on the mesh or, without it, HEEL_BACK. */
   get heelBack(): number {
-    return HEEL_BACK * this.footLength;
+    return this.extent ? this.extent.back : HEEL_BACK * this.footLength;
   }
 
-  /** The toes extend this far ahead of the ankle (m). */
+  /** The toes extend this far ahead of the ankle (m): measured on the mesh or, without it, TOE_TIP. */
   get toeFront(): number {
-    return (1 + TOE_TIP) * this.footLength;
+    return this.extent ? this.extent.front : (1 + TOE_TIP) * this.footLength;
   }
 
   /** Forgets the stairs (after a reset or a teleport). */
