@@ -457,8 +457,8 @@
       "es": "Duración de la vuelta de la mano a su balanceo tras soltar (s). CMU: ~0,7 s, campana simétrica."
     },
     "touchHoldTime": {
-      "en": "Minimum time with the hand resting on the surface (s). When walking, it lets go once the point falls behind.",
-      "es": "Tiempo mínimo con la mano apoyada (s). Caminando, suelta cuando el punto queda atrás."
+      "en": "Minimum time with the hand resting on the surface (s). When walking, it lets go once the point falls behind (or the arm doesn't reach), even before.",
+      "es": "Tiempo mínimo con la mano apoyada (s). Caminando, suelta cuando el punto queda atrás (o el brazo no llega), aunque sea antes."
     },
     "touchMaxReach": {
       "en": "Maximum distance from shoulder to wrist when touching, predicted when the gesture starts (fraction of the arm, 0–1). In CMU, reaching as far as possible, 0.94–0.99 (elbow at 140–165°); touching in passing does not stretch as much, and the sway of walking (±3–4 cm at the shoulder) makes it arrive a little more extended.",

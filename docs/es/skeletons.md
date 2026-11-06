@@ -119,7 +119,8 @@ huesos de torsión reparten ese giro, como los `twist` de los esqueletos de jueg
 - Solo se toca su giro alrededor del eje del segmento; su orientación de reposo puede ser cualquiera.
 - La malla se pesa entre el segmento y su twist (en la mitad que indica la tabla).
 - Si el mapping los nombra y el modelo no tiene ninguno (p. ej. `rigifyMapping` con un metarig sin twist),
-  queda un único aviso y todo funciona igual, sin torsión gradual.
+  todo funciona igual, sin torsión gradual, y no hay aviso (son opcionales). Si tiene algunos y otros no, avisa de
+  los que faltan (probablemente el mapping no coincide con el modelo).
 
 ## Rigify (Blender)
 

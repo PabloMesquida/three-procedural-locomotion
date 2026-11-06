@@ -85,8 +85,8 @@ origen a la altura de las plantas ([detalles](docs/es/skeletons.md#requisitos-de
 
 ## Instalar en otro proyecto
 
-`three` es una *peer dependency*: la pone tu proyecto (probada de la r150 a la r186). No tiene más
-dependencias.
+`three` es una *peer dependency*: la pone tu proyecto (probada de la r150 a la r186, y usada con la r187 y
+`WebGPURenderer`). No tiene más dependencias.
 
 **Desde GitHub, en una versión fija (recomendado):**
 
@@ -95,7 +95,9 @@ npm install three github:PabloMesquida/three-procedural-locomotion#v0.1.0
 ```
 
 npm descarga el repositorio en esa etiqueta y compila la librería al instalarla (script `prepare`). Para
-actualizarla, instala otra etiqueta.
+actualizarla, instala otra etiqueta. Si tu proyecto ya tiene three, omítelo
+(`npm install github:PabloMesquida/three-procedural-locomotion#v0.1.0`): `npm install three` sin versión
+actualizaría la que tienes.
 
 **Desde una copia local del repositorio, empaquetándola:**
 

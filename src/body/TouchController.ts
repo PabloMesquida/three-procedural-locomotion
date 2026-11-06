@@ -18,7 +18,7 @@ export interface TouchConfig {
   touchReleaseTime: number;
   /**
    * Minimum time with the hand resting on the surface (s). When walking, it lets go once the point falls
-   * behind.
+   * behind (or the arm doesn't reach), even before.
    */
   touchHoldTime: number;
   /**
@@ -200,6 +200,12 @@ const SOFT_REACH_MAX = 0.99;
  * While resting, lets go if the arm would have to stretch more than this (× arm): the hand would come off.
  */
 const MAX_STRETCH = 0.93;
+/**
+ * Walking, the search only takes a surface if the hand can stay on it this long before the arm would have to
+ * stretch too much (s): `touchHoldTime`, at most this. (Walking, the hand lets go anyway when it falls behind or
+ * the arm doesn't reach: a longer time would only rule out every surface.)
+ */
+const HOLD_CHECK_MAX = 0.25;
 /** While walking, lets go when the point is this far behind the shoulder (× arm). */
 const RELEASE_BEHIND = 0.15;
 /** How often it looks for surfaces (s). */
@@ -705,7 +711,7 @@ export class TouchController {
         if (reach < MIN_REACH) return true;
         if (reach > this.config.touchMaxReach) return false;
         // Y que pueda quedarse apoyada el tiempo mínimo antes de tener que soltar por estirar el brazo.
-        this.ahead(this.predicted, this.config.touchHoldTime, this.later);
+        this.ahead(this.predicted, Math.min(this.config.touchHoldTime, HOLD_CHECK_MAX), this.later);
         if (this.a.distanceTo(this.later) / arm > MAX_STRETCH) return false;
         const lead = this.b.subVectors(this.hit.point, this.predicted).dot(forward) / arm;
         // Siguiendo curvas, no lo que quedará detrás (volviendo a tocar un objeto en la misma vuelta: no el que acaba

@@ -149,9 +149,9 @@ describe('torsión de brazos y piernas', () => {
     assert.ok(Number.isFinite(twisted.maxTwist));
   });
 
-  it('avisa una sola vez si el modelo no tiene ninguno, y descarta un twist que no es hijo de su segmento', () => {
+  it('no avisa si el modelo no tiene ninguno (son opcionales), y descarta un twist que no es hijo de su segmento', () => {
     const { rig, warnings } = mapHumanRig(loadSkeleton(MODEL_PATH), twistMapping);
-    assert.equal(warnings.filter((w) => /twist bone/i.test(w)).length, 1, warnings.join(' | '));
+    assert.equal(warnings.filter((w) => /twist bone/i.test(w)).length, 0, warnings.join(' | '));
     assert.equal(rig.left.thighTwist, undefined);
 
     const model = loadSkeleton(MODEL_PATH);

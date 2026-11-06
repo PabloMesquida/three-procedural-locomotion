@@ -1058,8 +1058,8 @@
       {
         "name": "touchHoldTime",
         "doc": {
-          "en": "Minimum time with the hand resting on the surface (s). When walking, it lets go once the point falls behind.",
-          "es": "Tiempo mínimo con la mano apoyada (s). Caminando, suelta cuando el punto queda atrás."
+          "en": "Minimum time with the hand resting on the surface (s). When walking, it lets go once the point falls behind (or the arm doesn't reach), even before.",
+          "es": "Tiempo mínimo con la mano apoyada (s). Caminando, suelta cuando el punto queda atrás (o el brazo no llega), aunque sea antes."
         },
         "length": false,
         "constructionOnly": false

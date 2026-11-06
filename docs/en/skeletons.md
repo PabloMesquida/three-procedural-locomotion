@@ -117,7 +117,8 @@ bones distribute that rotation, like the `twist` bones of game skeletons (e.g. U
 - Only their rotation about the segment axis is touched; their rest orientation can be anything.
 - The mesh is weighted between the segment and its twist bone (in the half the table indicates).
 - If the mapping names them and the model has none (e.g. `rigifyMapping` with a metarig without twist bones),
-  a single warning is left and everything works the same, without gradual twist.
+  everything works the same, without gradual twist, and there is no warning (they are optional). If it has some
+  and not others, it warns about the missing ones (the mapping probably doesn't match the model).
 
 ## Rigify (Blender)
 

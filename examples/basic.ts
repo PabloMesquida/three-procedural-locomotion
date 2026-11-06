@@ -47,6 +47,7 @@ scene.add(floor);
 
 // ---------- Character ----------
 const gltf = await new GLTFLoader().loadAsync('/humanoid.glb');
+gltf.scene.position.set(0, 0, 0); // where it starts: place it before creating the character (it stands there)
 scene.add(gltf.scene);
 
 const human = createProceduralHuman({
@@ -62,9 +63,14 @@ human.on('footstep', ({ side, speed }) => console.log(`${side} step at ${speed.t
 human.on('arrive', () => console.log('arrived'));
 
 // ---------- Click: go to the point ----------
+// A click, not a drag: with OrbitControls (or any camera control with the mouse), `pointerdown` also fires at
+// the start of every drag of the camera. It counts as a click if the pointer moved less than 5 px.
 const raycaster = new Raycaster();
 const pointer = new Vector2();
-renderer.domElement.addEventListener('pointerdown', (event) => {
+const down = new Vector2();
+renderer.domElement.addEventListener('pointerdown', (event) => down.set(event.clientX, event.clientY));
+renderer.domElement.addEventListener('click', (event) => {
+  if (Math.hypot(event.clientX - down.x, event.clientY - down.y) > 5) return;
   pointer.set((event.clientX / innerWidth) * 2 - 1, -(event.clientY / innerHeight) * 2 + 1);
   raycaster.setFromCamera(pointer, camera);
   const hit = raycaster.intersectObject(floor)[0];

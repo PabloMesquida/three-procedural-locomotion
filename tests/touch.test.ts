@@ -172,6 +172,16 @@ describe('tocar superficies al pasar (touchables)', () => {
     assert.ok(run.drift < 0.001 && run.jerk < 2, `mano ${(run.drift * 1000).toFixed(1)} mm, tirón ${run.jerk.toFixed(1)} °/frame²`);
   });
 
+  it('con un touchHoldTime alto (5 s) sigue tocando al caminar: la columna y la pared', () => {
+    // Antes la búsqueda descartaba lo que el brazo no alcanzaría dentro de touchHoldTime: caminando, todo.
+    for (const [name, distance] of [['columna', 0.6], ['pared', 0.65]] as const) {
+      const world = createWorld({ human: { config: { variation: 0, touchHoldTime: 5 } } });
+      addSurface(world, name, 'right', distance, name === 'pared' ? 5 : 3);
+      const run = walkPast(world, 1.2, 7);
+      assert.equal(run.touches.length, 1, `${name}: ${run.touches.length} toques`);
+    }
+  });
+
   it('pared con una pilastra: desliza la mano hasta poco antes, la suelta sin pasar por encima y la vuelve a apoyar después', () => {
     const world = createWorld({ human: { config: { variation: 0 } } });
     const { human } = world;

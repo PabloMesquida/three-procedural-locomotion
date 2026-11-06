@@ -15,6 +15,7 @@ Ejemplo completo y comprobado: [`examples/basic.ts`](../../examples/basic.ts).
 import { createProceduralHuman, mixamoMapping } from 'three-procedural-locomotion';
 
 const gltf = await new GLTFLoader().loadAsync('/humanoid.glb');
+gltf.scene.position.set(2, 0, -3); // dónde empieza (opcional): queda de pie ahí, sobre el suelo de debajo
 scene.add(gltf.scene);
 
 const human = createProceduralHuman({
@@ -70,6 +71,10 @@ Dos formas, que se pueden mezclar:
   punto, va al más cercano que alcanza (`moveTarget`). Planea sobre el suelo que pisa, con las mismas reglas que
   los pasos, y rodea los `colliders` (un tronco, columnas, paredes) con el cuerpo fuera de ellos. Con
   `avoid: false`, en línea recta.
+- **Clic para ir**: raycast contra el suelo en `click` y el punto a `moveTo`. Con OrbitControls (o cualquier control de
+  cámara con el ratón), no uses solo `pointerdown`: también salta al empezar cada arrastre de la cámara. Guarda
+  dónde fue el `pointerdown` y, en `click`, ignóralo si el puntero se movió más de unos píxeles (ver
+  [`examples/basic.ts`](../../examples/basic.ts)).
 - **Por una ruta**: `followPath(puntos, { run })` sigue los puntos que le das (por ejemplo, de tu navmesh) con
   curvas y se para en el último; no los comprueba.
 
@@ -110,6 +115,7 @@ Agachado la velocidad se limita a `crouchMaxSpeed`.
 | `moveTarget` | Destino del `moveTo` (o `followPath`) en curso, o `null`. |
 | `movePath` | Lo que queda de su ruta (puntos, una copia; el último es `moveTarget`), o `null` si va en línea recta. |
 | `footPhase(lado)` | `PLANT` (aterriza de talón), `PLANTED`, `LIFT` (levanta el talón) o `SWING`. |
+| `footGround(lado)` | Lo que encontró la colocación del pie bajo él (para `FootDebug`, ver *Avanzado*). |
 | `legLength`, `bodyScale`, `speedScale` | Largo de pierna del modelo (m), factor de las longitudes y de las velocidades. |
 | `config`, `effectiveConfig` | Configuración sin escalar / la que se usa (longitudes × `bodyScale`). |
 
@@ -222,6 +228,17 @@ de frente. Toca cada objeto una vez mientras siga cerca
 (una pared larga no la toca a cada paso; pararse y volver a andar es otra pasada, y puede volver a tocarlo), con cada mano por su lado (puede ir con una en la pared y tocar
 columnas con la otra), caminando o parado; corriendo o en el aire, no. Lo que queda lejos de la mano no lo
 intenta: no estira el brazo de más.
+
+Pasando junto a una columna o un tronco, el camino tiene que llevar su superficie a entre ~0,2 y ~0,55 m del centro
+del cuerpo (medido con el personaje de referencia: un tronco de 15 o 30 cm de radio): más cerca, el brazo quedaría
+demasiado doblado; más lejos, no llega (`touchMaxReach`). Con el tronco también como collider, `moveTo` ya lo
+rodea a esa distancia.
+
+Dale formas simples. Caminando lanza unos 150 rayos por segundo (más mientras desliza la mano), y el `Raycaster`
+de three no tiene estructura de aceleración: prueba cada triángulo de cada malla cuya esfera envolvente cruce el
+rayo, así que una malla detallada (un árbol de 60 000 triángulos) es cara. Pon en su lugar una malla simple
+invisible (`visible = false`: los rayos la encuentran igual) y dale esa: un cilindro para un tronco, cajas para una
+pared. La misma malla puede ser un collider. La mano se apoya en esa forma: que coincida con la superficie visible.
 
 El gesto, medido en los alcances de CMU (ver [naturalidad](naturalness.md#tocar-al-pasar)): la mano va de su
 balanceo a la superficie en ~0,75 s con la velocidad en campana, por un recorrido algo curvo (el codo se dobla a
@@ -345,7 +362,11 @@ const heightmapGround: GroundDetector = {
 ```
 
 El cuerpo es cinemático: no hay colisiones con obstáculos ni paredes; solo se busca el suelo bajo el cuerpo
-y bajo cada pie. Escalones bajos y pendientes moderadas sí: los pies se apoyan en su altura y se inclinan.
+y bajo cada pie (obstáculos que no son suelo, solo si se los das como `colliders`). Escalones bajos y pendientes
+moderadas sí: los pies se apoyan en su altura y se inclinan. También el terreno irregular sin escalones, como un
+montón de rocas: cada pie se apoya en lo más alto que tiene debajo (sobre un hueco entre rocas la planta puede
+quedar unos centímetros por encima del suelo bajo el tobillo), y el cuerpo sigue el suelo (probado en montículos de
+rocas de hasta 0,8 m: `tests/rocks.test.ts`).
 
 ### Escaleras
 
@@ -428,6 +449,8 @@ mismo suelo desplazado). Con `StaticGroundDetector`, si mueves el suelo, llama a
 
 ## Teletransportar, pausar, eliminar
 
+- **Dónde empieza**: coloca el modelo (`gltf.scene.position`, o su padre) antes de `createProceduralHuman`: empieza
+  de pie ahí, con los pies sobre el suelo que haya debajo (el constructor llama a `reset()`).
 - **Teletransportar**: mueve `gltf.scene` (o su padre) y llama a `human.reset()`: lo deja quieto, con los pies
   apoyados en el suelo que haya debajo (hasta 50 m) y cancela `moveTo`.
 - **Dejar de controlarlo** (p. ej. para otra animación): `human.restPose()` devuelve el esqueleto a su pose de
@@ -448,9 +471,25 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 - `human.locomotion` y `human.navigation`: controladores internos (gait, pies, pelvis, cuerpo, point and
   click). Útiles para depurar; su forma puede cambiar entre versiones.
 - Se exportan también los bloques (`TwoBoneIK`, `LegIK`, `FootPlacement`, `mapHumanRig`, `inspectSkeleton`…).
-- `three-procedural-locomotion/debug`: ayudas visuales (`LocomotionDebug`, `GaitDiagram`, `RigDebug`, `IKDebug`,
-  `FootDebug`). `GaitDiagram` muestra sus textos en inglés; en español:
-  `new GaitDiagram(human.locomotion.gait, { language: 'es' })`.
+- `three-procedural-locomotion/debug`: ayudas visuales. Cada una tiene un `group` (o, `GaitDiagram`, un `element`
+  HTML) que añadir, y un `update()` que llamar después de `human.update(dt)`:
+
+  ```ts
+  import { FootDebug, GaitDiagram, LocomotionDebug, RigDebug } from 'three-procedural-locomotion/debug';
+
+  const debug = new LocomotionDebug(human.locomotion); // posiciones neutras, aterrizajes, trayectorias, centro de masa
+  const feet = (['left', 'right'] as const).map((side) => new FootDebug(human.footGround(side))); // rayos de los pies
+  const bones = new RigDebug(human.rig); // los huesos mapeados
+  const gait = new GaitDiagram(human.locomotion.gait, { language: 'es' }); // fases de la marcha
+  scene.add(debug.group, bones.group, ...feet.map((f) => f.group));
+  document.body.append(gait.element);
+
+  // cada frame, después de human.update(dt)
+  debug.update(); bones.update(); gait.update();
+  for (const f of feet) f.update();
+  ```
+
+  `IKDebug` muestra el IK de una pierna con un objetivo puesto a mano (`new IKDebug(human.rig.left, objetivo, pole, color)`).
 
 ## Limitaciones actuales
 

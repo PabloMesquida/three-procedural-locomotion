@@ -93,8 +93,8 @@ level of the soles ([details](docs/en/skeletons.md#model-requirements)).
 
 ## Installing in another project
 
-`three` is a *peer dependency*: your project provides it (tested from r150 to r186). There are no other
-dependencies.
+`three` is a *peer dependency*: your project provides it (tested from r150 to r186, and used with r187 and
+`WebGPURenderer`). There are no other dependencies.
 
 **From GitHub, at a fixed version (recommended):**
 
@@ -103,7 +103,9 @@ npm install three github:PabloMesquida/three-procedural-locomotion#v0.1.0
 ```
 
 npm downloads the repository at that tag and builds the library while installing it (`prepare` script). To
-update it, install another tag.
+update it, install another tag. If your project already has three, leave it out
+(`npm install github:PabloMesquida/three-procedural-locomotion#v0.1.0`): `npm install three` without a version
+would update the one you have.
 
 **From a local copy of the repository, by packing it:**
 

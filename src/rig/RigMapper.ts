@@ -179,9 +179,10 @@ export function mapHumanRig(root: Object3D, mapping: HumanRigMapping): RigMappin
     rightArm: mapArm('rightArm', mapping.rightArm),
   };
 
-  if (twistMissing.length > 0) {
-    if (twistFound === 0) warnings.push('The model has none of the twist bones in the mapping: arms and legs rotate without gradual twist');
-    else for (const missing of twistMissing) warnings.push(`Twist bone ${missing} not found`);
+  // Sin ninguno, nada que avisar: son opcionales (un metarig de Rigify no los tiene; antes, a todos les aparecía un
+  // aviso). Con algunos sí y otros no, probablemente el mapping no coincide con el modelo.
+  if (twistMissing.length > 0 && twistFound > 0) {
+    for (const missing of twistMissing) warnings.push(`Twist bone ${missing} not found`);
   }
 
   // Comprobación de coherencia: si los pies apuntan hacia atrás respecto

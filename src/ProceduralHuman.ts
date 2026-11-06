@@ -18,6 +18,7 @@ import { LocomotionController } from './locomotion/LocomotionController.ts';
 import { defaultMoveToConfig, type MoveToConfig, MoveToController } from './navigation/MoveToController.ts';
 import { PathPlanner } from './navigation/PathPlanner.ts';
 import { type Collider, Colliders } from './terrain/Colliders.ts';
+import type { FootGroundState } from './terrain/FootPlacement.ts';
 import { estimateForward, type HumanRig, type HumanRigMapping, measureLegLength, type Side } from './rig/HumanRig.ts';
 import { type StylePreset, stylePresets } from './presets.ts';
 import { checkModel } from './rig/checkModel.ts';
@@ -488,6 +489,14 @@ export class ProceduralHuman {
     const n = this.navigation;
     if (!n.active || n.path.length === 0) return null;
     return n.path.slice(n.pathIndex).map((p) => p.clone());
+  }
+
+  /**
+   * What the foot placement found under a foot (raycasts of the heel and the toes, hit point and normal, ankle
+   * target): for `FootDebug` (`three-procedural-locomotion/debug`). It is updated in each `update`.
+   */
+  footGround(side: Side): FootGroundState {
+    return this.locomotion.planner.placement(side).state;
   }
 
   /** State of a foot: PLANT, PLANTED, LIFT or SWING. */
