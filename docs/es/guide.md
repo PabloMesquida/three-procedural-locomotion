@@ -219,7 +219,7 @@ subiendo o bajando una escalera o una rampa): paredes y columnas al lado o algo 
 la altura del pecho), con sitio para la palma (no un poste fino ni el costado de un pasamanos), y barandas a la
 altura de la cadera (rayos hacia abajo) que sigan por delante (no la cabeza de un pilar), y no las caras que tiene
 de frente. Toca cada objeto una vez mientras siga cerca
-(una pared larga no la toca a cada paso), con cada mano por su lado (puede ir con una en la pared y tocar
+(una pared larga no la toca a cada paso; pararse y volver a andar es otra pasada, y puede volver a tocarlo), con cada mano por su lado (puede ir con una en la pared y tocar
 columnas con la otra), caminando o parado; corriendo o en el aire, no. Lo que queda lejos de la mano no lo
 intenta: no estira el brazo de más.
 
@@ -233,6 +233,15 @@ superficie se acaba (el final de la pared, una esquina) o deja de ser lisa (un e
 delante, como una pilastra, antes de que lleguen los dedos) la suelta, y pasado el saliente la vuelve a apoyar.
 Una columna es demasiado curva para deslizar: la toca y, cuando queda atrás, la suelta, igual que con
 `touchSlide = false`. Parado, suelta tras un momento.
+
+Para mantener la mano en una columna, un tronco o una pared curva al rodearlos, dale el radio más pequeño que
+debe seguir: `config: { touchCurveRadius: 0.05 }` (m; 0 por defecto). Entonces además busca la superficie donde
+estará el hombro siguiendo el giro del cuerpo, la mano va al lado del hombro (por dentro de la curva recorre menos
+que el cuerpo: ~0,17 de lo que recorre él alrededor de un tronco de 10 cm) con la palma girando con la superficie,
+la suelta cuando la superficie se acaba, el brazo no llega o el cuerpo se aleja, y puede volver a apoyarla en el
+mismo objeto en la misma vuelta. La palma gira suave con las normales de la malla: con normales suaves (vértices
+compartidos, como `CylinderGeometry`), de forma continua; con normales planas (una por cara) la normal se suaviza
+en 0,1 s para que la mano no salte entre caras. Cuesta un rayo más por frame mientras desliza (~60 por segundo).
 La mano vuelve a colgar en ~0,7 s, partiendo de donde estaba y con la velocidad que llevaba. El brazo del otro
 lado sigue balanceándose.
 

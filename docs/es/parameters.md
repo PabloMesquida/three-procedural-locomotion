@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-121 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+122 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -184,6 +184,7 @@ opcionales y se validan (nombre, número finito y rango).
 | `touchHoldTime` | 0.25 | Tiempo mínimo con la mano apoyada (s). Caminando, suelta cuando el punto queda atrás. |
 | `touchMaxReach` | 0.82 | Distancia máxima del hombro a la muñeca al tocar, prevista al empezar el gesto (fracción del brazo, 0–1). En CMU, al alcanzar lo más lejos posible, 0,94–0,99 (codo a 140–165°); tocar al pasar no estira tanto, y el vaivén de la marcha (±3–4 cm en el hombro) la hace llegar algo más estirada. |
 | `touchCooldown` | 0.3 | Pausa tras soltar antes de volver a tocar algo por sí solo (s). |
+| `touchCurveRadius` ↔ | 0 | Radio más pequeño de una superficie (m) en la que la mano sigue apoyada al rodearla, deslizándose con ella: una columna, un tronco, una pared curva. 0 (por defecto): solo en superficies de radio mayor que un brazo, más o menos (~0,5 m); una columna se toca y se suelta al pasar. Con él, además busca la superficie donde estará el hombro siguiendo el giro del cuerpo (no en línea recta), la mano va al lado del hombro (por dentro de la curva recorre menos que el cuerpo) y, cuando la suelta, puede volver a apoyarla en el mismo objeto en la misma vuelta. Sin captura de movimiento de esto: una elección (ver naturalidad). |
 
 ## Variación natural
 

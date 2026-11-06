@@ -26,7 +26,7 @@ export const LENGTH_PARAMS = [
   'jumpCrouch', 'jumpTuck', 'maxLandingDip', 'idleStepThreshold',
   'toeClearance', 'maxExtraStepHeight', 'maxStepUp', 'maxStepDown', 'groundProbeHeight', 'groundProbeDepth',
   'footProbeHeight', 'footProbeDepth', 'footProbeTolerance', 'kneePoleDistance', 'shoulderForward',
-  'arriveRadius', 'headingLockRadius', 'stopTolerance',
+  'arriveRadius', 'headingLockRadius', 'stopTolerance', 'touchCurveRadius',
 ] as const satisfies readonly (keyof ProceduralHumanConfig)[];
 
 /**
@@ -109,7 +109,7 @@ export function validateConfig(input: ProceduralHumanConfigInput, base: Procedur
   if (num('chestRollShare') < 0 || num('chestRollShare') > 1) problems.push(`"chestRollShare" must be between 0 and 1 (got ${num('chestRollShare')})`);
   if (num('fingerCurl') < 0) problems.push(`"fingerCurl" must be ≥ 0 (got ${num('fingerCurl')})`);
   if (!(num('touchMaxReach') > 0 && num('touchMaxReach') <= 1)) problems.push(`"touchMaxReach" must be in (0, 1] (got ${num('touchMaxReach')})`);
-  for (const key of ['touchHoldTime', 'touchCooldown'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
+  for (const key of ['touchHoldTime', 'touchCooldown', 'touchCurveRadius'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
   if (num('speedEasing') < 0) problems.push(`"speedEasing" must be ≥ 0 (got ${num('speedEasing')})`);
   if (merged.stepWidth !== null && num('stepWidth') < 0) problems.push(`"stepWidth" must be ≥ 0 or null (got ${num('stepWidth')})`);
   if (num('runSpeed') < num('walkSpeed')) problems.push(`"runSpeed" (${num('runSpeed')}) cannot be less than "walkSpeed" (${num('walkSpeed')})`);

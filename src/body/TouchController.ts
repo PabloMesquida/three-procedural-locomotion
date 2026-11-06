@@ -30,6 +30,15 @@ export interface TouchConfig {
   touchMaxReach: number;
   /** Pause after letting go before touching something again on its own (s). */
   touchCooldown: number;
+  /**
+   * Smallest radius of a surface (m) the hand keeps resting on while walking round it, sliding with it: a
+   * column, a tree trunk, a curved wall. 0 (default): only along surfaces of a radius of more than about an arm
+   * (~0.5 m); a column is touched and let go when passing. With it, it also looks for the surface where the
+   * shoulder will be following the turn of the body (not straight ahead), the hand goes beside the shoulder
+   * (on the inside of the curve it travels less than the body) and, once it has let go, it can rest it again on
+   * the same object in the same turn. No motion capture of this: a choice (see naturalness).
+   */
+  touchCurveRadius: number;
 }
 
 /** What each hand is doing: nothing, moving towards the surface, resting on it or coming back. */
@@ -51,6 +60,15 @@ export interface TouchMotion {
   allowed: boolean;
   /** Standing still: lets go as soon as the minimum time has passed. */
   still: boolean;
+  /**
+   * Position of the body (world), how fast it turns (rad/s, like its heading) and a prediction of its motion:
+   * `predict(t, out)` puts in `out` how far it will have moved in `t` s (horizontal; with acceleration, braking
+   * up to where it stops, and turning towards its heading) and returns how much it will have turned (rad).
+   * Without them, it keeps its velocity.
+   */
+  position?: Vector3;
+  turnRate?: number;
+  predict?: (t: number, outDisplacement: Vector3) => number;
 }
 
 export interface TouchOptions {
@@ -102,6 +120,13 @@ interface Hand {
   slideVelocity: Vector3;
   slideNormal: Vector3;
   slideRawNormal: Vector3;
+  /**
+   * Following a curved surface (touchCurveRadius): the point of the surface beside the shoulder, the hand goes
+   * towards it, and its speed along the surface (m/s).
+   */
+  curvePoint: Vector3;
+  curvePointSet: boolean;
+  curveSpeed: number;
   /** Velocity of the hand when letting go (m/s, world): the one it really had. */
   releaseVelocity: Vector3;
   /**
@@ -209,6 +234,15 @@ const SLIDE_PROBE = 0.2;
  * (radius less than ~arm / SLIDE_MAX_BEND, ~0.5 m) and it stops sliding.
  */
 const SLIDE_MAX_BEND = 1;
+/**
+ * Following curves (touchCurveRadius): how much more the normal may turn than on a surface of that radius (with
+ * normals per face it turns in jumps).
+ */
+const CURVE_BEND_MARGIN = 1.5;
+/** Following curves: smoothing of the normal the palm turns with (s; SLIDE_NORMAL_TIME along walls). */
+const CURVE_NORMAL_TIME = 0.03;
+/** Following curves, turning faster than this (rad/s) counts as going round something (see `ahead`). */
+const CIRCLING_TURN_RATE = 0.3;
 /** Sliding: the surface ends if the normal suddenly turns more than this (cosine: a corner). */
 const SLIDE_MIN_NORMAL = 0.5;
 /**
@@ -294,6 +328,8 @@ export class TouchController {
    */
   private readonly recent = new Map<unknown, number>();
   private readonly seenNow = new Set<unknown>();
+  /** Objects it let go of while standing: they can be touched again once it walks (another pass). */
+  private readonly forgetOnMove = new Set<unknown>();
   private readonly lastPoint = new Vector3();
   private hasLastPoint = false;
 
@@ -312,6 +348,7 @@ export class TouchController {
   /** Time of the last update (s). */
   private dt = 0;
   private readonly origin = new Vector3();
+  private readonly lowOrigin = new Vector3();
   private readonly dir = new Vector3();
   private readonly out = new Vector3();
   private readonly candidate = { point: new Vector3(), normal: new Vector3(), object: undefined as unknown, side: 'right' as Side, score: Infinity };
@@ -351,6 +388,18 @@ export class TouchController {
   private readonly forearmRest = new Quaternion();
   private readonly forward = new Vector3(0, 0, 1);
   private readonly velocity = new Vector3();
+  /** Body position and turn rate in this update (for the prediction on a curve). */
+  private readonly center = new Vector3();
+  /** How fast the body turns and how far it will travel (see TouchMotion), in this update. */
+  private turnRate = 0;
+  private predictBody: TouchMotion['predict'] = undefined;
+  /** Standing still in this update. */
+  private still = false;
+  private readonly scanForward = new Vector3();
+  /** The detector of this update (for surfaceBeside). */
+  private surfaceDetector: SurfaceDetector | null = null;
+  private readonly aheadMove = new Vector3();
+  private readonly aheadOffset = new Vector3();
   private readonly finger = new Vector3();
   private readonly lift = new Vector3();
   private readonly palm = new Vector3();
@@ -388,6 +437,7 @@ export class TouchController {
     this.cooldown = 0;
     this.scanTimer = 0;
     this.recent.clear();
+    this.forgetOnMove.clear();
     this.hasLastPoint = false;
     this.touched.length = 0;
   }
@@ -414,7 +464,7 @@ export class TouchController {
     if (options.normal) normal.copy(options.normal).normalize();
     else this.estimateNormal(hand, point, detector, normal);
     // ¿Llegará? Desde donde estará el hombro al terminar el gesto.
-    this.predictShoulder(hand, motion, this.predicted);
+    this.predictShoulder(hand, this.predicted);
     this.contactPose(hand, point, normal, this.predicted, this.a, this.q);
     if (this.a.distanceTo(this.predicted) > this.config.touchMaxReach * hand.armLength) return false;
     this.begin(hand, point, normal, options.hold ?? false, undefined, options.slide ?? this.slide);
@@ -437,6 +487,14 @@ export class TouchController {
     this.touched.length = 0;
     this.forward.copy(motion.forward);
     this.velocity.copy(motion.velocity).setY(motion.climb);
+    this.turnRate = motion.turnRate ?? 0;
+    this.predictBody = motion.predict;
+    this.still = motion.still;
+    if (!motion.still && this.forgetOnMove.size > 0) {
+      for (const object of this.forgetOnMove) this.recent.delete(object);
+      this.forgetOnMove.clear();
+    }
+    if (motion.position) this.center.copy(motion.position);
     const c = this.config;
     const dt = motion.dt;
     this.dt = dt;
@@ -620,6 +678,9 @@ export class TouchController {
   // ---------- Búsqueda ----------
 
   private scan(motion: TouchMotion, detector: SurfaceDetector): void {
+    // Hacia dónde irá cuando la mano llegue: siguiendo curvas, girada con el cuerpo (los rayos, al lado del hombro
+    // de entonces: con la dirección de ahora pasaban junto a un tronco fino sin verlo).
+    const forward = this.scanForward.copy(motion.forward).applyAxisAngle(UP, this.turnAhead(this.config.touchReachTime));
     const best = this.candidate;
     best.score = Infinity;
     this.seenNow.clear();
@@ -631,44 +692,59 @@ export class TouchController {
     };
     for (const hand of Object.values(this.hands)) {
       const arm = hand.armLength;
-      this.predictShoulder(hand, motion, this.predicted);
-      this.outward(hand, motion.forward, this.out);
-      const consider = (normal: Vector3, minLength = 0): void => {
-        if (known() || hand.phase !== 'none') return;
+      this.predictShoulder(hand, this.predicted);
+      this.outward(hand, forward, this.out);
+      // Devuelve true si la superficie queda demasiado cerca del hombro (MIN_REACH).
+      const consider = (normal: Vector3, minLength = 0): boolean => {
+        if (known() || hand.phase !== 'none') return false;
         // Caminando, lo que queda al lado: no la cara que tiene de frente (el extremo de una pared).
-        if (!motion.still && normal.dot(motion.forward) < -FACING) return;
-        if (this.hit.object === undefined && this.hasLastPoint && this.hit.point.distanceTo(this.lastPoint) < 2 * arm) return;
+        if (!motion.still && normal.dot(forward) < -FACING) return false;
+        if (this.hit.object === undefined && this.hasLastPoint && this.hit.point.distanceTo(this.lastPoint) < 2 * arm) return false;
         this.contactPose(hand, this.hit.point, normal, this.predicted, this.a, this.q);
         const reach = this.a.distanceTo(this.predicted) / arm;
-        if (reach > this.config.touchMaxReach || reach < MIN_REACH) return;
+        if (reach < MIN_REACH) return true;
+        if (reach > this.config.touchMaxReach) return false;
         // Y que pueda quedarse apoyada el tiempo mínimo antes de tener que soltar por estirar el brazo.
-        this.later.set(motion.velocity.x, motion.climb, motion.velocity.z).multiplyScalar(this.config.touchHoldTime).add(this.predicted);
-        if (this.a.distanceTo(this.later) / arm > MAX_STRETCH) return;
-        const lead = this.b.subVectors(this.hit.point, this.predicted).dot(motion.forward) / arm;
+        this.ahead(this.predicted, this.config.touchHoldTime, this.later);
+        if (this.a.distanceTo(this.later) / arm > MAX_STRETCH) return false;
+        const lead = this.b.subVectors(this.hit.point, this.predicted).dot(forward) / arm;
+        // Siguiendo curvas, no lo que quedará detrás (volviendo a tocar un objeto en la misma vuelta: no el que acaba
+        // de pasar).
+        if (this.curves() && lead < -RELEASE_BEHIND) return false;
         const score = Math.abs(reach - PREFERRED_REACH) + 0.5 * Math.abs(lead - PREFERRED_LEAD);
         // Caminando, no donde la mano tendría que soltar enseguida (justo antes de una pilastra). Con la normal
         // de verdad: la de una baranda en pendiente no es la vertical.
-        if (score < best.score && (motion.still || !this.slide || this.smoothAhead(this.hit.point, this.hit.normal, motion.forward, arm, detector, minLength))) {
+        if (score < best.score && (motion.still || !this.slide || this.smoothAhead(this.hit.point, this.hit.normal, forward, arm, detector, minLength))) {
           best.score = score;
           best.point.copy(this.hit.point);
           best.normal.copy(normal);
           best.object = this.hit.object;
           best.side = hand.side;
         }
+        return false;
       };
       // Paredes y columnas: rayos horizontales algo por debajo del hombro, de hacia fuera a casi delante.
       this.origin.copy(this.predicted).addScaledVector(UP, -SEARCH_DROP * arm);
       for (const angle of SEARCH_ANGLES) {
-        this.dir.copy(this.out).multiplyScalar(Math.cos(angle)).addScaledVector(motion.forward, Math.sin(angle));
+        this.dir.copy(this.out).multiplyScalar(Math.cos(angle)).addScaledVector(forward, Math.sin(angle));
         if (!detector.cast(this.origin, this.dir, this.config.touchMaxReach * arm, this.hit)) continue;
         const wall = Math.abs(this.hit.normal.y) < 0.7 && this.hit.normal.dot(this.dir) < -0.3;
-        if (wall && this.wideEnough(this.origin, this.dir, this.config.touchMaxReach * arm, arm, detector)) consider(this.hit.normal);
-        else known();
+        if (wall && this.wideEnough(this.origin, this.dir, this.config.touchMaxReach * arm, arm, detector)) {
+          // Demasiado cerca a la altura del pecho (caminando pegado a una pared): más abajo, a la altura a la que la
+          // mano baja al deslizar. Si no, pegado a la pared no la tocaba nunca (solo viniendo de lejos).
+          if (consider(this.hit.normal)) {
+            this.lowOrigin.copy(this.origin).addScaledVector(UP, -(SLIDE_DROP - SEARCH_DROP) * arm);
+            if (detector.cast(this.lowOrigin, this.dir, this.config.touchMaxReach * arm, this.hit)) {
+              const low = Math.abs(this.hit.normal.y) < 0.7 && this.hit.normal.dot(this.dir) < -0.3;
+              if (low && this.wideEnough(this.lowOrigin, this.dir, this.config.touchMaxReach * arm, arm, detector)) consider(this.hit.normal);
+            }
+          }
+        } else known();
       }
       // Barandas: rayos hacia abajo al lado, desde la altura del hombro; su parte de arriba, plana.
       for (const outside of RAIL_OUT) {
         for (const ahead of RAIL_AHEAD) {
-          this.origin.copy(this.predicted).addScaledVector(this.out, outside * arm).addScaledVector(motion.forward, ahead * arm);
+          this.origin.copy(this.predicted).addScaledVector(this.out, outside * arm).addScaledVector(forward, ahead * arm);
           if (!detector.cast(this.origin, this.b.set(0, -1, 0), arm, this.hit)) continue;
           if (this.hit.normal.y > 0.8 && this.hit.distance > 0.2 * arm) consider(this.c.set(0, 1, 0), RAIL_MIN_LENGTH);
           else known();
@@ -700,6 +776,8 @@ export class TouchController {
     hand.slideSpeed = 0;
     hand.slideDistance = 0;
     hand.slideVelocity.set(0, 0, 0);
+    hand.curvePointSet = false;
+    hand.curveSpeed = 0;
     hand.object = object;
     hand.from = hand.weight;
     hand.time = 0;
@@ -780,6 +858,7 @@ export class TouchController {
    */
   private slideAlong(hand: Hand, motion: TouchMotion, detector: SurfaceDetector, dt: number): boolean {
     const arm = hand.armLength;
+    this.surfaceDetector = detector;
     const n = hand.slideNormal;
     // Dirección del deslizamiento: la de la marcha sobre la superficie.
     const along = this.slideTangent.copy(motion.forward).addScaledVector(n, -motion.forward.dot(n));
@@ -794,9 +873,18 @@ export class TouchController {
     // amortiguador, la mano no se queda atrás (con un muelle simple, ~25 cm, y en una baranda baja eso
     // estiraba el brazo).
     const w = 2 * Math.PI * SLIDE_FREQUENCY;
-    const error = this.a.copy(this.shoulder).addScaledVector(motion.forward, SLIDE_LEAD * arm).sub(hand.point).dot(along);
-    // (Entra poco a poco: de golpe, al tocar, la mano arrancaba con un tirón.)
-    const bodySpeed = (motion.velocity.x * along.x + motion.velocity.z * along.z) * smoothstep(hand.time / SLIDE_START);
+    let error: number;
+    let bodySpeed: number;
+    if (this.curves() && this.surfaceBeside(hand, motion, n, dt)) {
+      // Siguiendo curvas: hacia el punto de la superficie al lado del hombro, con su velocidad sobre ella (por
+      // dentro de la curva, menos que el cuerpo: con la del cuerpo, la mano se adelantaba).
+      error = this.a.subVectors(hand.curvePoint, hand.point).dot(along);
+      bodySpeed = hand.curveSpeed * smoothstep(hand.time / SLIDE_START);
+    } else {
+      error = this.a.copy(this.shoulder).addScaledVector(motion.forward, SLIDE_LEAD * arm).sub(hand.point).dot(along);
+      // (Entra poco a poco: de golpe, al tocar, la mano arrancaba con un tirón.)
+      bodySpeed = (motion.velocity.x * along.x + motion.velocity.z * along.z) * smoothstep(hand.time / SLIDE_START);
+    }
     // Nunca hacia atrás: si tocó por delante del hombro, espera a que el cuerpo la alcance (si no, en el
     // extremo de una pared se salía por el borde).
     hand.slideSpeed = Math.max(hand.slideSpeed + (w * w * error + 2 * w * (bodySpeed - hand.slideSpeed)) * dt, 0);
@@ -817,7 +905,9 @@ export class TouchController {
     // Muy curva (una columna): no se desliza, se toca y se suelta al pasar. Rodeándola, la mano no podía seguir
     // al cuerpo y el brazo se estiraba de lado hasta soltar de golpe.
     const moved = this.hit.point.distanceTo(hand.point);
-    if (moved > 1e-3 * arm && this.hit.normal.angleTo(hand.slideRawNormal) > (moved / arm) * SLIDE_MAX_BEND) {
+    // (Siguiendo curvas, hasta touchCurveRadius, con margen: con normales por caras gira a saltos.)
+    const maxBend = this.curves() ? Math.max(CURVE_BEND_MARGIN * moved / this.config.touchCurveRadius, (moved / arm) * SLIDE_MAX_BEND) : (moved / arm) * SLIDE_MAX_BEND;
+    if (moved > 1e-3 * arm && this.hit.normal.angleTo(hand.slideRawNormal) > maxBend) {
       hand.slide = false;
       hand.slideSpeed = 0;
       hand.slideVelocity.set(0, 0, 0);
@@ -825,7 +915,8 @@ export class TouchController {
     }
     hand.slideRawNormal.copy(this.hit.normal);
     // Normal suavizada (en una columna de caras planas cambia a saltos) y la mano girada con ella.
-    const k = 1 - Math.exp(-dt / SLIDE_NORMAL_TIME);
+    // (Siguiendo curvas, menos: en un tronco fino la normal gira deprisa y la palma se quedaba atrás, torcida.)
+    const k = 1 - Math.exp(-dt / (this.curves() ? CURVE_NORMAL_TIME : SLIDE_NORMAL_TIME));
     this.b.copy(n).lerp(this.hit.normal, k).normalize();
     hand.rotation.premultiply(this.q.setFromUnitVectors(n, this.b));
     n.copy(this.b);
@@ -838,6 +929,25 @@ export class TouchController {
     hand.point.copy(this.hit.point);
     const finger = this.finger.copy(hand.fingerLocal).applyQuaternion(hand.rotation);
     hand.wrist.copy(hand.point).addScaledVector(n, hand.palmThickness).addScaledVector(finger, -hand.palmLength);
+    return true;
+  }
+
+  /**
+   * Following a curved surface: finds the point of the surface beside the shoulder (a little ahead, at the
+   * height of the hand), casting from there towards it (along `-normal`), and how fast it moves along the
+   * surface (smoothed). False if it doesn't find it (it then follows the body, as along a wall).
+   */
+  private surfaceBeside(hand: Hand, motion: TouchMotion, normal: Vector3, dt: number): boolean {
+    const arm = hand.armLength;
+    this.origin.copy(this.shoulder).addScaledVector(motion.forward, SLIDE_LEAD * arm);
+    this.origin.y = hand.point.y;
+    if (!this.surfaceDetector || !this.surfaceDetector.cast(this.origin, this.b.copy(normal).negate(), arm, this.hit)) return false;
+    if (hand.curvePointSet && dt > 0) {
+      const speed = this.c.subVectors(this.hit.point, hand.curvePoint).dot(this.slideTangent) / dt;
+      hand.curveSpeed += (Math.max(speed, 0) - hand.curveSpeed) * (1 - Math.exp(-dt / SLIDE_VELOCITY_TIME));
+    }
+    hand.curvePoint.copy(this.hit.point);
+    hand.curvePointSet = true;
     return true;
   }
 
@@ -896,6 +1006,15 @@ export class TouchController {
   }
 
   private startRelease(hand: Hand): void {
+    if (hand.object !== undefined) {
+      // Parado, el objeto no se vuelve a tocar mientras siga parado (tocaba, soltaba y volvía a tocar sin parar),
+      // pero sí al echar a andar: es otra pasada (si no, caminando de un punto a otro junto a la misma pared, solo
+      // la tocaba la primera vez: no la perdía de vista). Siguiendo curvas, caminando, se puede volver a tocar en
+      // la misma vuelta (rodeándolo, no se pierde de vista).
+      if (this.still) this.forgetOnMove.add(hand.object);
+      else if (this.curves()) this.recent.delete(hand.object);
+    }
+    hand.curvePointSet = false;
     hand.phase = 'release';
     hand.releaseLocalSet = false;
     hand.anchor.copy(hand.hasActual ? hand.actualWrist : hand.wrist);
@@ -961,13 +1080,64 @@ export class TouchController {
    */
   private shoulderAtContact(hand: Hand, out: Vector3): Vector3 {
     worldPosition(hand.bones.upperArm, out);
-    return out.addScaledVector(this.velocity, Math.max(this.config.touchReachTime - hand.time, 0));
+    return this.ahead(out, Math.max(this.config.touchReachTime - hand.time, 0), out);
   }
 
-  /** Where the shoulder will be when the gesture ends, if the body keeps the same velocity. */
-  private predictShoulder(hand: Hand, motion: TouchMotion, out: Vector3): Vector3 {
+  /** Where the shoulder will be when the gesture ends. */
+  private predictShoulder(hand: Hand, out: Vector3): Vector3 {
     worldPosition(hand.bones.upperArm, out);
-    return out.addScaledVector(this.a.copy(motion.velocity).setY(motion.climb), this.config.touchReachTime);
+    return this.ahead(out, this.config.touchReachTime, out);
+  }
+
+  /** Following curved surfaces (touchCurveRadius > 0). */
+  private curves(): boolean {
+    return this.config.touchCurveRadius > 0;
+  }
+
+  /**
+   * Where a point carried by the body (`from`, world) will be in `t` s: as far as the body will travel (with
+   * acceleration and braking, up to where it stops: `travel`; without it, at its velocity), in the direction it
+   * goes or, following curves, turning at its turn rate (the point turns with the body round its position). Into
+   * `out` (may be `from`). Before, always at its velocity: on a short walk the body stopped before the hand got
+   * there and the hand came back without touching.
+   */
+  private ahead(from: Vector3, t: number, out: Vector3): Vector3 {
+    if (t <= 0) return out.copy(from);
+    const y = from.y + this.velocity.y * t;
+    if (!this.predictBody) return out.copy(from).addScaledVector(this.velocity, t);
+    const yaw = this.predictBody(t, this.aheadMove);
+    if (this.circling()) {
+      // Rodeando algo: el centro avanza lo predicho por un arco al ritmo de giro de ahora (en pasos), y el punto
+      // gira con el cuerpo alrededor de él. (La predicción del cuerpo deja de girar al alcanzar su rumbo deseado,
+      // pero rodeando, el destino se va corriendo y el giro sigue.)
+      const distance = this.aheadMove.length();
+      const speed = Math.hypot(this.velocity.x, this.velocity.z);
+      if (speed > 1e-6) this.aheadMove.set(this.velocity.x / speed, 0, this.velocity.z / speed);
+      else this.aheadMove.copy(this.forward).setY(0).normalize();
+      const w = this.turnRate;
+      const steps = 8;
+      this.aheadOffset.subVectors(from, this.center).applyAxisAngle(UP, w * t);
+      out.copy(this.center);
+      for (let k = 0; k < steps; k++) {
+        this.aheadMove.applyAxisAngle(UP, (w * t) / steps / 2);
+        out.addScaledVector(this.aheadMove, distance / steps);
+        this.aheadMove.applyAxisAngle(UP, (w * t) / steps / 2);
+      }
+      return out.add(this.aheadOffset).setY(y);
+    }
+    this.aheadOffset.subVectors(from, this.center).applyAxisAngle(UP, yaw);
+    return out.copy(this.center).add(this.aheadMove).add(this.aheadOffset).setY(y);
+  }
+
+  /** How much the body will have turned in `t` s (rad), as `ahead` predicts it. */
+  private turnAhead(t: number): number {
+    if (this.circling()) return this.turnRate * t;
+    return this.predictBody ? this.predictBody(t, this.aheadMove) : 0;
+  }
+
+  /** Following curves and turning steadily (going round something): predicts along an arc (see `ahead`). */
+  private circling(): boolean {
+    return this.curves() && Math.abs(this.turnRate) > CIRCLING_TURN_RATE;
   }
 
   /** Hand on the side of the point. */
@@ -1081,6 +1251,9 @@ function createHand(side: Side, bones: ArmBones, sign: number): Hand {
     slideVelocity: new Vector3(),
     slideNormal: new Vector3(),
     slideRawNormal: new Vector3(),
+    curvePoint: new Vector3(),
+    curvePointSet: false,
+    curveSpeed: 0,
     releaseVelocity: new Vector3(),
     actualWrist: new Vector3(),
     actualVelocity: new Vector3(),

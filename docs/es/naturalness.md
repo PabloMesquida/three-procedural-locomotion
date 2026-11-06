@@ -290,7 +290,14 @@ lado. Tampoco hay mocap de esto; está elegido para que se vea como una mano que
 - se acaba (y suelta) si el rayo no encuentra la superficie, si la normal gira de golpe (una esquina) o si la
   superficie es muy curva (la normal gira más de 1 rad por brazo recorrido, radio < ~0,5 m: una columna). En
   una columna, rodeándola, la mano no podía seguir al cuerpo y el brazo se estiraba de lado hasta soltar de golpe
-  (hasta 10 °/frame²); ahora la toca y la suelta al pasar;
+  (hasta 10 °/frame²); ahora la toca y la suelta al pasar. Con `touchCurveRadius` (tampoco hay capturas: es una
+  elección) sigue curvas hasta ese radio: el muelle lleva la mano hacia el punto de la superficie al lado del
+  hombro (un rayo desde el hombro hacia la superficie), con la velocidad de ese punto en el amortiguador en vez de
+  la del cuerpo (con la del cuerpo, por dentro de la curva, la mano se adelantaba ~20 cm), y la búsqueda predice
+  el hombro siguiendo el giro del cuerpo. Alrededor de un tronco de 10 cm, una columna de 30 cm y una pared curva
+  de 1,5 m, en los dos sentidos (`tests/touch.test.ts`): apoyada el 82–97 % de la vuelta, el centro de la palma a
+  menos de 1 mm de la superficie y mirándola, la mano recorriendo lo que dan los radios (0,17, 0,35 y 0,74 de lo
+  que recorre el cuerpo), hasta 2,3 °/frame²;
 - solo desliza por una superficie más o menos lisa: suelta si da un escalón de más de un 3 % del brazo (~1,7 cm)
   hacia fuera o hacia dentro, y antes de llegar a algo que sobresalga (una pilastra, un marco): un rayo que va
   rozando la superficie, a esa altura, mira un cuarto de brazo (~14 cm) por delante de la mano. Antes, la mano

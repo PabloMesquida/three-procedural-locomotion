@@ -293,7 +293,14 @@ alongside. There is no mocap of this either; it is chosen so that it looks like 
 - it ends (and lets go) if the ray doesn't find the surface, if the normal turns abruptly (a corner) or if
   the surface is very curved (the normal turns more than 1 rad per arm length traveled, radius < ~0.5 m: a
   column). On a column, going around it, the hand couldn't follow the body and the arm stretched sideways
-  until it let go abruptly (up to 10 °/frame²); now it touches it and lets go when passing;
+  until it let go abruptly (up to 10 °/frame²); now it touches it and lets go when passing. With
+  `touchCurveRadius` (also no mocap: a choice) it follows curves down to that radius: the spring carries the hand
+  towards the point of the surface beside the shoulder (a ray from the shoulder towards the surface), with that
+  point's speed in the damper instead of the body's (with the body's, on the inside of the curve, the hand went
+  ~20 cm ahead), and the search predicts the shoulder along the turn of the body. Round a 10 cm trunk, a 30 cm
+  column and a 1.5 m curved wall, in both directions (`tests/touch.test.ts`): resting 82–97 % of the turn, the palm
+  less than 1 mm from the surface and facing it, the hand travelling what the radii give (0.17, 0.35 and 0.74 of
+  the body), up to 2.3 °/frame²;
 - it only slides along a more or less smooth surface: it lets go at a step of more than 3 % of the arm
   (~1.7 cm), outwards or inwards, and before reaching something that sticks out (a pilaster, a frame): a ray
   that skims the surface, at that height, looks a quarter of an arm (~14 cm) ahead of the hand. Before, the

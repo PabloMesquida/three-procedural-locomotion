@@ -483,6 +483,10 @@
     "stopTolerance": {
       "en": "Extra distance to the target within which, once stopped after braking, it counts as arrived (m).",
       "es": "Distancia extra al destino con la que, ya parado tras frenar, se considera que ha llegado (m)."
+    },
+    "touchCurveRadius": {
+      "en": "Smallest radius of a surface (m) the hand keeps resting on while walking round it, sliding with it: a column, a tree trunk, a curved wall. 0 (default): only along surfaces of a radius of more than about an arm (~0.5 m); a column is touched and let go when passing. With it, it also looks for the surface where the shoulder will be following the turn of the body (not straight ahead), the hand goes beside the shoulder (on the inside of the curve it travels less than the body) and, once it has let go, it can rest it again on the same object in the same turn. No motion capture of this: a choice (see naturalness).",
+      "es": "Radio más pequeño de una superficie (m) en la que la mano sigue apoyada al rodearla, deslizándose con ella: una columna, un tronco, una pared curva. 0 (por defecto): solo en superficies de radio mayor que un brazo, más o menos (~0,5 m); una columna se toca y se suelta al pasar. Con él, además busca la superficie donde estará el hombro siguiendo el giro del cuerpo (no en línea recta), la mano va al lado del hombro (por dentro de la curva recorre menos que el cuerpo) y, cuando la suelta, puede volver a apoyarla en el mismo objeto en la misma vuelta. Sin captura de movimiento de esto: una elección (ver naturalidad)."
     }
   },
   "presets": {

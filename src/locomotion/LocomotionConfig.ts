@@ -367,4 +367,5 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   touchHoldTime: 0.25,
   touchMaxReach: 0.82,
   touchCooldown: 0.3,
+  touchCurveRadius: 0,
 };

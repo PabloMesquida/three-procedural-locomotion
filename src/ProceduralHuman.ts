@@ -421,6 +421,8 @@ export class ProceduralHuman {
       const navigating = this.navigation.active;
       this.replanIfStuck(step);
       this.navigation.update();
+      // Hasta dónde llegará (para el gesto de tocar: en un tramo corto, se para antes de que llegue la mano).
+      this.locomotion.travelLimit = this.navigation.active ? this.navigation.remaining() : Number.POSITIVE_INFINITY;
       this.locomotion.update(step);
       this.emitEvents(navigating);
     }

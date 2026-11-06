@@ -217,6 +217,20 @@ export class MoveToController {
     this.controller.targetSpeed = 0;
   }
 
+  /** What is left to walk to the destination (m): along the route, if there is one; 0 without a destination. */
+  remaining(): number {
+    if (!this.active) return 0;
+    const p = this.controller.body.state.position;
+    if (this.path.length === 0) return this.distance();
+    let from: Vector3 = p;
+    let total = 0;
+    for (let k = this.pathIndex; k < this.path.length; k++) {
+      total += Math.hypot(this.path[k].x - from.x, this.path[k].z - from.z);
+      from = this.path[k];
+    }
+    return total;
+  }
+
   /** Horizontal distance to the destination (m); 0 without a destination. */
   distance(): number {
     if (!this.active) return 0;

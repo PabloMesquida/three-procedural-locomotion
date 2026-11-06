@@ -268,6 +268,11 @@ export class LocomotionController {
   readonly feet: Record<Side, FootTarget>;
   /** Stairs and steps: where the feet land and the height the body follows (see StairPlanner). */
   readonly stairs: StairPlanner;
+  /**
+   * How far the body will still travel (m; Infinity = no limit): with a `moveTo`, up to the destination. The
+   * touch gesture predicts where the shoulder will be with it (see predictTravel).
+   */
+  travelLimit = Number.POSITIVE_INFINITY;
   /** Obstacles that aren't ground (see Colliders): it doesn't go through them; null = none. */
   colliders: Colliders | null = null;
 
@@ -971,6 +976,18 @@ export class LocomotionController {
     this.placementConfig.toeTolerance = this.config.footProbeTolerance;
   }
 
+  /**
+   * The body's prediction (BodyController.predict) for the touch gesture: displacement in `t` s into `out`, up to
+   * `travelLimit`, and the turn (rad).
+   */
+  private readonly predictTravel = (t: number, out: Vector3): number => {
+    const yaw = this.body.predict(t, out, this.predictVelocity);
+    const length = out.length();
+    if (length > this.travelLimit) out.multiplyScalar(this.travelLimit / length);
+    return yaw;
+  };
+  private readonly predictVelocity = new Vector3();
+
   /** What the touch gesture needs from the body at this moment. */
   touchMotion(dt = 0): TouchMotion {
     const state = this.body.state;
@@ -981,6 +998,9 @@ export class LocomotionController {
       climb: this.climb,
       allowed: !state.airborne && this.jumping.phase === 'GROUNDED' && this.gait.blend < TOUCH_MAX_RUN_BLEND,
       still: this.gait.mode === 'idle',
+      position: state.position,
+      turnRate: state.angularVelocity,
+      predict: this.predictTravel,
     };
   }
 

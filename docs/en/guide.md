@@ -219,7 +219,8 @@ ends (also going up or down stairs or a ramp): walls and columns to the side or 
 at chest height), with room for the palm (not a thin post or the side of a handrail), and railings at hip height
 (downward rays) that go on ahead (not the top of a newel post), but not faces it is walking straight into. It
 touches each object once while it stays
-close (it doesn't touch a long wall at every step), with each hand on its own side (it can keep one on the wall
+close (it doesn't touch a long wall at every step; stopping and walking on is another pass, and it can touch it
+again), with each hand on its own side (it can keep one on the wall
 and touch columns with the other), walking or standing; not while running or in the air. It doesn't try what is
 out of the hand's reach: it doesn't overstretch the arm.
 
@@ -232,7 +233,16 @@ speed and moves next to the shoulder, against the surface (on a wall, gradually 
 the surface ends (the end of the wall, a corner) or stops being smooth (a step, or something sticking out ahead,
 like a pilaster, before the fingers get there) it lets go, and once past it rests the hand again. A column is
 too curved to slide on: it touches it and lets go once it is behind, as with `touchSlide = false`. Standing
-still, it lets go after a moment. The hand
+still, it lets go after a moment.
+
+To keep the hand on a column, a tree trunk or a curved wall while walking round it, give the smallest radius it
+should follow: `config: { touchCurveRadius: 0.05 }` (m; 0 by default). Then it also looks for the surface where
+the shoulder will be following the turn of the body, the hand goes beside the shoulder (on the inside of the
+curve it travels less than the body: ~0.17 of it round a 10 cm trunk) with the palm turning with the surface,
+it lets go when the surface ends, the arm doesn't reach or the body moves away, and it can rest it again on the
+same object in the same turn. The palm turns smoothly with the normals of the mesh: with smooth normals (shared
+vertices, as `CylinderGeometry`), continuously; with flat normals (one per face) the normal is smoothed over 0.1 s
+so the hand doesn't jump between faces. It costs one more ray per frame while it slides (~60 per second). The hand
 hangs down again in ~0.7 s, starting from where it was and with the speed it had. The other arm keeps swinging.
 
 By hand:

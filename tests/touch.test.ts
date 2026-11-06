@@ -151,6 +151,17 @@ describe('tocar superficies al pasar (touchables)', () => {
     });
   }
 
+  it('caminando de un punto a otro junto a la misma pared (parando entre medio), la toca cada vez', () => {
+    // Antes solo la tocaba la primera vez: el objeto ya tocado no se repite mientras siga a la vista, y caminando
+    // junto a ella no la perdía de vista. Pararse y volver a andar es otra pasada.
+    const world = createWorld();
+    addSurface(world, 'pared', 'right', 0.65, 3);
+    let touches = 0;
+    world.human.on('touch', () => touches++);
+    simulate(world, 12, [[0, (h) => h.moveTo(new Vector3(0, 0, -1.5))], [4, (h) => h.moveTo(new Vector3(0, 0, -3))], [8, (h) => h.moveTo(new Vector3(0, 0, -4.5))]]);
+    assert.equal(touches, 3);
+  });
+
   it('sin deslizar (touchSlide = false): toca la pared, la mano queda quieta y suelta al pasar', () => {
     const world = createWorld({ human: { config: { variation: 0 } } });
     addSurface(world, 'pared', 'right', 0.65, 5);
@@ -325,6 +336,125 @@ describe('tocar superficies al pasar (touchables)', () => {
     let max = 0;
     a.forEach((f, i) => f.forEach((x, j) => { max = Math.max(max, Math.abs(x - b[i][j])); }));
     assert.ok(max < 1e-4, `diferencia ${(max * 1000).toFixed(2)} mm`);
+  });
+});
+
+/**
+ * Da dos vueltas con followPath alrededor de una superficie cilíndrica de radio `radius` (a `walk` m de su eje,
+ * en el sentido `turn`, ±1), con touchCurveRadius `curve`, y mide el toque mientras la rodea.
+ */
+function walkAround(radius: number, walk: number, turn: number, curve: number) {
+  const world = createWorld();
+  const { human } = world;
+  const surface = new Mesh(new CylinderGeometry(radius, radius, 3, 48), new MeshBasicMaterial());
+  surface.position.set(0, 1.5, -3);
+  world.scene.add(surface);
+  surface.updateMatrixWorld(true);
+  human.touchables = [surface];
+  human.setConfig({ touchCurveRadius: curve });
+  const points: Vector3[] = [];
+  for (let k = 0; k <= 64; k++) {
+    const a = Math.PI / 2 + turn * (k / 32) * 2 * Math.PI;
+    points.push(new Vector3(Math.cos(a) * walk, 0, -3 + Math.sin(a) * walk));
+  }
+  const hands = (human.locomotion.touch as unknown as { hands: Record<Side, { point: Vector3 }> }).hands;
+  const ray = new Raycaster();
+  const result = { touches: 0, contact: 0, jerk: 0, palmGap: 0, palmFacing: -1, handPath: 0, bodyPath: 0, rootRadius: 0 };
+  human.on('touch', () => result.touches++);
+  const previous: Record<Side, { q: Quaternion[]; w: number[] }> = { left: { q: [], w: [] }, right: { q: [], w: [] } };
+  let circling = 0;
+  let lastHand: Vector3 | null = null;
+  let lastBody: Vector3 | null = null;
+  simulate(world, 20, [[0, (h) => h.followPath(points)]], {
+    onFrame: (t) => {
+      const fromAxis = Math.hypot(human.position.x, human.position.z + 3);
+      // Rodeándola: en el círculo, todavía con destino, y pasado el acercamiento.
+      const around = human.moveTarget !== null && fromAxis < walk + 0.1 && t > 4;
+      if (around) {
+        circling++;
+        result.rootRadius += fromAxis;
+      }
+      for (const side of ['left', 'right'] as const) {
+        const arm = human.rig[side === 'left' ? 'leftArm' : 'rightArm']!;
+        const p = previous[side];
+        const qs = [arm.upperArm, arm.forearm, arm.hand].map((b) => b.getWorldQuaternion(new Quaternion()));
+        const w = qs.map((q, i) => (p.q[i] ? (2 * Math.acos(Math.min(1, Math.abs(q.dot(p.q[i]))))) / DEG : 0));
+        if (p.w.length > 0 && t > 0.3) w.forEach((x, i) => { result.jerk = Math.max(result.jerk, Math.abs(x - p.w[i])); });
+        previous[side] = { q: qs, w };
+        if (human.touchPhase(side) !== 'contact') continue;
+        const { center, normal } = palm(human, side);
+        ray.set(center.clone().addScaledVector(normal, -0.2), normal);
+        const hit = ray.intersectObject(surface)[0];
+        result.palmGap = Math.max(result.palmGap, hit ? Math.abs(hit.distance - 0.2) : 1);
+        result.palmFacing = Math.max(result.palmFacing, normal.dot(new Vector3(center.x, 0, center.z + 3).normalize()));
+        if (!around) continue;
+        result.contact++;
+        if (lastHand) result.handPath += hands[side].point.distanceTo(lastHand);
+        if (lastBody) result.bodyPath += human.position.distanceTo(lastBody);
+        lastHand = hands[side].point.clone();
+        lastBody = human.position.clone();
+      }
+    },
+  });
+  result.contact /= Math.max(circling, 1);
+  result.rootRadius /= Math.max(circling, 1);
+  return result;
+}
+
+describe('tocar superficies curvas al rodearlas (touchCurveRadius)', () => {
+  // Un tronco de 10 cm, una columna de 30 cm y una pared curva de 1,5 m de radio, en los dos sentidos, con la
+  // raíz a unos 55 cm de la superficie.
+  for (const [radius, walk] of [[0.1, 0.7], [0.3, 0.9], [1.5, 2.05]] as const) {
+    for (const turn of [1, -1]) {
+      it(`radio ${radius} m, girando hacia ${turn > 0 ? 'un lado' : 'el otro'}: apoya la mano y la desliza con la superficie, sin tirones`, () => {
+        const r = walkAround(radius, walk, turn, 0.05);
+        assert.ok(r.contact > 0.75, `apoyada solo el ${(r.contact * 100).toFixed(0)} % de la vuelta`);
+        assert.ok(r.palmGap < 0.01, `la palma se separó ${(r.palmGap * 100).toFixed(1)} cm`);
+        assert.ok(r.palmFacing < -0.9, `la palma no mira la superficie (${r.palmFacing.toFixed(2)}, toques ${r.touches}, apoyada ${(r.contact * 100).toFixed(0)} %)`);
+        assert.ok(r.jerk < 2.5, `tirón de ${r.jerk.toFixed(2)} °/frame²`);
+        // Por dentro de la curva, la mano recorre menos que el cuerpo: lo que da el radio de la superficie entre el
+        // de la raíz (el hombro de dentro va algo más cerca).
+        const expected = radius / r.rootRadius;
+        const ratio = r.handPath / r.bodyPath;
+        assert.ok(Math.abs(ratio - expected) < 0.06, `la mano recorre ${ratio.toFixed(2)} lo que el cuerpo (radios: ${expected.toFixed(2)})`);
+      });
+    }
+  }
+
+  it('sin la opción (0, por defecto), una columna se toca y se suelta: rodeándola, la mano no se queda apoyada', () => {
+    const r = walkAround(0.3, 0.9, 1, 0);
+    assert.ok(r.contact < 0.1, `apoyada el ${(r.contact * 100).toFixed(0)} % de la vuelta`);
+  });
+
+  it('al acabar de rodear una pared curva, parado a su lado, no toca, suelta y vuelve a tocar sin parar', () => {
+    // Un arco de ~150° a 55 cm de una pared de 2,5 m de radio, y luego parado a su lado 6 s.
+    const world = createWorld();
+    const { human } = world;
+    const wall = new Mesh(new CylinderGeometry(2.5, 2.5, 3, 96), new MeshBasicMaterial());
+    wall.position.set(0, 1.5, -3);
+    world.scene.add(wall);
+    wall.updateMatrixWorld(true);
+    human.touchables = [wall];
+    human.setConfig({ touchCurveRadius: 0.05 });
+    const points: Vector3[] = [];
+    for (let k = 0; k <= 24; k++) {
+      const angle = Math.PI / 2 + (k / 24) * 2.6;
+      points.push(new Vector3(Math.cos(angle) * 3.05, 0, -3 + Math.sin(angle) * 3.05));
+    }
+    let touches = 0;
+    let stillTouches = 0;
+    human.on('touch', () => {
+      touches++;
+      if (human.moveTarget === null) stillTouches++;
+    });
+    simulate(world, 18, [[0, (h) => h.followPath(points)]]);
+    assert.ok(touches >= 1, 'no la tocó');
+    assert.ok(stillTouches <= 1, `parado, la tocó ${stillTouches} veces`);
+  });
+
+  it('touchCurveRadius negativo es un error', () => {
+    const world = createWorld();
+    assert.throws(() => world.human.setConfig({ touchCurveRadius: -0.1 }), /touchCurveRadius/);
   });
 });
 
