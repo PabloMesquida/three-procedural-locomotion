@@ -17,6 +17,7 @@ import type { JumpPhase } from './locomotion/JumpController.ts';
 import { LocomotionController } from './locomotion/LocomotionController.ts';
 import { defaultMoveToConfig, type MoveToConfig, MoveToController } from './navigation/MoveToController.ts';
 import { PathPlanner } from './navigation/PathPlanner.ts';
+import { type Collider, Colliders } from './terrain/Colliders.ts';
 import { estimateForward, type HumanRig, type HumanRigMapping, measureLegLength, type Side } from './rig/HumanRig.ts';
 import { type StylePreset, stylePresets } from './presets.ts';
 import { checkModel } from './rig/checkModel.ts';
@@ -45,6 +46,13 @@ export interface ProceduralHumanOptions {
    * against, or your own detector (`SurfaceDetector`). Without them, it only touches with `touch()`.
    */
   touchables?: SurfaceDetector | Object3D[];
+  /**
+   * What isn't ground and it mustn't go through (tree trunks, columns, walls, railings, furniture): meshes (by
+   * the box of each one, see `Colliders`) or vertical cylinders `{ center, radius, height? }`. `moveTo` goes
+   * round them; with your own controls, it slides along them (head-on, it stops in front). They can be the same
+   * meshes as `touchables`.
+   */
+  colliders?: Collider[];
   /** Direction (world, horizontal) the model faces at rest. Estimated from the rig by default. */
   forward?: Vector3;
   /**
@@ -159,6 +167,7 @@ export class ProceduralHuman {
   readonly navigation: MoveToController;
 
   private readonly pathPlanner: PathPlanner;
+  private colliderList: Collider[] | null = null;
   private readonly route: Vector3[] = [];
   private readonly routeStart = new Vector3();
   /** Destination of the last `moveTo` with a route (to plan it again if it gets stuck), and how. */
@@ -227,8 +236,15 @@ export class ProceduralHuman {
     this.locomotion = new LocomotionController(rig, forward, detector, this.scaledConfig, options.seed ?? 1);
     this.navigation = new MoveToController(this.locomotion, pickMoveToConfig(this.scaledConfig));
     const stairs = this.locomotion.stairs;
-    this.pathPlanner = new PathPlanner(detector, () => this.locomotion.config, () => stairs.toeFront + stairs.heelBack);
+    this.pathPlanner = new PathPlanner(
+      detector,
+      () => this.locomotion.config,
+      () => Math.max(stairs.toeFront + stairs.heelBack, this.locomotion.colliders ? this.locomotion.bodyRadius : 0),
+      () => this.locomotion.colliders,
+      () => this.locomotion.bodyHeight,
+    );
     if (options.touchables) this.touchables = options.touchables;
+    if (options.colliders) this.colliders = options.colliders;
     this.reset();
   }
 
@@ -324,6 +340,16 @@ export class ProceduralHuman {
    * What it can touch when passing by: meshes (raycast) or your own detector; null = nothing (only
    * `touch()`). Can be changed at any time (e.g. when loading another area).
    */
+  /** What it mustn't go through, besides the ground (see the `colliders` option); null = nothing. */
+  get colliders(): readonly Collider[] | null {
+    return this.colliderList;
+  }
+
+  set colliders(value: readonly Collider[] | null) {
+    this.colliderList = value && value.length > 0 ? [...value] : null;
+    this.locomotion.colliders = this.colliderList ? new Colliders(this.colliderList) : null;
+  }
+
   get touchables(): SurfaceDetector | null {
     return this.locomotion.surfaces;
   }

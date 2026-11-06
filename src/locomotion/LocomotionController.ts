@@ -11,6 +11,7 @@ import { LegIK } from '../ik/LegIK.ts';
 import type { TwoBoneIKResult } from '../ik/TwoBoneIK.ts';
 import type { HumanRig, Side } from '../rig/HumanRig.ts';
 import { measureFeet } from '../rig/measureFeet.ts';
+import type { Colliders } from '../terrain/Colliders.ts';
 import { defaultFootPlacementConfig, FootPlacement, type FootPlacementConfig } from '../terrain/FootPlacement.ts';
 import { createGroundHit, type GroundDetector } from '../terrain/GroundDetector.ts';
 import type { SurfaceDetector } from '../terrain/SurfaceDetector.ts';
@@ -148,6 +149,13 @@ const STAIR_RELEASE = 0.4;
 /** Stopped (below this speed, m/s) too close to a wall, it moves back from it at this speed (m/s). */
 const WALL_BACK_OFF_BELOW = 0.05;
 const WALL_BACK_OFF_SPEED = 0.3;
+/**
+ * Room of the body round the root, from colliders (× stepLength; 24 cm with the default one: half the width of
+ * the shoulders and a little), and height of the character for them (× stepLength): what is higher, it passes
+ * under.
+ */
+const BODY_RADIUS = 0.3;
+const BODY_HEIGHT = 2.2;
 /** Heel lift at toe-off (degrees) from which `walkLandingLead` applies in full. */
 const FULL_HEEL_LIFT = 45;
 /** Fraction of the swing over which the toes, bent at toe-off, return to their rest pose. */
@@ -260,6 +268,8 @@ export class LocomotionController {
   readonly feet: Record<Side, FootTarget>;
   /** Stairs and steps: where the feet land and the height the body follows (see StairPlanner). */
   readonly stairs: StairPlanner;
+  /** Obstacles that aren't ground (see Colliders): it doesn't go through them; null = none. */
+  colliders: Colliders | null = null;
 
   /** Desired crouch (0 = standing, 1 = fully crouched). */
   targetCrouch = 0;
@@ -329,6 +339,7 @@ export class LocomotionController {
   private readonly turnDirection = new Vector3();
   private readonly landingDirection = new Vector3();
   private readonly backOff = new Vector3();
+  private readonly away = new Vector3();
   private readonly stairTangent = new Vector3();
   private readonly pushRotation = new Quaternion();
 
@@ -618,6 +629,7 @@ export class LocomotionController {
     const k = smoothstep(this.crouch);
     this.body.speedLimit = Math.min(this.config.runSpeed + (this.config.crouchMaxSpeed - this.config.runSpeed) * k, this.stairSpeedLimit(dt));
     this.backOffWall(dt);
+    this.slideOffColliders();
 
     // 1–2. Cuerpo: velocidad y avance de la raíz sobre el suelo. Las caderas vuelven a su pose de
     //      reposo sin recalcular matrices: el cuerpo actualiza después todo el esqueleto.
@@ -862,6 +874,36 @@ export class LocomotionController {
    * feet, which keepOffWall already keeps that far. If not, the body leant over the edge and the feet,
    * which wanted to be under it, kept stepping.
    */
+  /** Room of the body round the root, from colliders (m). */
+  get bodyRadius(): number {
+    return BODY_RADIUS * this.config.stepLength;
+  }
+
+  /** Height of the character for colliders (m): what is higher above its ground, it passes under. */
+  get bodyHeight(): number {
+    return BODY_HEIGHT * this.config.stepLength;
+  }
+
+  /**
+   * Against colliders (see Colliders): if the root is closer to one than `bodyRadius`, it moves it out (the
+   * next advance), so that it slides along it; and the more it goes towards it, the more it brakes (head-on, it
+   * stops in front). What it can step on or pass under doesn't count.
+   */
+  private slideOffColliders(): void {
+    const colliders = this.colliders;
+    const s = this.body.state;
+    if (!colliders || s.airborne) return;
+    colliders.update();
+    const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
+    const room = this.bodyRadius;
+    const away = this.away;
+    const d = colliders.distance(s.position.x, s.position.z, ground + this.config.maxStepUp, ground + this.bodyHeight, away);
+    if (d >= room) return;
+    this.body.drift.addScaledVector(away, room - d);
+    const into = -(s.forward.x * away.x + s.forward.z * away.z);
+    if (into > 0) this.body.speedLimit = Math.min(this.body.speedLimit, this.config.walkSpeed * (1 - into));
+  }
+
   private backOffWall(dt: number): void {
     const s = this.body.state;
     if (s.airborne || s.speed > WALL_BACK_OFF_BELOW) return;

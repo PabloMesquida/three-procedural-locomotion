@@ -65,6 +65,7 @@ export { rigifyMapping } from './rig/presets/rigify.ts';
 // ---------- Suelo ----------
 export { createGroundHit, type GroundDetector, type GroundHit, RaycastGroundDetector } from './terrain/GroundDetector.ts';
 export { StaticGroundDetector } from './terrain/StaticGroundDetector.ts';
+export { type Collider, type ColliderCylinder, Colliders } from './terrain/Colliders.ts';
 export { createSurfaceHit, RaycastSurfaceDetector, type SurfaceDetector, type SurfaceHit } from './terrain/SurfaceDetector.ts';
 export type { TouchOptions, TouchPhase } from './body/TouchController.ts';
 

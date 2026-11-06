@@ -64,7 +64,7 @@ src/          LIBRARY (the only thing published, together with dist/ and docs/)
               inspectSkeleton, checkModel, presets/mixamo, presets/rigify
   ik/         TwoBoneIK (analytic solver), LegIK (leg of the rig)
   terrain/    GroundDetector (interface + raycast), StaticGroundDetector (indexed static ground),
-              SurfaceDetector, FootPlacement
+              SurfaceDetector, FootPlacement, Colliders (obstacles that aren't ground)
   locomotion/ LocomotionConfig, GaitController, FootstepPlanner, FootTarget, FootRoll,
               JumpController, LocomotionController (coordinates everything)
   body/       BodyController, PelvisController, TorsoController, ArmController, TouchController,

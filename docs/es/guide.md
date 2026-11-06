@@ -34,6 +34,7 @@ human.update(dt);
 | `model` | — | Raíz del personaje (`gltf.scene`). Puede colgar de cualquier objeto movido, girado o escalado uniformemente. |
 | `mapping` | — | Qué bone es cada parte del cuerpo (`mixamoMapping`, `rigifyMapping` o uno propio). Si falta uno obligatorio lanza `RigMappingError`; los avisos (del mapping y del modelo: escala, pose de reposo, origen, proporciones; ver [esqueletos](skeletons.md#3-comprobar)) quedan en `human.warnings`. |
 | `ground` | — | `Object3D[]` (raycast contra esas mallas y sus hijos) o un `GroundDetector` (p. ej. `StaticGroundDetector`, ver [Suelo](#suelo)). |
+| `colliders` | — | Lo que no es suelo y no debe atravesar (troncos, columnas, paredes, barandas, muebles): mallas o cilindros verticales `{ center, radius, height? }`. `moveTo` los rodea; con tus controles se desliza a lo largo de ellos (de frente, se para delante). Una malla cuenta por la caja de su geometría, girada como ella: dale formas simples (un cilindro invisible para un tronco; un árbol detallado bloquearía toda la caja de su copa). Solo cuenta lo que está entre el escalón que puede subir y su altura (pasa por debajo de una viga). Pueden ser las mismas mallas que `touchables`. También `human.colliders = […] | null`. |
 | `forward` | estimado | Dirección (world, horizontal) hacia la que mira el modelo en reposo. Se estima con los dedos de los pies. |
 | `preset` | — | `'tired'`, `'sneaky'`, `'athletic'` o `'heavy'`. |
 | `config` | — | Parámetros a cambiar ([referencia](parameters.md)). Mandan sobre el `preset`. |
@@ -67,7 +68,8 @@ Dos formas, que se pueden mezclar:
   que `maxStepDown`, un hueco), al recibir el destino planea una ruta que lo rodea y la sigue desde el principio,
   girando en curvas, sin acercarse antes a chocar; a una plataforma sube por su escalera. Si no puede llegar al
   punto, va al más cercano que alcanza (`moveTarget`). Planea sobre el suelo que pisa, con las mismas reglas que
-  los pasos: no ve paredes ni columnas que no son parte de él. Con `avoid: false`, en línea recta.
+  los pasos, y rodea los `colliders` (un tronco, columnas, paredes) con el cuerpo fuera de ellos. Con
+  `avoid: false`, en línea recta.
 - **Por una ruta**: `followPath(puntos, { run })` sigue los puntos que le das (por ejemplo, de tu navmesh) con
   curvas y se para en el último; no los comprueba.
 
@@ -443,8 +445,8 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 
 ## Limitaciones actuales
 
-- Sin colisiones ni física: el cuerpo no choca con obstáculos que no son suelo (paredes, columnas, muebles);
-  `moveTo` solo rodea lo que no puede pisar en el suelo. Planear una ruta cuesta unos miles de consultas al suelo
+- Sin física: el cuerpo es cinemático. Solo evita lo que no puede pisar en el suelo y los `colliders` que le das
+  (vistos desde arriba, entre su escalón y su altura). Planear una ruta cuesta unos miles de consultas al suelo
   una vez, al recibir el destino (unas 1.500–10.000; hasta ~18.000 si no se puede llegar), solo si la línea recta
   no está libre: con `StaticGroundDetector`, unos milisegundos.
 - Escaleras: solo caminando (todavía no corriendo). Al bajar, la pierna de delante apoya casi estirada

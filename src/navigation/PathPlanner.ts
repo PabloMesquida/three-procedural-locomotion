@@ -1,6 +1,7 @@
 import { Vector3 } from 'three';
 
 import type { LocomotionConfig } from '../locomotion/LocomotionConfig.ts';
+import type { Colliders } from '../terrain/Colliders.ts';
 import { createGroundHit, type GroundDetector, type GroundHit } from '../terrain/GroundDetector.ts';
 
 /** Side of the cells of the grid it searches on (× stepLength; 15 cm with the default one). */
@@ -11,6 +12,17 @@ const CELL = 0.19;
  */
 const BERTH = 0.6;
 const BERTH_COST = 4;
+/**
+ * If the destination can't be reached, it goes to the reachable point closest to it, counting as this much more
+ * (per metre) what that point is below it: a click on the side of a step or a platform (a point halfway up a
+ * vertical face) means going up there, not to the floor beside it, which is closer seen from above.
+ */
+const BELOW_TARGET = 2;
+/**
+ * Searching also from the destination: if the character can't stand right on it (next to a railing), from the
+ * nearest cell at its level where it can, at most this far (m).
+ */
+const GOAL_SEARCH = 0.6;
 /** Most cells it looks at for a route (then it goes to the reachable one closest to the destination). */
 const MAX_EXPANSIONS = 15000;
 /** It searches as far as this from the straight line to the destination (m, × stepLength), besides 1.5 × its length. */
@@ -41,12 +53,18 @@ interface Cell {
   height: number;
   /** Next to a change of level it can't step (or no ground): it isn't walked on. undefined: not known yet. */
   edge?: boolean;
-  /** Distance to the nearest edge cell, up to `BERTH` (m; Infinity if none that close). NaN: not known yet. */
+  /** Room: distance to the nearest edge cell, up to `BERTH`, or to a collider (m). NaN: not known yet. */
   clearance: number;
+  /** Distance to the nearest collider (m; negative inside). NaN: not known yet. */
+  apart: number;
   /** Route cost from the start; parent cell (key) and whether it is closed (A*). */
   cost: number;
   parent: number;
   closed: boolean;
+  /** The same searching from the destination (cost to it, next cell towards it). */
+  back: number;
+  parentBack: number;
+  closedBack: boolean;
 }
 
 /**
@@ -60,7 +78,8 @@ interface Cell {
  * follows it with curves: see `MoveToController`). If the straight line is clear, it doesn't search. If the
  * destination can't be reached, the route ends at the reachable point closest to it.
  *
- * It doesn't see what isn't ground (walls, columns or furniture that aren't in the ground meshes).
+ * Besides, it goes round the colliders (see Colliders): what isn't ground and is between the step it can
+ * take and its height.
  */
 export class PathPlanner {
   /** Raycasts of the last plan (to measure its cost). */
@@ -70,6 +89,10 @@ export class PathPlanner {
   private readonly config: () => LocomotionConfig;
   /** Room it needs from an edge (m): the root, from the feet of the controller (`stairs.toeFront + heelBack`). */
   private readonly clearanceNeeded: () => number;
+  /** Colliders (or null) and the height of the character for them (m; see LocomotionController.bodyHeight). */
+  private readonly colliders: () => Colliders | null;
+  private readonly height: () => number;
+  private blockers: Colliders | null = null;
   private readonly hit: GroundHit = createGroundHit();
   private readonly origin = new Vector3();
   private readonly cells = new Map<number, Cell>();
@@ -78,10 +101,18 @@ export class PathPlanner {
   private size = 0.15;
   private berth = 0.5;
 
-  constructor(detector: GroundDetector, config: () => LocomotionConfig, clearance: () => number) {
+  constructor(
+    detector: GroundDetector,
+    config: () => LocomotionConfig,
+    clearance: () => number,
+    colliders: () => Colliders | null = () => null,
+    height: () => number = () => 0,
+  ) {
     this.detector = detector;
     this.config = config;
     this.clearanceNeeded = clearance;
+    this.colliders = colliders;
+    this.height = height;
   }
 
   /**
@@ -99,6 +130,8 @@ export class PathPlanner {
     this.z0 = start.z;
     this.cells.clear();
     this.raycasts = 0;
+    this.blockers = this.colliders();
+    this.blockers?.update();
     const hard = this.clearanceNeeded();
     const s = this.size;
     const start0 = this.cell(0, 0, start.y);
@@ -112,69 +145,125 @@ export class PathPlanner {
       return true;
     }
 
-    // A*, con más coste cerca de los bordes.
+    // A*, con más coste cerca de los bordes, desde los dos lados a la vez: desde donde está y, si el destino se
+    // puede pisar, desde él, hasta que se encuentran. Un destino al fondo de un embudo (un pasillo entre barandas
+    // al que se llega por una escalera) se encuentra antes desde dentro: desde fuera, la búsqueda llenaba todo el
+    // suelo de alrededor antes de dar con la entrada.
     const limit = Math.ceil((1.5 * Math.hypot(ti, tj) * s + SEARCH_MARGIN * config.stepLength) / s);
     const startKey = key(0, 0);
     start0.cost = 0;
-    const open = new MinHeap();
-    open.push(startKey, HEURISTIC_WEIGHT * Math.hypot(ti, tj) * s);
+    // Lo que le falta a una celda para el destino: en planta y, si queda por debajo de él, más (ver BELOW_TARGET).
+    const away = (i: number, j: number, height: number): number => Math.hypot(ti - i, tj - j) * s + BELOW_TARGET * Math.max(target.y - height, 0);
+    /**
+     * Coste de entrar en la celda (ni, nj) desde (i, j), la celda `c` (por `step` celdas), o NaN si no se
+     * puede. `backward`: buscando desde el destino, el paso se da al revés (de (ni, nj) a (i, j)).
+     */
+    const enter = (c: Cell, i: number, j: number, ni: number, nj: number, step: number, backward: boolean): number => {
+      if (Math.abs(ni) > limit + Math.abs(ti) || Math.abs(nj) > limit + Math.abs(tj)) return Number.NaN;
+      const n = this.cell(ni, nj, c.height);
+      const steps = (a: Cell, b: Cell): boolean => (backward ? this.canStep(b, a) : this.canStep(a, b));
+      if (!steps(c, n)) return Number.NaN;
+      // En diagonal, sin recortar una esquina: también por los dos de al lado.
+      if (ni !== i && nj !== j && (!steps(c, this.cell(ni, j, c.height)) || !steps(c, this.cell(i, nj, c.height)))) return Number.NaN;
+      const room = this.clearance(ni, nj);
+      // Al borde no, salvo saliendo de donde está o llegando al destino (puede estar junto a un borde).
+      const nearStart = Math.hypot(ni, nj) * s <= hard + s;
+      // Dentro de un collider o rozándolo, nunca (ni junto al destino: se queda a su borde).
+      if (this.apart(ni, nj) < hard && !nearStart) return Number.NaN;
+      const nearGoal = Math.hypot(ni - ti, nj - tj) * s <= hard + s;
+      if (((room < hard && !nearGoal) || this.isEdge(ni, nj)) && !nearStart) return Number.NaN;
+      const crowd = room >= this.berth ? 0 : BERTH_COST * (1 - Math.max(room - hard, 0) / (this.berth - hard));
+      return step * s * (1 + crowd);
+    };
+    const forward = new MinHeap();
+    forward.push(startKey, HEURISTIC_WEIGHT * Math.hypot(ti, tj) * s);
+    // Desde el destino, si se puede estar en él o, si no (pegado a una baranda, en el costado de un escalón), desde
+    // la celda a poco de él a la que menos le falta (como el punto más cercano que alcanza: ver BELOW_TARGET). Allí
+    // acabará la ruta.
+    let goalKey = -1;
+    let goalAway = Number.POSITIVE_INFINITY;
+    const reach = Math.ceil(GOAL_SEARCH / s);
+    for (let di = -reach; di <= reach; di++) {
+      for (let dj = -reach; dj <= reach; dj++) {
+        if (Math.hypot(di, dj) * s > GOAL_SEARCH) continue;
+        const i = ti + di;
+        const j = tj + dj;
+        const c = this.cell(i, j, target.y);
+        if (!Number.isFinite(c.height) || this.isEdge(i, j) || this.apart(i, j) < hard) continue;
+        const d = away(i, j, c.height);
+        if (d < goalAway) {
+          goalAway = d;
+          goalKey = key(i, j);
+        }
+      }
+    }
+    const backward = new MinHeap();
+    if (goalKey >= 0) {
+      const [gi, gj] = unkey(goalKey);
+      this.cells.get(goalKey)!.back = 0;
+      backward.push(goalKey, HEURISTIC_WEIGHT * Math.hypot(gi, gj) * s);
+    }
     let best = startKey;
-    let bestDistance = Math.hypot(ti, tj) * s;
-    let goal = -1;
+    let bestDistance = away(0, 0, start0.height);
+    // Celda en que se encuentran las dos búsquedas (o la del destino, si llega a ella desde donde está).
+    let meet = -1;
     let expansions = 0;
-    while (open.size > 0 && expansions < MAX_EXPANSIONS) {
-      const k = open.pop();
+    let turn = 0;
+    while (expansions < MAX_EXPANSIONS && meet < 0 && (forward.size > 0 || backward.size > 0)) {
+      const fromGoal = backward.size > 0 && (forward.size === 0 || (turn++ & 1) === 1);
+      const k = (fromGoal ? backward : forward).pop();
       const c = this.cells.get(k)!;
-      if (c.closed) continue;
-      c.closed = true;
+      if (fromGoal ? c.closedBack : c.closed) continue;
+      if (fromGoal) c.closedBack = true;
+      else c.closed = true;
       expansions++;
       const [i, j] = unkey(k);
-      const distance = Math.hypot(ti - i, tj - j) * s;
-      if (distance < bestDistance) {
-        best = k;
-        bestDistance = distance;
+      if (!fromGoal) {
+        const distance = away(i, j, c.height);
+        if (distance < bestDistance) {
+          best = k;
+          bestDistance = distance;
+        }
       }
-      if (i === ti && j === tj) {
-        goal = k;
+      if (fromGoal ? c.closed || k === startKey : c.closedBack || k === goalKey) {
+        meet = k;
         break;
       }
       for (const [di, dj, step] of NEIGHBORS) {
         const ni = i + di;
         const nj = j + dj;
-        if (Math.abs(ni) > limit + Math.abs(ti) || Math.abs(nj) > limit + Math.abs(tj)) continue;
-        const n = this.cell(ni, nj, c.height);
-        if (n.closed || !this.canStep(c, n)) continue;
-        // En diagonal, sin recortar una esquina: también por los dos de al lado.
-        if (di !== 0 && dj !== 0 && (!this.canStep(c, this.cell(ni, j, c.height)) || !this.canStep(c, this.cell(i, nj, c.height)))) continue;
-        const room = this.clearance(ni, nj);
-        // Al borde no, salvo saliendo de donde está o llegando al destino (puede estar junto a un borde).
-        const nearStart = Math.hypot(ni, nj) * s <= hard + s;
-        const nearGoal = Math.hypot(ni - ti, nj - tj) * s <= hard + s;
-        if ((room < hard && !nearGoal) || this.isEdge(ni, nj)) {
-          if (!nearStart) continue;
-        }
-        const crowd = room >= this.berth ? 0 : BERTH_COST * (1 - Math.max(room - hard, 0) / (this.berth - hard));
-        const cost = c.cost + step * s * (1 + crowd);
-        if (cost < n.cost) {
-          n.cost = cost;
+        const cost = enter(c, i, j, ni, nj, step, fromGoal);
+        if (Number.isNaN(cost)) continue;
+        const n = this.cells.get(key(ni, nj))!;
+        if (fromGoal) {
+          if (n.closedBack || c.back + cost >= n.back) continue;
+          n.back = c.back + cost;
+          n.parentBack = k;
+          backward.push(key(ni, nj), n.back + HEURISTIC_WEIGHT * Math.hypot(ni, nj) * s);
+        } else {
+          if (n.closed || c.cost + cost >= n.cost) continue;
+          n.cost = c.cost + cost;
           n.parent = k;
-          open.push(key(ni, nj), cost + HEURISTIC_WEIGHT * Math.hypot(ti - ni, tj - nj) * s);
+          forward.push(key(ni, nj), n.cost + HEURISTIC_WEIGHT * Math.hypot(ti - ni, tj - nj) * s);
         }
       }
     }
-    const end = goal >= 0 ? goal : best;
-    if (end === startKey) return false;
+    const reached = meet >= 0;
+    const end = reached ? meet : best;
+    if (!reached && end === startKey) return false;
 
-    // Celdas del camino, del final al principio.
+    // Celdas del camino: desde donde está hasta `end` y, si se encontraron, de ahí al destino.
     const route: number[] = [];
-    for (let k = end; k !== startKey; k = this.cells.get(k)!.parent) route.push(k);
+    for (let k = end; k !== startKey && k >= 0; k = this.cells.get(k)!.parent) route.push(k);
     route.reverse();
+    if (reached) for (let k = this.cells.get(meet)!.parentBack; k >= 0; k = this.cells.get(k)!.parentBack) route.push(k);
+    if (route.length === 0) return false;
     const points: { x: number; z: number; y: number; room: number }[] = route.map((k) => {
       const [i, j] = unkey(k);
       return { x: this.x0 + i * s, z: this.z0 + j * s, y: this.cells.get(k)!.height, room: this.clearance(i, j) };
     });
     const last = points[points.length - 1];
-    if (goal >= 0) {
+    if (reached && goalKey === key(ti, tj)) {
       last.x = target.x;
       last.z = target.z;
     }
@@ -242,7 +331,7 @@ export class PathPlanner {
     this.origin.set(this.x0 + i * this.size, top, this.z0 + j * this.size);
     this.raycasts++;
     const found = this.detector.castDown(this.origin, config.groundProbeHeight + config.groundProbeDepth, this.hit);
-    c = { height: found ? this.hit.point.y : Number.NEGATIVE_INFINITY, clearance: Number.NaN, cost: Number.POSITIVE_INFINITY, parent: -1, closed: false };
+    c = { height: found ? this.hit.point.y : Number.NEGATIVE_INFINITY, clearance: Number.NaN, apart: Number.NaN, cost: Number.POSITIVE_INFINITY, parent: -1, closed: false, back: Number.POSITIVE_INFINITY, parentBack: -1, closedBack: false };
     this.cells.set(k, c);
     return c;
   }
@@ -273,10 +362,14 @@ export class PathPlanner {
     return edge;
   }
 
-  /** Distance from cell (i, j) to the nearest edge cell, up to `berth` (m; Infinity if none that close). */
+  /**
+   * Room at cell (i, j) (m): distance to the nearest edge cell, up to `berth` (Infinity if none that close),
+   * or to a collider, if it is closer (measured exactly: negative inside it).
+   */
   private clearance(i: number, j: number): number {
     const c = this.cell(i, j, 0);
     if (!Number.isNaN(c.clearance)) return c.clearance;
+    const apart = this.apart(i, j);
     const r = Math.ceil(this.berth / this.size);
     let nearest = Number.POSITIVE_INFINITY;
     for (let di = -r; di <= r; di++) {
@@ -288,14 +381,24 @@ export class PathPlanner {
         if (this.isEdge(i + di, j + dj)) nearest = d;
       }
     }
-    c.clearance = nearest;
-    return nearest;
+    c.clearance = Math.min(nearest, apart);
+    return c.clearance;
+  }
+
+  /** Distance (m, horizontal, exact) from the center of cell (i, j) to the nearest collider at its height; Infinity without them. */
+  private apart(i: number, j: number): number {
+    const c = this.cell(i, j, 0);
+    if (!Number.isNaN(c.apart)) return c.apart;
+    c.apart = this.blockers && Number.isFinite(c.height)
+      ? this.blockers.distance(this.x0 + i * this.size, this.z0 + j * this.size, c.height + this.config().maxStepUp, c.height + this.height())
+      : Number.POSITIVE_INFINITY;
+    return c.apart;
   }
 
   /**
    * The straight line from (`ax`, `az`), on ground at `ay`, to (`bx`, `bz`) can be walked: each step of it can
    * be taken and it passes at least `room` m from the edges (`ignoreEnds`: except within `room` of each end,
-   * where it can be closer: it starts or ends next to an edge).
+   * where it can be closer: it starts or ends next to an edge; from colliders, only at the start).
    */
   private lineClear(ax: number, az: number, ay: number, bx: number, bz: number, room: number, ignoreEnds: boolean): boolean {
     const s = this.size;
@@ -310,6 +413,9 @@ export class PathPlanner {
       if (c !== previous && !this.canStep(previous, c)) return false;
       const fromEnd = Math.min(t, 1 - t) * length;
       if (!(ignoreEnds && fromEnd <= room + s) && this.clearance(i, j) < room) return false;
+      // Un collider, tampoco junto al destino (si está dentro de uno, la ruta acaba a su borde); junto a la
+      // salida sí (puede estar arrimado a él).
+      if (!(ignoreEnds && t * length <= room + s) && this.apart(i, j) < room) return false;
       previous = c;
     }
     return true;

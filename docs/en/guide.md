@@ -34,6 +34,7 @@ human.update(dt);
 | `model` | — | Root of the character (`gltf.scene`). It can hang from any object that is moved, rotated or uniformly scaled. |
 | `mapping` | — | Which bone is each part of the body (`mixamoMapping`, `rigifyMapping` or your own). If a required one is missing it throws `RigMappingError`; warnings (about the mapping and the model: scale, rest pose, origin, proportions; see [skeletons](skeletons.md#3-check)) go to `human.warnings`. |
 | `ground` | — | `Object3D[]` (raycast against those meshes and their children) or a `GroundDetector` (e.g. `StaticGroundDetector`, see [Ground](#ground)). |
+| `colliders` | — | What isn't ground and it mustn't go through (tree trunks, columns, walls, railings, furniture): meshes or vertical cylinders `{ center, radius, height? }`. `moveTo` goes round them; with your own controls it slides along them (head-on, it stops in front). A mesh counts by the box of its geometry, turned like it: give it simple shapes (an invisible cylinder for a tree trunk; a detailed tree would block the whole box of its crown). Only what is between the step it can take and its height counts (it passes under a beam). They can be the same meshes as `touchables`. Also `human.colliders = […] | null`. |
 | `forward` | estimated | Direction (world, horizontal) the model faces at rest. Estimated from the toes. |
 | `preset` | — | `'tired'`, `'sneaky'`, `'athletic'` or `'heavy'`. |
 | `config` | — | Parameters to change ([reference](parameters.md)). They take precedence over the `preset`. |
@@ -67,8 +68,8 @@ Two ways, which can be mixed:
   `maxStepDown`, a hole), it plans a route round it when it is given the destination and follows it from the
   start, turning along curves, without going up to it first; it goes up a platform by its stairs. If the point
   can't be reached, it goes to the reachable one closest to it (`moveTarget`). It plans on the ground it walks
-  on, with the same rules as the steps: it doesn't see walls or columns that aren't part of it. With
-  `avoid: false`, in a straight line.
+  on, with the same rules as the steps, and goes round the `colliders` (a tree trunk, columns, walls) keeping
+  its body clear of them. With `avoid: false`, in a straight line.
 - **Along a route**: `followPath(points, { run })` follows the points given (e.g. from your own navmesh) with
   curves and stops on the last one; it doesn't check them.
 
@@ -439,8 +440,8 @@ measures it on your machine.
 
 ## Current limitations
 
-- No collisions or physics: the body doesn't collide with obstacles that aren't ground (walls, columns,
-  furniture); `moveTo` only goes round what it can't step on the ground. Planning a route costs a few thousand
+- No physics: the body is kinematic. It only avoids what it can't step on the ground and the `colliders` you
+  give it (seen from above, between its step and its height). Planning a route costs a few thousand
   ground queries once, when it is given the destination (about 1,500–10,000; up to ~18,000 if it can't be
   reached), only if the straight line isn't clear: with `StaticGroundDetector`, a few milliseconds.
 - Stairs: walking only (not running yet). Going down, the leading leg lands almost straight (a person

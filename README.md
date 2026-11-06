@@ -29,7 +29,8 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
   abruptly ([skeletons](docs/en/skeletons.md#twist-bones)).
 - **Point and click**: `moveTo(point, { run })` reaches the destination (±5–10 cm); if it is behind, it brakes
   and turns towards it in 2–3 steps, like a person, and sets off. If something it can't step is in the way
-  (a platform, a drop), it plans a route round it from the start, and goes up by the stairs if there are any.
+  (a platform, a drop, or one of its `colliders`: a tree trunk, a column), it plans a route round it from the
+  start, and goes up by the stairs if there are any.
 - **Touching in passing**: with `touchables` (columns, walls, the railing of a bridge) it brings the hand over
   and rests the palm on them when passing by, without stopping; along a wall or a railing it keeps sliding the
   hand while it stays alongside; or by hand with `touch(point)` ([guide](docs/en/guide.md#touching-surfaces)).
@@ -142,7 +143,7 @@ The meshes of both models come from [Human Base Meshes](https://www.blender.org/
 
 ## Limitations
 
-- Kinematic body: no collisions or physics; `moveTo` only goes round what it can't step on the ground (not walls or columns that aren't part of it).
+- Kinematic body, no physics: it avoids what it can't step on the ground and the `colliders` you give it (tree trunks, columns, walls: seen from above, as boxes or cylinders).
 - Stairs: walking only (not running yet). No planned jumps to a different height.
 - Verified rigs: Mixamo and the Rigify metarig. Others should work with their mapping, unverified.
 
