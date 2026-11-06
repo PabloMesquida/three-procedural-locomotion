@@ -257,6 +257,19 @@ export class GroundProfile {
     if (this.count > 0) this.treads[this.count - 1].endEdge = false;
   }
 
+  /** Drops the first `count` treads: the profile starts at the start of the next one. */
+  dropFirst(count: number): void {
+    if (count <= 0) return;
+    count = Math.min(count, this.count);
+    for (let i = 0; i < this.count - count; i++) {
+      const kept = this.treads[i + count];
+      this.treads[i + count] = this.treads[i];
+      this.treads[i] = kept;
+    }
+    this.count -= count;
+    if (this.count > 0) this.treads[0].startEdge = false;
+  }
+
   /** Moves the heights by `dy`. */
   private shiftHeights(dy: number): void {
     for (let i = 0; i < this.count; i++) {

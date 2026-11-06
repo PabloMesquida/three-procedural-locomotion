@@ -292,6 +292,181 @@ describe('escaleras', () => {
     }
   });
 
+  // Click-to-move junto a un desnivel de 1 m (el diorama): varios moveTo seguidos contra el borde, en diagonal y a
+  // lo largo de él. Antes la raíz cruzaba el borde (la pared se veía tarde, o al girar el perfil la tomaba por
+  // escalones) y el personaje subía o bajaba el metro.
+  const ledgeRoutes: [string, [t: number, x: number, z: number][]][] = [
+    ['clics seguidos contra el borde', [[0, 0, -START], [3, 0.3, -START - 1], [4, -0.3, -START], [5, 0.2, -START - 0.3], [6.5, 0.5, -START - 2]]],
+    ['en diagonal, a un lado y al otro', [[0, 2, -4], [3, -2, -4], [5, 1, -3]]],
+    ['a lo largo del borde y después hacia él', [[0, 0, -START + 0.4], [2.5, 2.5, -START + 0.2], [5, -2.5, -START + 0.3], [8, 0, -3]]],
+  ];
+  for (const down of [false, true]) {
+    for (const [name, route] of ledgeRoutes) {
+      it(`${down ? 'bajando' : 'subiendo'}, desnivel de 1 m con moveTo ${name}: ni lo cruza ni frena de golpe`, () => {
+        const level = down ? 1 : 0;
+        const world = createWorld({
+          buildTerrain: (terrain) => {
+            const mesh = new Mesh(new BoxGeometry(6, 1, 8), new MeshBasicMaterial());
+            mesh.position.set(0, 0.5, down ? -START + 4 : -START - 4);
+            terrain.add(mesh);
+          },
+          place: (model, scene) => { model.position.y = level; scene.add(model); },
+        });
+        const { human } = world;
+        const loco = human.locomotion;
+        let worstRoot = 0;
+        let worstFoot = 0;
+        let closest = Number.POSITIVE_INFINITY;
+        let worstBrake = 0;
+        let speed = 0;
+        const target = (x: number, z: number): Vector3 => new Vector3(x, z < -START ? 1 : 0, z);
+        simulate(world, 10, route.map(([t, x, z]) => [t, (h) => h.moveTo(target(x, z))]), {
+          onFrame: () => {
+            worstRoot = Math.max(worstRoot, Math.abs(human.position.y - level));
+            closest = Math.min(closest, human.position.z + START);
+            worstBrake = Math.max(worstBrake, speed - human.speed);
+            speed = human.speed;
+            for (const side of SIDES) {
+              const foot = loco.feet[side];
+              if (foot.phase === 'SWING') continue;
+              worstFoot = Math.max(worstFoot, Math.abs(foot.planted.y - loco.planner.placement(side).ankleHeight - level));
+              closest = Math.min(closest, human.rig[side].toe!.getWorldPosition(new Vector3()).z + START);
+            }
+          },
+        });
+        assert.ok(worstRoot < 0.01, `la raíz cambió de nivel ${worstRoot.toFixed(2)} m`);
+        assert.ok(worstFoot < 0.01, `un pie apoyado cambió de nivel ${worstFoot.toFixed(2)} m`);
+        assert.ok(closest > 0, `la raíz o un pie apoyado pasó el borde ${(-closest * 100).toFixed(1)} cm`);
+        // Frenando normal, menos de 0,07 m/s por frame (deceleration 2,5 m/s², hasta × 1,6 al pivotar).
+        assert.ok(worstBrake < 0.1, `frenó de golpe ${worstBrake.toFixed(2)} m/s en un frame`);
+      });
+    }
+  }
+
+  // Junto a la esquina del mismo bloque (x = 3): parado ante el borde, se lo manda a pasar por fuera de la esquina
+  // o a lo largo del borde. Antes la pared se daba por más larga de lo que es (y su normal salía torcida): no
+  // arrancaba.
+  const cornerRoutes: [string, [t: number, x: number, z: number][], arrives: boolean][] = [
+    ['por fuera de la esquina', [[0, 2.7, -1.7], [4, 5, -3]], true],
+    ['a lo largo del borde, más allá de la esquina', [[0, 2.7, -1.7], [4, 5, -1.6]], true],
+    ['hacia el bloque, cerca de la esquina', [[0, 2.6, -1.6], [4, 3.6, -5]], false],
+  ];
+  for (const [name, route, arrives] of cornerRoutes) {
+    it(`junto a la esquina de un desnivel de 1 m, moveTo ${name}: ${arrives ? 'llega' : 'se para'} sin subirlo`, () => {
+      const world = createWorld({
+        buildTerrain: (terrain) => {
+          const mesh = new Mesh(new BoxGeometry(6, 1, 8), new MeshBasicMaterial());
+          mesh.position.set(0, 0.5, -START - 4);
+          terrain.add(mesh);
+        },
+      });
+      const { human } = world;
+      const loco = human.locomotion;
+      // Cuánto se mete en el bloque (> 0: dentro) un punto.
+      const inside = (p: Vector3): number => Math.min(3 - p.x, -START - p.z);
+      let worstY = 0;
+      let deepest = Number.NEGATIVE_INFINITY;
+      let worstBrake = 0;
+      let speed = 0;
+      simulate(world, 12, route.map(([t, x, z]) => [t, (h) => h.moveTo(new Vector3(x, 0, z))]), {
+        onFrame: () => {
+          worstY = Math.max(worstY, Math.abs(human.position.y));
+          deepest = Math.max(deepest, inside(human.position));
+          worstBrake = Math.max(worstBrake, speed - human.speed);
+          speed = human.speed;
+          for (const side of SIDES) {
+            if (loco.feet[side].phase === 'SWING') continue;
+            worstY = Math.max(worstY, Math.abs(loco.feet[side].planted.y - loco.planner.placement(side).ankleHeight));
+            deepest = Math.max(deepest, inside(human.rig[side].toe!.getWorldPosition(new Vector3())));
+          }
+        },
+      });
+      const [, x, z] = route[route.length - 1];
+      const left = Math.hypot(human.position.x - x, human.position.z - z);
+      if (arrives) assert.ok(left < 0.3, `se quedó a ${left.toFixed(2)} m del destino`);
+      else assert.ok(left > 1, 'cruzó el bloque');
+      assert.ok(worstY < 0.01, `cambió de nivel ${worstY.toFixed(2)} m`);
+      assert.ok(deepest < 0, `la raíz o un pie apoyado se metió ${(deepest * 100).toFixed(1)} cm en el bloque`);
+      assert.ok(worstBrake < 0.1, `frenó de golpe ${worstBrake.toFixed(2)} m/s en un frame`);
+    });
+  }
+
+  // La plataforma del Laboratorio: 1,02 m, de x 3 a 6,5 y de z −2 a 4, con una escalera en la cara de +X
+  // (z 1,9–3,3). Recorridos al azar (repetibles) desde arriba y desde abajo, con clics a los dos niveles,
+  // algunos dobles. Antes: subía o bajaba por los bordes, un pie apoyaba en el otro nivel, y parado junto al
+  // borde la raíz quedaba sobre él (el cuerpo inclinado) y los pies se recolocaban sin parar o se alejaban.
+  it('plataforma de 1 m con escalera, clics al azar: solo cambia de nivel por la escalera y para bien', () => {
+    const top = 1.02;
+    const onTop = (x: number, z: number): boolean => x > 3 && x < 6.5 && z > -2 && z < 4;
+    const heightAt = (x: number, z: number): number => {
+      if (onTop(x, z)) return top;
+      if (x >= 6.5 && x < 6.5 + 5 * 0.28 && z > 1.9 && z < 3.3) return 0.17 * (5 - Math.floor((x - 6.5) / 0.28));
+      return 0;
+    };
+    const box = (t: Object3D, w: number, h: number, d: number, x: number, z: number): void => {
+      const mesh = new Mesh(new BoxGeometry(w, h, d), new MeshBasicMaterial());
+      mesh.position.set(x, h / 2, z);
+      t.add(mesh);
+    };
+    const problems: string[] = [];
+    for (let i = 0; i < 24; i++) {
+      // mulberry32
+      let seed = 100 + i;
+      const random = (): number => {
+        seed = (seed + 0x6d2b79f5) | 0;
+        let r = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+        r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+        return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+      };
+      const start = i % 2 === 0 ? new Vector3(3.3 + random() * 2.9, top, -1.7 + random() * 5.4) : new Vector3(1.5 + random() * 1.2, 0, -1 + random() * 4);
+      const clicks: [number, number, number][] = [];
+      let end = 0;
+      for (let k = 0; k < 4; k++) {
+        const x = 1 + random() * 7;
+        const z = -4 + random() * 9;
+        clicks.push([end, x, z]);
+        if (random() < 0.6) clicks.push([end + 0.15 + random() * 0.2, x, z]);
+        end += 1 + random() * 2.5;
+      }
+      const world = createWorld({
+        buildTerrain: (t) => {
+          box(t, 3.5, top, 6, 4.75, 1);
+          for (let k = 1; k < 6; k++) box(t, 0.28, 0.17 * k, 1.4, 6.5 + 0.28 * (5 - k + 0.5), 2.6);
+        },
+        place: (model, scene) => { model.position.copy(start); scene.add(model); },
+      });
+      const { human } = world;
+      const loco = human.locomotion;
+      let wasTop = onTop(start.x, start.z);
+      let crossed = '';
+      let worstFoot = 0;
+      let worstOffset = 0;
+      simulate(world, end + 3, clicks.map(([t, x, z]) => [t, (h) => h.moveTo(new Vector3(x, 0, z))]), {
+        onFrame: (t) => {
+          const p = human.position;
+          const isTop = onTop(p.x, p.z);
+          if (isTop !== wasTop && !crossed && !(p.x > 6.3 && p.z > 1.9 && p.z < 3.3)) crossed = `t ${t.toFixed(2)}`;
+          wasTop = isTop;
+          for (const side of SIDES) {
+            const foot = loco.feet[side];
+            if (foot.phase === 'SWING') continue;
+            const ground = foot.planted.y - loco.planner.placement(side).ankleHeight;
+            worstFoot = Math.max(worstFoot, Math.abs(ground - heightAt(foot.planted.x, foot.planted.z)));
+          }
+          if (human.gaitMode === 'idle') {
+            const l = loco.feet.left.planted;
+            const r = loco.feet.right.planted;
+            worstOffset = Math.max(worstOffset, Math.hypot(p.x - (l.x + r.x) / 2, p.z - (l.z + r.z) / 2));
+          }
+        },
+      });
+      if (crossed) problems.push(`${i}: cruzó un borde (${crossed})`);
+      if (worstFoot > 0.03) problems.push(`${i}: un pie apoyado a ${worstFoot.toFixed(2)} m del suelo bajo él`);
+      if (worstOffset > 0.12) problems.push(`${i}: parado, la raíz a ${worstOffset.toFixed(2)} m de entre los pies`);
+    }
+    assert.deepEqual(problems, []);
+  });
+
   it('de un desnivel más hondo que maxStepDown no baja: se para en el borde, quieto', () => {
     const drop = defaultConfig.maxStepDown + 0.05;
     const world = createWorld({ buildTerrain: (terrain) => addBlock(terrain, drop, 3, -START) });

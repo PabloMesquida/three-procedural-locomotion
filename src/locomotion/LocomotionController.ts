@@ -144,6 +144,9 @@ const STAIR_DOWN_KNEE = 33;
 const STAIR_DOWN_SLOPE = 0.3;
 /** How fast the speed limit of the stairs is released when they end (× acceleration, per second). */
 const STAIR_RELEASE = 0.4;
+/** Stopped (below this speed, m/s) too close to a wall, it moves back from it at this speed (m/s). */
+const WALL_BACK_OFF_BELOW = 0.05;
+const WALL_BACK_OFF_SPEED = 0.3;
 /** Heel lift at toe-off (degrees) from which `walkLandingLead` applies in full. */
 const FULL_HEEL_LIFT = 45;
 /** Fraction of the swing over which the toes, bent at toe-off, return to their rest pose. */
@@ -322,6 +325,9 @@ export class LocomotionController {
   private readonly pushPosition = new Vector3();
   private readonly pushHip = new Vector3();
   private readonly stairCenter = new Vector3();
+  private readonly turnDirection = new Vector3();
+  private readonly landingDirection = new Vector3();
+  private readonly backOff = new Vector3();
   private readonly stairTangent = new Vector3();
   private readonly pushRotation = new Quaternion();
 
@@ -605,11 +611,16 @@ export class LocomotionController {
     this.crouch += Math.max(-crouchStep, Math.min(crouchStep, crouchTarget - this.crouch));
     const k = smoothstep(this.crouch);
     this.body.speedLimit = Math.min(this.config.runSpeed + (this.config.crouchMaxSpeed - this.config.runSpeed) * k, this.stairSpeedLimit(dt));
+    this.backOffWall(dt);
 
     // 1–2. Cuerpo: velocidad y avance de la raíz sobre el suelo. Las caderas vuelven a su pose de
     //      reposo sin recalcular matrices: el cuerpo actualiza después todo el esqueleto.
     this.pelvis.reset(false);
     this.body.update(dt);
+    // Lo paró un desnivel que no conocía: lo recuerda (para apartar los pies y retroceder de él).
+    if (this.body.ledge.lengthSq() > 0) {
+      this.stairs.noteLedge(this.body.state.position, this.body.ledge, this.body.state.groundHeight);
+    }
     worldQuaternion(rig.root, this.qRoot);
 
     // 2b. Salto: despegue (velocidad vertical) y aterrizaje.
@@ -840,6 +851,20 @@ export class LocomotionController {
   }
 
   /**
+   * Stopped closer to a wall (or a drop) than the feet can stand from it (the guard of the body stopped it at
+   * the edge, or it came along it): the root moves back away from it, slowly (WALL_BACK_OFF_SPEED), over the
+   * feet, which keepOffWall already keeps that far. If not, the body leant over the edge and the feet,
+   * which wanted to be under it, kept stepping.
+   */
+  private backOffWall(dt: number): void {
+    const s = this.body.state;
+    if (s.airborne || s.speed > WALL_BACK_OFF_BELOW) return;
+    const push = this.stairs.wallPush(s.position, this.stairs.toeFront + this.stairs.heelBack, this.backOff);
+    if (push <= 0) return;
+    this.body.drift.copy(this.backOff).multiplyScalar(Math.min(WALL_BACK_OFF_SPEED * dt, push) / push);
+  }
+
+  /**
    * Speed limit over stairs (m/s): the one at which each step climbs one tread, and stopping in front of a
    * riser it can't climb.
    */
@@ -861,11 +886,18 @@ export class LocomotionController {
     // la escalera, la pierna de atrás se quedaba lejos y las caderas se hundían.
     if (limit > this.stairLimit) limit = this.stairLimit + STAIR_RELEASE * this.config.acceleration * dt;
     this.stairLimit = limit >= this.config.runSpeed ? Number.POSITIVE_INFINITY : limit;
-    const ahead = stairs.wallAhead(this.body.state.position, this.body.state.forward);
+    // Hacia donde va y hacia donde está girando: girando hacia la pared muy cerca de ella, cuando la tenía de
+    // frente ya no le daba para frenar.
+    const s = this.body.state;
+    const turning = this.turnDirection.copy(s.forward).applyAxisAngle(UP, this.body.targetHeading - s.heading);
+    // Se para con los pies delante de la contrahuella: las puntas, a un talón de ella. Medido perpendicular al
+    // borde: llegando en diagonal, la raíz quedaba más cerca de él de lo que pueden apoyar los pies, que se
+    // quedaban atrás (el cuerpo, inclinado sobre el borde) y se recolocaban sin parar.
+    const clearance = stairs.toeFront + stairs.heelBack;
+    const ahead = Math.min(stairs.wallAhead(s.position, s.forward, clearance), stairs.wallAhead(s.position, turning, clearance));
     if (Number.isFinite(ahead)) {
-      // Se para con los pies delante de la contrahuella: las puntas, a un talón de ella.
       // Con la mitad de la deceleración: la frenada tiene una rampa (speedEasing) y se pasaba.
-      const room = Math.max(ahead - stairs.toeFront - stairs.heelBack, 0);
+      const room = Math.max(ahead, 0);
       limit = Math.min(limit, Math.sqrt(this.config.deceleration * room));
     }
     return limit;
@@ -1098,6 +1130,16 @@ export class LocomotionController {
     const other = this.feet[side === 'left' ? 'right' : 'left'];
     const placement = this.planner.placement(side);
     const stanceAnkle = this.planner.placement(other.side).ankleHeight;
+    // Hasta dónde tiene que ver una pared (o un desnivel que no puede bajar) para frenar a tiempo delante de
+    // ella: lo que avanza hasta el paso siguiente, lo que tarda en frenar (con el límite de stairSpeedLimit)
+    // y el pie. Para buscarla, con la velocidad a la que va si es más que la de ahora (arrancando, la pared se
+    // veía tarde); el perfil de la escalera, con la de ahora.
+    const reachAt = (speed: number): number =>
+      speed > 0 ? speed / this.gait.stepFrequencyFor(speed) + (speed * speed) / this.config.deceleration + this.stairs.toeFront + this.stairs.heelBack : 0;
+    const now = this.body.state.speed;
+    const speed = Math.max(now, now > 0 ? this.body.targetSpeed : 0);
+    const stride = speed > 0 ? speed / this.gait.stepFrequencyFor(speed) : 0;
+    const reach = reachAt(speed);
     const moved = this.stairs.planLanding(
       start,
       other.planted,
@@ -1105,10 +1147,15 @@ export class LocomotionController {
       landing,
       placement.state,
       placement.ankleHeight,
-      this.body.state.forward,
+      // Hacia donde apuntará el pie: arrancando hacia un lado, el cuerpo todavía mira hacia otro (y la punta del
+      // pie, con la dirección de ahora, no se veía sobre el desnivel).
+      this.landingDirection.copy(this.body.state.forward).applyAxisAngle(UP, footYaw),
       this.turnCenter(this.stairCenter),
       this.tmp,
       probe,
+      reach,
+      stride,
+      reachAt(now),
     );
     if (moved) this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
     return moved;

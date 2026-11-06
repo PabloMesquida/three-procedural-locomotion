@@ -51,13 +51,20 @@ const UP = new Vector3(0, 1, 0);
 const AIR_PROBE_DISTANCE = 50;
 /** Remaining turn above which it starts braking to turn (rad). */
 const TURN_SLOWDOWN_START = (20 * Math.PI) / 180;
+/**
+ * Slope (rise / run) the ground under the root may have between two frames on top of `maxStepUp` /
+ * `maxStepDown` before the change counts as a ledge: with a long frame, the root moves far and a steep slope
+ * also changes a lot.
+ */
+const LEDGE_SLOPE = 1;
 
 /**
  * Motion of the body (kinematic version):
  *  - speed that accelerates/brakes towards the desired one,
  *  - heading that turns towards the desired one with limited angular velocity and acceleration,
  *  - advance of the root in the character's direction,
- *  - height of the root that smoothly follows the ground,
+ *  - height of the root that smoothly follows the ground, without crossing a riser higher than `maxStepUp`
+ *    or a drop deeper than `maxStepDown` (it stops there; StairPlanner makes it brake before),
  *  - prediction of the future advance (to plan the steps),
  *  - weight distribution between the feet and lateral shift of the body towards the supporting foot
  *    (damped spring),
@@ -119,9 +126,25 @@ export class BodyController {
    * gradually.
    */
   private speedRate = 0;
+  /** Height the root followed in the last update (world; NaN after a jump, a teleport or at the start). */
+  private followed = Number.NaN;
+  /**
+   * Horizontal shift (world, m) added to the next advance on the ground, besides the velocity, and then
+   * cleared. The guard against ledges also applies to it.
+   */
+  readonly drift = new Vector3();
+  /**
+   * If the last `update` stopped at a ledge it can't cross (see `snapToGround`), the horizontal direction in
+   * which it was going (unit); zero otherwise.
+   */
+  readonly ledge = new Vector3();
+  /** Position last written to the root: if it is somewhere else, it was moved from outside. */
+  private readonly written = new Vector3(Number.NaN, 0, 0);
+  /** Ground right under the root in the last query (world; NaN if there was none). */
+  private rawGround = Number.NaN;
 
   /**
-   * @param root     Root of the character (the one that moves). It can hang from any parent: position and
+   * @param root    Root of the character (the one that moves). It can hang from any parent: position and
    *                 orientation are computed in world space and converted to the parent's space.
    * @param forward  "Forward" direction of the character in world space, in the initial pose.
    */
@@ -186,6 +209,7 @@ export class BodyController {
     this.readRoot();
     this.pos.add(offset);
     this.writeRoot();
+    this.followed += offset.y;
     const s = this.state;
     s.supportCenter.add(offset);
     s.com.add(offset);
@@ -218,6 +242,7 @@ export class BodyController {
   update(dt: number): void {
     this.state.landingSpeed = 0;
     this.state.timeSinceLanding = 0;
+    this.ledge.set(0, 0, 0);
     if (this.state.airborne) {
       this.updateAirborne(dt);
       return;
@@ -240,8 +265,15 @@ export class BodyController {
     }
     this.refreshState();
     this.readRoot();
+    // Movida desde fuera (un teletransporte): no hay de dónde medir un desnivel.
+    if (this.pos.distanceToSquared(this.written) > 1e-10) this.followed = Number.NaN;
+    const fromX = this.pos.x;
+    const fromZ = this.pos.z;
     this.pos.addScaledVector(this.state.velocity, dt);
-    this.snapToGround(1 - Math.exp(-10 * dt));
+    this.pos.x += this.drift.x;
+    this.pos.z += this.drift.z;
+    this.drift.set(0, 0, 0);
+    this.snapToGround(1 - Math.exp(-10 * dt), this.config.groundProbeDepth, fromX, fromZ);
     this.writeRoot();
   }
 
@@ -256,6 +288,8 @@ export class BodyController {
     p.y += s.verticalVelocity * dt;
     s.acceleration = 0;
     this.speedRate = 0;
+    // Aterriza donde sea: la altura que seguía antes del salto ya no sirve de referencia.
+    this.followed = Number.NaN;
 
     this.tmp.set(p.x, p.y + this.config.groundProbeHeight, p.z);
     s.grounded = this.detector.castDown(this.tmp, AIR_PROBE_DISTANCE, this.rootHit);
@@ -384,6 +418,7 @@ export class BodyController {
     // Actualiza los antepasados, la raíz y todo lo que cuelga de ella (una sola pasada).
     setWorldPosition(this.root, this.pos);
     this.state.position.copy(this.pos);
+    this.written.copy(this.pos);
   }
 
   /**
@@ -468,21 +503,67 @@ export class BodyController {
 
   /**
    * Brings the height of the working position towards the ground below it (blend 0–1), looking for it up to
-   * `depth` m below the root (groundProbeDepth by default).
+   * `depth` m below the root (groundProbeDepth by default). If the root has just moved from (`fromX`,
+   * `fromZ`) onto ground higher than `maxStepUp` or lower than `maxStepDown` (or with none), that is a ledge
+   * it can't cross: it goes back there and stops.
    */
-  private snapToGround(blend: number, depth = this.config.groundProbeDepth): void {
+  private snapToGround(blend: number, depth = this.config.groundProbeDepth, fromX = Number.NaN, fromZ = Number.NaN): void {
+    const p = this.pos;
+    let target = this.groundTarget(depth);
+    let ground = this.rawGround;
+    const moved = Math.hypot(p.x - fromX, p.z - fromZ);
+    // Primero, contra la altura de antes (sin raycast); si parece un desnivel, se confirma con el suelo de
+    // donde venía (el suelo pudo cambiar debajo, p. ej. una plataforma que sube).
+    if (moved > 0 && this.isLedge(this.followed, target, moved)) {
+      const toX = p.x;
+      const toZ = p.z;
+      p.x = fromX;
+      p.z = fromZ;
+      const back = this.groundTarget(depth);
+      if (this.isLedge(back, target, moved)) {
+        target = back;
+        ground = this.rawGround;
+        this.ledge.set(toX - fromX, 0, toZ - fromZ).normalize();
+        this.state.speed = 0;
+        this.state.velocity.set(0, 0, 0);
+        this.speedRate = 0;
+      } else {
+        p.x = toX;
+        p.z = toZ;
+      }
+    }
+    this.followed = target;
+    this.state.grounded = Number.isFinite(target);
+    if (this.state.grounded) {
+      this.state.groundHeight = Number.isNaN(ground) ? target : ground;
+      p.y += (target - p.y) * blend;
+    }
+  }
+
+  /**
+   * Height the root follows at the working position: the ground under it (also left in `rawGround`; NaN if
+   * there is none) or, over stairs, the line over the treads (also where there is no ground under the root,
+   * over the gap between two treads without a riser).
+   */
+  private groundTarget(depth: number): number {
     const p = this.pos;
     const { groundProbeHeight } = this.config;
     this.tmp.set(p.x, p.y + groundProbeHeight, p.z);
     const hit = this.detector.castDown(this.tmp, groundProbeHeight + depth, this.rootHit);
-    // Sin suelo bajo la raíz (sobre el hueco de una escalera sin contrahuella), la línea de la escalera si la sigue.
-    const ground = hit ? this.rootHit.point.y : Number.NaN;
-    const target = this.groundLine ? this.groundLine(p, ground) : ground;
-    this.state.grounded = Number.isFinite(target);
-    if (this.state.grounded) {
-      this.state.groundHeight = hit ? ground : target;
-      p.y += (target - p.y) * blend;
-    }
+    this.rawGround = hit ? this.rootHit.point.y : Number.NaN;
+    return this.groundLine ? this.groundLine(p, this.rawGround) : this.rawGround;
+  }
+
+  /**
+   * Going `distance` m (horizontal) from ground at height `from` to ground at `to` crosses a riser higher than
+   * `maxStepUp` or a drop deeper than `maxStepDown` (or there is no ground at `to`). Without a reference
+   * (`from` NaN), no.
+   */
+  private isLedge(from: number, to: number, distance: number): boolean {
+    if (!Number.isFinite(from)) return false;
+    if (!Number.isFinite(to)) return true;
+    const slack = distance * LEDGE_SLOPE;
+    return to - from > this.config.maxStepUp + slack || from - to > this.config.maxStepDown + slack;
   }
 }
 

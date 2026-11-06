@@ -339,7 +339,13 @@ level, the character samples the ground ahead along its direction of travel, fin
   on a step the foot doesn't land on the heel: flat going up, on the ball of the foot going down; going up, the
   trailing foot raises its heel as much as needed to push off;
 - a riser higher than `maxStepUp` is a wall: it stops in front of it; from a drop deeper than `maxStepDown`
-  it doesn't step down: it stops at the edge (both 0.35 m by default, scaled with the size).
+  it doesn't step down: it stops at the edge (both 0.35 m by default, scaled with the size). It looks far
+  enough ahead to brake in time, also running, and remembers the edges while it is nearby (which way they run
+  and where they end; both of a corner), so it also brakes in front of them when it comes at them at an angle,
+  turns towards them or sets off towards them again (several `moveTo` in a row next to them), and walks along
+  them or round a corner without stopping. It stops with its feet in front of the edge, also coming at it at an
+  angle, and if it ended up closer (it came along it), it moves back over its feet. The body never crosses it:
+  a `moveTo` to the other side stops in front of it and keeps waiting there.
 
 Any size of step works up to those limits (tested from 10 × 40 cm to 30 × 30 cm, up and down). The shape of the
 step, the lean and the landing are compared with motion capture of people on stairs (CMU).
@@ -357,7 +363,9 @@ The character doesn't follow the stairs by itself: whoever controls it turns it 
 can turn (at 1 m/s and 60°/s, a radius of about 1 m). Tested on spirals of 1–1.4 m and curves of 5 m.
 
 Ground queries per character: one per frame (under the body) and about 15 at the start of each step (where it
-lands and where the toes pass). On stairs, about 50–90 per step instead (the profile of the ground ahead). When
+lands and where the toes pass), plus one every other step far ahead (a wall or drop to brake for in time;
+about 10 more when the ground there is out of reach of a step, or about 35 the first time it finds a wall, and about 25 per step while it walks along one). On stairs, about
+50–90 per step instead (the profile of the ground ahead). When
 standing still, if the ground under the feet changes without the body moving (an object that appears, a
 `setConfig` change), it repositions itself within 0.25 s at most.
 

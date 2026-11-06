@@ -342,7 +342,13 @@ cambio de nivel, el personaje mide el suelo por delante en su dirección de avan
   escalón el pie no apoya de talón: plano al subir, de antepié al bajar; al subir, el pie de atrás levanta el
   talón lo que haga falta para empujar;
 - una contrahuella más alta que `maxStepUp` es una pared: se para delante; de un desnivel más hondo que
-  `maxStepDown` no baja: se para en el borde (los dos, 0,35 m por defecto, escalados con el tamaño).
+  `maxStepDown` no baja: se para en el borde (los dos, 0,35 m por defecto, escalados con el tamaño). Mira lo
+  bastante lejos para frenar a tiempo, también corriendo, y recuerda los bordes mientras está cerca (hacia
+  dónde van y dónde acaban; los dos de una esquina), así que también frena delante cuando llega en diagonal,
+  gira hacia ellos o vuelve a arrancar hacia ellos (varios `moveTo` seguidos a su lado), y camina a lo largo
+  de ellos o rodea una esquina sin pararse. Se para con los pies delante del borde, también llegando en
+  diagonal, y si quedó más cerca (venía a lo largo de él), retrocede sobre los pies. El cuerpo nunca lo cruza:
+  un `moveTo` al otro lado se para delante y se queda esperando ahí.
 
 Sirve cualquier medida de escalón hasta esos límites (probado de 10 × 40 cm a 30 × 30 cm, subiendo y bajando).
 La forma del paso, la inclinación y el apoyo se comparan con capturas de movimiento de personas en escaleras
@@ -362,7 +368,9 @@ limita lo cerrado que puede girar (a 1 m/s y 60°/s, un radio de 1 m más o meno
 1–1,4 m y curvas de 5 m.
 
 Consultas al suelo por personaje: una por frame (bajo el cuerpo) y unas 15 al empezar cada paso (dónde aterriza
-y por dónde pasa la punta del pie). En una escalera, unas 50–90 por paso (el perfil del suelo por delante).
+y por dónde pasa la punta del pie), más una cada dos pasos bastante más adelante (una pared o un desnivel ante el
+que frenar a tiempo; unas 10 más si ahí el suelo queda fuera del alcance de un escalón, o unas 35 la primera vez que encuentra una pared, y unas 25 por paso mientras camina a lo largo de una). En
+una escalera, unas 50–90 por paso (el perfil del suelo por delante).
 Parado, si el suelo bajo los pies cambia sin que se mueva el cuerpo (un objeto que aparece, un cambio de
 `setConfig`), se recoloca en como mucho 0,25 s.
 
