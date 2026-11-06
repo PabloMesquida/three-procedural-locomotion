@@ -63,6 +63,14 @@ Two ways, which can be mixed:
   towards it in 2–3 large steps that already move in the new direction (~1 s for 180°, like a person) and sets
   off in a straight line. It adjusts its speed so as not to circle around it and brakes to stop on it
   (±5–10 cm). Emits `arrive`. Setting `targetSpeed` or `targetHeading` by hand cancels it; so does `stop()`.
+  If something it can't step is in the way (a riser higher than `maxStepUp`, a drop deeper than
+  `maxStepDown`, a hole), it plans a route round it when it is given the destination and follows it from the
+  start, turning along curves, without going up to it first; it goes up a platform by its stairs. If the point
+  can't be reached, it goes to the reachable one closest to it (`moveTarget`). It plans on the ground it walks
+  on, with the same rules as the steps: it doesn't see walls or columns that aren't part of it. With
+  `avoid: false`, in a straight line.
+- **Along a route**: `followPath(points, { run })` follows the points given (e.g. from your own navmesh) with
+  curves and stops on the last one; it doesn't check them.
 
 Also: `targetCrouch` (0 = standing, 1 = crouched), `jump()` (returns `false` if already jumping).
 
@@ -98,7 +106,8 @@ brisk pace, up to `runStartSpeed` (1.7 m/s); above that the gait gradually turns
 | `runBlend` | 0 = walking, 1 = running. |
 | `crouch` | Current crouch (0–1). |
 | `airborne`, `jumpPhase` | In the air; jump phase: `GROUNDED`, `TAKEOFF`, `AIRBORNE`, `LANDING`. |
-| `moveTarget` | Destination of the current `moveTo`, or `null`. |
+| `moveTarget` | Destination of the current `moveTo` (or `followPath`), or `null`. |
+| `movePath` | What is left of its route (points, a copy; the last one is `moveTarget`), or `null` if it goes in a straight line. |
 | `footPhase(side)` | `PLANT` (lands on the heel), `PLANTED`, `LIFT` (raises the heel) or `SWING`. |
 | `legLength`, `bodyScale`, `speedScale` | Leg length of the model (m), length factor and speed factor. |
 | `config`, `effectiveConfig` | Unscaled configuration / the one in use (lengths × `bodyScale`). |
@@ -344,8 +353,8 @@ level, the character samples the ground ahead along its direction of travel, fin
   and where they end; both of a corner), so it also brakes in front of them when it comes at them at an angle,
   turns towards them or sets off towards them again (several `moveTo` in a row next to them), and walks along
   them or round a corner without stopping. It stops with its feet in front of the edge, also coming at it at an
-  angle, and if it ended up closer (it came along it), it moves back over its feet. The body never crosses it:
-  a `moveTo` to the other side stops in front of it and keeps waiting there.
+  angle, and if it ended up closer (it came along it), it moves back over its feet. The body never crosses it
+  (a `moveTo` plans a route round it; with `avoid: false`, or with your own controls, it stops in front of it).
 
 Any size of step works up to those limits (tested from 10 × 40 cm to 30 × 30 cm, up and down). The shape of the
 step, the lean and the landing are compared with motion capture of people on stairs (CMU).
@@ -358,8 +367,7 @@ over the treads. A wider gap without ground is a drop deeper than `maxStepDown`:
 Curved and spiral stairs work too, going up and down either way: while the body turns, the ground is sampled
 along the arc the foot follows (around the center of the turn) instead of in a straight line, the landing
 moves along that arc, and the depth of the treads is taken where the body goes (they are narrower inside).
-The character doesn't follow the stairs by itself: whoever controls it turns it along them (`targetHeading`;
-`moveTo` goes in a straight line). On a tight spiral it has to go slowly: `turnSpeed` limits how tight it
+To follow curved stairs, turn it along them (`targetHeading`) or give it the route with `followPath`. On a tight spiral it has to go slowly: `turnSpeed` limits how tight it
 can turn (at 1 m/s and 60°/s, a radius of about 1 m). Tested on spirals of 1–1.4 m and curves of 5 m.
 
 Ground queries per character: one per frame (under the body) and about 15 at the start of each step (where it
@@ -425,8 +433,10 @@ measures it on your machine.
 
 ## Current limitations
 
-- No collisions or physics (the body doesn't collide with obstacles); `moveTo` goes in a straight line, without
-  pathfinding.
+- No collisions or physics: the body doesn't collide with obstacles that aren't ground (walls, columns,
+  furniture); `moveTo` only goes round what it can't step on the ground. Planning a route costs a few thousand
+  ground queries once, when it is given the destination (about 1,500–10,000; up to ~18,000 if it can't be
+  reached), only if the straight line isn't clear: with `StaticGroundDetector`, a few milliseconds.
 - Stairs: walking only (not running yet). Going down, the leading leg lands almost straight (a person
   lands with the knee bent; see [naturalness](naturalness.md#stairs)). No planned jumps to a different height
   either.

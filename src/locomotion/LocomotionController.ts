@@ -859,7 +859,8 @@ export class LocomotionController {
   private backOffWall(dt: number): void {
     const s = this.body.state;
     if (s.airborne || s.speed > WALL_BACK_OFF_BELOW) return;
-    const push = this.stairs.wallPush(s.position, this.stairs.toeFront + this.stairs.heelBack, this.backOff);
+    const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
+    const push = this.stairs.wallPush(s.position, this.stairs.toeFront + this.stairs.heelBack, this.backOff, ground);
     if (push <= 0) return;
     this.body.drift.copy(this.backOff).multiplyScalar(Math.min(WALL_BACK_OFF_SPEED * dt, push) / push);
   }
@@ -894,7 +895,9 @@ export class LocomotionController {
     // borde: llegando en diagonal, la raíz quedaba más cerca de él de lo que pueden apoyar los pies, que se
     // quedaban atrás (el cuerpo, inclinado sobre el borde) y se recolocaban sin parar.
     const clearance = stairs.toeFront + stairs.heelBack;
-    const ahead = Math.min(stairs.wallAhead(s.position, s.forward, clearance), stairs.wallAhead(s.position, turning, clearance));
+    // Desde el suelo bajo la raíz (en una escalera, la raíz va por una línea entre los escalones).
+    const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
+    const ahead = Math.min(stairs.wallAhead(s.position, s.forward, clearance, ground), stairs.wallAhead(s.position, turning, clearance, ground));
     if (Number.isFinite(ahead)) {
       // Con la mitad de la deceleración: la frenada tiene una rampa (speedEasing) y se pasaba.
       const room = Math.max(ahead, 0);

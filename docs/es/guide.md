@@ -63,6 +63,13 @@ Dos formas, que se pueden mezclar:
   línea recta. Ajusta la velocidad para no
   rodearlo y frena para detenerse en él (±5–10 cm). Emite `arrive`.
   Dar `targetSpeed` o `targetHeading` a mano lo cancela; `stop()` también.
+  Si en el camino hay algo que no puede pisar (una contrahuella más alta que `maxStepUp`, un desnivel más hondo
+  que `maxStepDown`, un hueco), al recibir el destino planea una ruta que lo rodea y la sigue desde el principio,
+  girando en curvas, sin acercarse antes a chocar; a una plataforma sube por su escalera. Si no puede llegar al
+  punto, va al más cercano que alcanza (`moveTarget`). Planea sobre el suelo que pisa, con las mismas reglas que
+  los pasos: no ve paredes ni columnas que no son parte de él. Con `avoid: false`, en línea recta.
+- **Por una ruta**: `followPath(puntos, { run })` sigue los puntos que le das (por ejemplo, de tu navmesh) con
+  curvas y se para en el último; no los comprueba.
 
 Además: `targetCrouch` (0 = de pie, 1 = agachado), `jump()` (devuelve `false` si ya está saltando).
 
@@ -98,7 +105,8 @@ Agachado la velocidad se limita a `crouchMaxSpeed`.
 | `runBlend` | 0 = caminar, 1 = correr. |
 | `crouch` | Agachado actual (0–1). |
 | `airborne`, `jumpPhase` | En el aire; fase del salto: `GROUNDED`, `TAKEOFF`, `AIRBORNE`, `LANDING`. |
-| `moveTarget` | Destino del `moveTo` en curso, o `null`. |
+| `moveTarget` | Destino del `moveTo` (o `followPath`) en curso, o `null`. |
+| `movePath` | Lo que queda de su ruta (puntos, una copia; el último es `moveTarget`), o `null` si va en línea recta. |
 | `footPhase(lado)` | `PLANT` (aterriza de talón), `PLANTED`, `LIFT` (levanta el talón) o `SWING`. |
 | `legLength`, `bodyScale`, `speedScale` | Largo de pierna del modelo (m), factor de las longitudes y de las velocidades. |
 | `config`, `effectiveConfig` | Configuración sin escalar / la que se usa (longitudes × `bodyScale`). |
@@ -347,8 +355,8 @@ cambio de nivel, el personaje mide el suelo por delante en su dirección de avan
   dónde van y dónde acaban; los dos de una esquina), así que también frena delante cuando llega en diagonal,
   gira hacia ellos o vuelve a arrancar hacia ellos (varios `moveTo` seguidos a su lado), y camina a lo largo
   de ellos o rodea una esquina sin pararse. Se para con los pies delante del borde, también llegando en
-  diagonal, y si quedó más cerca (venía a lo largo de él), retrocede sobre los pies. El cuerpo nunca lo cruza:
-  un `moveTo` al otro lado se para delante y se queda esperando ahí.
+  diagonal, y si quedó más cerca (venía a lo largo de él), retrocede sobre los pies. El cuerpo nunca lo cruza
+  (un `moveTo` planea una ruta que lo rodea; con `avoid: false`, o con tus controles, se para delante).
 
 Sirve cualquier medida de escalón hasta esos límites (probado de 10 × 40 cm a 30 × 30 cm, subiendo y bajando).
 La forma del paso, la inclinación y el apoyo se comparan con capturas de movimiento de personas en escaleras
@@ -362,8 +370,8 @@ Un hueco sin suelo más ancho es un desnivel más hondo que `maxStepDown`: se pa
 También valen las escaleras en curva y de caracol, subiendo y bajando, hacia los dos lados: mientras el cuerpo
 gira, el suelo se mide a lo largo del arco que sigue el pie (alrededor del centro del giro) en vez de en línea
 recta, el aterrizaje se mueve por ese arco, y la profundidad de las huellas se toma por donde va el cuerpo (por
-dentro son más estrechas). El personaje no sigue la escalera solo: quien lo controla lo hace girar por ella
-(`targetHeading`; `moveTo` va en línea recta). En un caracol cerrado tiene que ir despacio: `turnSpeed`
+dentro son más estrechas). Para seguir una escalera curva, hazlo girar por ella
+(`targetHeading`) o dale la ruta con `followPath`. En un caracol cerrado tiene que ir despacio: `turnSpeed`
 limita lo cerrado que puede girar (a 1 m/s y 60°/s, un radio de 1 m más o menos). Probado en caracoles de
 1–1,4 m y curvas de 5 m.
 
@@ -429,7 +437,10 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 
 ## Limitaciones actuales
 
-- Sin colisiones ni física (el cuerpo no choca con obstáculos); `moveTo` va en línea recta, sin pathfinding.
+- Sin colisiones ni física: el cuerpo no choca con obstáculos que no son suelo (paredes, columnas, muebles);
+  `moveTo` solo rodea lo que no puede pisar en el suelo. Planear una ruta cuesta unos miles de consultas al suelo
+  una vez, al recibir el destino (unas 1.500–10.000; hasta ~18.000 si no se puede llegar), solo si la línea recta
+  no está libre: con `StaticGroundDetector`, unos milisegundos.
 - Escaleras: solo caminando (todavía no corriendo). Al bajar, la pierna de delante apoya casi estirada
   (una persona apoya con la rodilla doblada; ver [naturalidad](naturalness.md#escaleras)). Tampoco saltos
   planificados a otra altura.

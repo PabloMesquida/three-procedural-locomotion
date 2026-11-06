@@ -320,7 +320,7 @@ describe('escaleras', () => {
         let worstBrake = 0;
         let speed = 0;
         const target = (x: number, z: number): Vector3 => new Vector3(x, z < -START ? 1 : 0, z);
-        simulate(world, 10, route.map(([t, x, z]) => [t, (h) => h.moveTo(target(x, z))]), {
+        simulate(world, 10, route.map(([t, x, z]) => [t, (h) => h.moveTo(target(x, z), { avoid: false })]), {
           onFrame: () => {
             worstRoot = Math.max(worstRoot, Math.abs(human.position.y - level));
             closest = Math.min(closest, human.position.z + START);
@@ -368,7 +368,7 @@ describe('escaleras', () => {
       let deepest = Number.NEGATIVE_INFINITY;
       let worstBrake = 0;
       let speed = 0;
-      simulate(world, 12, route.map(([t, x, z]) => [t, (h) => h.moveTo(new Vector3(x, 0, z))]), {
+      simulate(world, 12, route.map(([t, x, z]) => [t, (h) => h.moveTo(new Vector3(x, 0, z), { avoid: false })]), {
         onFrame: () => {
           worstY = Math.max(worstY, Math.abs(human.position.y));
           deepest = Math.max(deepest, inside(human.position));
@@ -395,7 +395,7 @@ describe('escaleras', () => {
   // (z 1,9–3,3). Recorridos al azar (repetibles) desde arriba y desde abajo, con clics a los dos niveles,
   // algunos dobles. Antes: subía o bajaba por los bordes, un pie apoyaba en el otro nivel, y parado junto al
   // borde la raíz quedaba sobre él (el cuerpo inclinado) y los pies se recolocaban sin parar o se alejaban.
-  it('plataforma de 1 m con escalera, clics al azar: solo cambia de nivel por la escalera y para bien', () => {
+  for (const avoid of [false, true]) it(`plataforma de 1 m con escalera, clics al azar ${avoid ? 'con ruta' : 'en línea recta'}: solo cambia de nivel por la escalera y para bien`, () => {
     const top = 1.02;
     const onTop = (x: number, z: number): boolean => x > 3 && x < 6.5 && z > -2 && z < 4;
     const heightAt = (x: number, z: number): number => {
@@ -441,7 +441,7 @@ describe('escaleras', () => {
       let crossed = '';
       let worstFoot = 0;
       let worstOffset = 0;
-      simulate(world, end + 3, clicks.map(([t, x, z]) => [t, (h) => h.moveTo(new Vector3(x, 0, z))]), {
+      simulate(world, end + 3, clicks.map(([t, x, z]) => [t, (h) => h.moveTo(new Vector3(x, 0, z), { avoid })]), {
         onFrame: (t) => {
           const p = human.position;
           const isTop = onTop(p.x, p.z);

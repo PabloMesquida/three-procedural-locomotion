@@ -29,7 +29,8 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
 - **Torsión gradual** de brazos y piernas si el rig tiene huesos `twist` (opcionales): la muñeca y el tobillo
   no se retuercen de golpe ([esqueletos](docs/es/skeletons.md#huesos-de-torsión)).
 - **Point and click**: `moveTo(punto, { run })` llega al destino (±5–10 cm); si queda detrás, frena y gira
-  hacia él en 2–3 pasos, como una persona, y sale en línea recta.
+  hacia él en 2–3 pasos, como una persona, y sale. Si en el camino hay algo que no puede pisar (una plataforma,
+  un desnivel), planea desde el principio una ruta que lo rodea, y sube por la escalera si la hay.
 - **Tocar al pasar**: con `touchables` (columnas, paredes, la baranda de un puente) acerca la mano y la apoya
   con la palma al pasar a su lado, sin dejar de caminar; por una pared o una baranda la va deslizando mientras
   siga al lado; o a mano con `touch(punto)` ([guía](docs/es/guide.md#tocar-superficies)).
@@ -133,7 +134,7 @@ Las mallas de los dos modelos son de [Human Base Meshes](https://www.blender.org
 
 ## Limitaciones
 
-- Cuerpo cinemático: sin colisiones ni física; `moveTo` va en línea recta, sin pathfinding.
+- Cuerpo cinemático: sin colisiones ni física; `moveTo` solo rodea lo que no puede pisar en el suelo (no paredes ni columnas que no son parte de él).
 - Escaleras: solo caminando (todavía no corriendo). Sin saltos planificados a otra altura.
 - Rigs verificados: Mixamo y metarig de Rigify. Otros deberían funcionar con su mapping, sin verificar.
 

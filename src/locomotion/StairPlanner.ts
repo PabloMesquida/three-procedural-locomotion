@@ -102,6 +102,12 @@ export class StairPlanner {
    */
   wallFrom = 0;
   wallTo = 0;
+  /**
+   * Height of the ground on the other side of that edge (m; −∞ if there is none): it is a wall only from
+   * ground from which that change of level can't be stepped (going down stairs, the side of a lower tread may
+   * be a drop it can step down).
+   */
+  wallBeyond = Number.NEGATIVE_INFINITY;
 
   private readonly config: LocomotionConfig;
   private readonly detector: GroundDetector;
@@ -119,6 +125,7 @@ export class StairPlanner {
     normal: new Vector3(),
     from: 0,
     to: 0,
+    beyond: Number.NEGATIVE_INFINITY,
   }));
   /** Last point far ahead where it looked for a wall (world; NaN if none) and the direction it was going. */
   private readonly lookedAt = new Vector3(Number.NaN, 0, 0);
@@ -172,12 +179,12 @@ export class StairPlanner {
    * climb (or the drop it can't step down), if it is going towards it and would cross it near the point it
    * found; Infinity otherwise. With `clearance`, to where it would be that far from the edge (measured
    * perpendicular to it: coming at it at an angle, it stops just as far from it; it can be negative). The
-   * nearest of the walls it remembers.
+   * nearest of the walls it remembers that are walls from ground at `ground` (by default, `position.y`).
    */
-  wallAhead(position: Vector3, forward: Vector3, clearance = 0): number {
+  wallAhead(position: Vector3, forward: Vector3, clearance = 0, ground = position.y): number {
     let nearest = Number.POSITIVE_INFINITY;
     for (let k = 0; k < MAX_WALLS; k++) {
-      if (this.load(k)) nearest = Math.min(nearest, this.aheadOfWall(position, forward, clearance));
+      if (this.load(k)) nearest = Math.min(nearest, this.aheadOfWall(position, forward, clearance, ground));
     }
     return nearest;
   }
@@ -207,15 +214,16 @@ export class StairPlanner {
   /**
    * How far `position` (world) is closer than `clearance` to the walls it remembers, on this side of them and
    * along them: returns that distance (m; 0 if none) and in `out` the horizontal shift that takes it back to
-   * `clearance` from each.
+   * `clearance` from each (those that are walls from ground at `ground`).
    */
-  wallPush(position: Vector3, clearance: number, out: Vector3): number {
+  wallPush(position: Vector3, clearance: number, out: Vector3, ground = position.y): number {
     out.set(0, 0, 0);
     for (let k = 0; k < MAX_WALLS; k++) {
       if (!this.load(k)) continue;
       const n = this.wallNormal;
       const perpendicular = (this.wall.x - position.x) * n.x + (this.wall.z - position.z) * n.z;
       if (perpendicular >= clearance || perpendicular < -this.heelBack || !this.alongWall(position.x, position.z)) continue;
+      if (this.passable(this.wallBeyond - ground)) continue;
       out.x -= n.x * (clearance - perpendicular);
       out.z -= n.z * (clearance - perpendicular);
     }
@@ -223,8 +231,8 @@ export class StairPlanner {
   }
 
   /** `wallAhead` for the wall in `wall` (and the rest of its fields). */
-  private aheadOfWall(position: Vector3, forward: Vector3, clearance: number): number {
-    if (Number.isNaN(this.wall.x)) return Number.POSITIVE_INFINITY;
+  private aheadOfWall(position: Vector3, forward: Vector3, clearance: number, ground: number): number {
+    if (Number.isNaN(this.wall.x) || this.passable(this.wallBeyond - ground)) return Number.POSITIVE_INFINITY;
     const n = this.wallNormal;
     const c = forward.x * n.x + forward.z * n.z;
     if (c < WALL_AHEAD_COS) return Number.POSITIVE_INFINITY;
@@ -246,6 +254,7 @@ export class StairPlanner {
     this.wallNormal.copy(w.normal);
     this.wallFrom = w.from;
     this.wallTo = w.to;
+    this.wallBeyond = w.beyond;
     return true;
   }
 
@@ -256,6 +265,7 @@ export class StairPlanner {
     w.normal.copy(this.wallNormal);
     w.from = this.wallFrom;
     w.to = this.wallTo;
+    w.beyond = this.wallBeyond;
   }
 
   /** (`x`, `z`), seen from the edge of `wall`, is within its extent (`wallFrom`–`wallTo`). */
@@ -344,7 +354,7 @@ export class StairPlanner {
     }
     if (!this.active && !this.levelChange(stance, stanceGround, landing, ground, direction, edge, probe)) {
       if (probe) this.lookFarAhead(stance, stanceGround, direction, reach, stride);
-      return this.keepOffWall(stance, landing, out);
+      return this.keepOffWall(stance, landing, out, stanceGround);
     }
 
     const c = this.config;
@@ -458,7 +468,7 @@ export class StairPlanner {
       out.y = treadHeight(profile.treads[bestTread], best) + ankleHeight;
     }
     profile.dropFirst(first);
-    if (this.keepOffWall(stance, moved ? out : landing, out)) moved = true;
+    if (this.keepOffWall(stance, moved ? out : landing, out, stanceGround)) moved = true;
     return moved;
   }
 
@@ -468,11 +478,11 @@ export class StairPlanner {
    * tight turn or coming at it at an angle, the profile doesn't ensure that). Returns the new landing in
    * `out` and true, or false if it doesn't change. Off each of the walls it remembers (in a corner, both).
    */
-  private keepOffWall(stance: Vector3, landing: Vector3, out: Vector3): boolean {
+  private keepOffWall(stance: Vector3, landing: Vector3, out: Vector3, ground: number): boolean {
     let moved = false;
     const current = this.checked.copy(landing);
     for (let k = 0; k < MAX_WALLS; k++) {
-      if (this.load(k) && this.keepOffOneWall(stance, current, out)) {
+      if (this.load(k) && this.keepOffOneWall(stance, current, out, ground)) {
         current.copy(out);
         moved = true;
       }
@@ -481,8 +491,8 @@ export class StairPlanner {
   }
 
   /** `keepOffWall` for the wall in `wall` (and the rest of its fields). */
-  private keepOffOneWall(stance: Vector3, landing: Vector3, out: Vector3): boolean {
-    if (Number.isNaN(this.wall.x)) return false;
+  private keepOffOneWall(stance: Vector3, landing: Vector3, out: Vector3, ground: number): boolean {
+    if (Number.isNaN(this.wall.x) || this.passable(this.wallBeyond - ground)) return false;
     const n = this.wallNormal;
     const w = this.wall;
     if ((w.x - stance.x) * n.x + (w.z - stance.z) * n.z <= 0) return false;
@@ -585,6 +595,7 @@ export class StairPlanner {
     w.copy(point);
     n.set(direction.x, 0, direction.z).normalize();
     this.measureWall(ground);
+    this.wallBeyond = this.beyondWall(ground);
     this.store(slot);
   }
 
@@ -611,6 +622,7 @@ export class StairPlanner {
     // Hacia el punto de antes, ya se sabe que sigue al menos hasta él.
     this.wallTo = this.edgeEnd(1, Math.max(-along, 0), side, full, ground);
     this.wallFrom = -this.edgeEnd(-1, Math.max(along, 0), side, full, ground);
+    this.wallBeyond = this.beyondWall(ground);
   }
 
   /**
@@ -774,6 +786,12 @@ export class StairPlanner {
       else hi = mid;
     }
     return hi;
+  }
+
+  /** Height of the ground just behind the edge of `wall`, coming from ground at `ground` (m; −∞ if none). */
+  private beyondWall(ground: number): number {
+    const d = WALL_PROBE * this.footLength;
+    return this.heightAt(this.wall.x + this.wallNormal.x * d, this.wall.z + this.wallNormal.z * d, ground);
   }
 
   /** Height of the ground at (`x`, `z`), looking for it around the height `near` like the profile; −∞ if none. */

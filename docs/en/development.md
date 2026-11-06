@@ -69,7 +69,7 @@ src/          LIBRARY (the only thing published, together with dist/ and docs/)
               JumpController, LocomotionController (coordinates everything)
   body/       BodyController, PelvisController, TorsoController, ArmController, TouchController,
               HandFingers, TwistController
-  navigation/ MoveToController (point and click)
+  navigation/ MoveToController (point and click), PathPlanner (route round what it can't step)
   tuning/     basicControls (high-level controls)
   core/       pose (world read/write of the bones, without unnecessary recomputation), transforms
   debug/      visual helpers (`three-procedural-locomotion/debug`)

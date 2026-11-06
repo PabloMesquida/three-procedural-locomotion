@@ -49,6 +49,11 @@ const PIVOT_EITHER_WAY = (150 * Math.PI) / 180;
  * other direction).
  */
 const PIVOT_MAX_STEER = (170 * Math.PI) / 180;
+/**
+ * Following a route, it heads for the point this far ahead along it (× stepLength): it turns at its corners
+ * along a curve instead of going point to point. Shorter, it would follow it closer and turn more sharply.
+ */
+const PATH_LOOKAHEAD = 0.75;
 
 export interface MoveToConfig {
   /** Distance to the target at which it counts as arrived (m). */
@@ -95,7 +100,8 @@ export const defaultMoveToConfig: MoveToConfig = {
  *    braking, changing the desired speed every frame, would make the last foot land too far.
  *  - It arrives when it stops after braking or, once close, when the destination is no longer ahead (it
  *    has passed the closest point).
- *  - In a straight line: no obstacles or pathfinding yet.
+ *  - Along a route (`setTarget` with `path`, see PathPlanner): it heads for a point a little ahead on it
+ *    (PATH_LOOKAHEAD), so it turns at its corners along curves, and it only brakes on its last stretch.
  */
 export class MoveToController {
   readonly config: MoveToConfig;
@@ -104,6 +110,12 @@ export class MoveToController {
   active = false;
   /** Run (true) or walk towards the destination. */
   run = false;
+  /**
+   * Route to the destination (world; the last point is `target`), or empty if it goes in a straight line.
+   * `pathIndex`: the point it is going to (the previous ones are behind).
+   */
+  readonly path: Vector3[] = [];
+  pathIndex = 0;
   /** Braking to stop at the destination (it stays on until stopped). */
   private braking = false;
   /** Turning around by pivoting towards a destination behind (see PIVOT_START). */
@@ -118,26 +130,84 @@ export class MoveToController {
   private readonly controller: LocomotionController;
   private readonly toTarget = new Vector3();
   private readonly cross = new Vector3();
+  /** Where the route starts (world) and the point ahead on it it heads for. */
+  private readonly pathStart = new Vector3();
+  private readonly aim = new Vector3();
 
   constructor(controller: LocomotionController, config: Partial<MoveToConfig> = {}) {
     this.controller = controller;
     this.config = { ...defaultMoveToConfig, ...config };
   }
 
-  /** New destination. It already turns the heading towards it, even if it is very close. */
-  setTarget(point: Vector3, run = false): void {
+  /**
+   * New destination. It already turns the heading towards it, even if it is very close. With `path` (world
+   * points; the last one, the destination), it goes there along it.
+   */
+  setTarget(point: Vector3, run = false, path: readonly Vector3[] = []): void {
     this.target.copy(point);
     this.run = run;
     this.active = true;
     this.braking = false;
     this.pivoting = false;
     this.exiting = false;
-    this.controller.targetHeading = this.headingTo(this.target);
+    this.path.length = 0;
+    this.pathIndex = 0;
+    if (path.length > 1) {
+      for (const p of path) this.path.push(p.clone());
+      this.target.copy(this.path[this.path.length - 1]);
+      this.pathStart.copy(this.controller.body.state.position);
+    }
+    this.controller.targetHeading = this.headingTo(this.aimPoint());
   }
 
   /** The character was shifted by `offset` (world) without moving: the destination shifts with it. */
   shift(offset: Vector3): void {
     this.target.add(offset);
+    this.pathStart.add(offset);
+    for (const p of this.path) p.add(offset);
+  }
+
+  /**
+   * Point it heads for: on a route, the one `PATH_LOOKAHEAD` ahead along it (or the destination, on its last
+   * stretch); otherwise, the destination. It moves on along the route as it goes.
+   */
+  private aimPoint(): Vector3 {
+    const path = this.path;
+    if (path.length === 0) return this.target;
+    const p = this.controller.body.state.position;
+    const lookahead = PATH_LOOKAHEAD * this.controller.config.stepLength;
+    // El tramo en que está: el primero cuyo final aún no ha pasado.
+    let from = this.pathIndex === 0 ? this.pathStart : path[this.pathIndex - 1];
+    let t = 0;
+    while (this.pathIndex < path.length) {
+      const to = path[this.pathIndex];
+      const dx = to.x - from.x;
+      const dz = to.z - from.z;
+      const length2 = dx * dx + dz * dz;
+      t = length2 > 1e-12 ? ((p.x - from.x) * dx + (p.z - from.z) * dz) / length2 : 1;
+      // Pasado el final del tramo, o ya cerca de él y con el siguiente por delante: al siguiente.
+      const near = Math.hypot(to.x - p.x, to.z - p.z) < lookahead / 2;
+      if ((t < 1 && !near) || this.pathIndex === path.length - 1) break;
+      from = to;
+      this.pathIndex++;
+    }
+    // Desde su proyección en el tramo, `lookahead` por el camino.
+    const to = path[this.pathIndex];
+    t = Math.min(Math.max(t, 0), 1);
+    let x = from.x + (to.x - from.x) * t;
+    let z = from.z + (to.z - from.z) * t;
+    let left = lookahead;
+    for (let k = this.pathIndex; k < path.length; k++) {
+      const q = path[k];
+      const d = Math.hypot(q.x - x, q.z - z);
+      if (d >= left) {
+        return this.aim.set(x + ((q.x - x) * left) / d, q.y, z + ((q.z - z) * left) / d);
+      }
+      left -= d;
+      x = q.x;
+      z = q.z;
+    }
+    return this.target;
   }
 
   /** Drops the destination and stops (the manual controls are in charge again). */
@@ -163,6 +233,10 @@ export class MoveToController {
     const distance = this.distance();
 
     const state = this.controller.body.state;
+    // Por una ruta, hacia un punto por delante en ella; hasta que el destino queda a menos de eso: entonces,
+    // como en línea recta (frena y llega).
+    const aim = this.aimPoint();
+    const onRoute = aim !== this.target;
     if (this.braking) {
       this.controller.targetSpeed = 0;
       if (state.speed < 1e-3) {
@@ -173,16 +247,17 @@ export class MoveToController {
       return;
     }
 
-    const bearing = this.headingTo(this.target) - state.heading; // ángulo del destino respecto a la dirección actual
+    const bearing = this.headingTo(aim) - state.heading; // ángulo del destino respecto a la dirección actual
+    const aimDistance = onRoute ? Math.hypot(aim.x - state.position.x, aim.z - state.position.z) : distance;
     const stopDistance = this.controller.body.stoppingDistance(state.speed);
-    if (distance - c.arriveRadius <= stopDistance && Math.cos(bearing) > BRAKE_MIN_COS) {
+    if (!onRoute && distance - c.arriveRadius <= stopDistance && Math.cos(bearing) > BRAKE_MIN_COS) {
       this.braking = true;
       this.controller.targetSpeed = 0;
       return;
     }
 
     // Destino detrás: frena y pivota hacia él; con el destino ya delante, sale caminando.
-    if (!this.pivoting && Math.abs(bearing) > PIVOT_START && distance > c.headingLockRadius) {
+    if (!this.pivoting && Math.abs(bearing) > PIVOT_START && aimDistance > c.headingLockRadius) {
       this.pivoting = true;
       // Lanzado (más deprisa que caminando) la vuelta empieza siendo una curva: por el lado más corto.
       const either = Math.abs(bearing) > PIVOT_EITHER_WAY && state.speed <= loco.walkSpeed;
@@ -201,7 +276,7 @@ export class MoveToController {
       return;
     }
 
-    if (distance > c.headingLockRadius) {
+    if (onRoute || distance > c.headingLockRadius) {
       this.controller.targetHeading = state.heading + bearing;
     } else if (distance * Math.cos(bearing) <= c.arriveRadius) {
       // Cerca y el destino ya no queda delante: está en el punto más cercano.
@@ -220,12 +295,12 @@ export class MoveToController {
     // Radio de la curva que alcanza el destino: r = d / (2·sen α). Girando a ω, v ≤ ω·r;
     // con la aceleración lateral limitada (ω ≤ a/v), además v ≤ √(a·r).
     const twoSin = 2 * Math.max(Math.abs(Math.sin(bearing)), 1e-3);
-    const turnRadiusLimit = Math.min((omega * distance) / twoSin, Math.sqrt((loco.maxLateralAcceleration * distance) / twoSin));
+    const turnRadiusLimit = Math.min((omega * aimDistance) / twoSin, Math.sqrt((loco.maxLateralAcceleration * aimDistance) / twoSin));
     // Con el destino muy de lado (hasta PIVOT_START; más allá pivota) no se para a girar: sigue andando
     // por una curva. El cuerpo ya frena según el giro pendiente (turnSlowdown); aquí solo se
     // limita el radio de la curva (v/ω) a una fracción de la distancia para no rodear el
     // destino: si está muy cerca, casi gira en el sitio.
-    const turnaroundLimit = omega * distance * TURN_RADIUS_FRACTION;
+    const turnaroundLimit = omega * aimDistance * TURN_RADIUS_FRACTION;
     this.controller.targetSpeed = Math.min(cruise, turnRadiusLimit) * turnFactor + Math.min(cruise, turnaroundLimit) * (1 - turnFactor);
   }
 

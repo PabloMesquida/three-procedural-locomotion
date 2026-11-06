@@ -68,7 +68,7 @@ src/          LIBRERÍA (lo único que se publica, junto con dist/ y docs/)
               JumpController, LocomotionController (lo coordina todo)
   body/       BodyController, PelvisController, TorsoController, ArmController, TouchController,
               HandFingers, TwistController
-  navigation/ MoveToController (point and click)
+  navigation/ MoveToController (point and click), PathPlanner (ruta que rodea lo que no puede pisar)
   tuning/     basicControls (controles de alto nivel)
   core/       pose (lectura/escritura world de los huesos, sin recálculos de más), transformaciones
   debug/      ayudas visuales (`three-procedural-locomotion/debug`)

@@ -16,6 +16,7 @@ import type { GaitMode } from './locomotion/GaitController.ts';
 import type { JumpPhase } from './locomotion/JumpController.ts';
 import { LocomotionController } from './locomotion/LocomotionController.ts';
 import { defaultMoveToConfig, type MoveToConfig, MoveToController } from './navigation/MoveToController.ts';
+import { PathPlanner } from './navigation/PathPlanner.ts';
 import { estimateForward, type HumanRig, type HumanRigMapping, measureLegLength, type Side } from './rig/HumanRig.ts';
 import { type StylePreset, stylePresets } from './presets.ts';
 import { checkModel } from './rig/checkModel.ts';
@@ -106,6 +107,10 @@ export interface ProceduralHumanEventMap {
 export type ProceduralHumanEvent = keyof ProceduralHumanEventMap;
 type Listener<E extends ProceduralHumanEvent> = (data: ProceduralHumanEventMap[E]) => void;
 
+/** Stuck this long (s) on the route of a `moveTo`, it plans it again; at most this many times. */
+const STUCK_TIME = 1;
+const MAX_REPLANS = 3;
+
 /**
  * Human character with procedural locomotion (no baked animations).
  *
@@ -153,6 +158,15 @@ export class ProceduralHuman {
   /** Acceso avanzado al point and click. */
   readonly navigation: MoveToController;
 
+  private readonly pathPlanner: PathPlanner;
+  private readonly route: Vector3[] = [];
+  private readonly routeStart = new Vector3();
+  /** Destination of the last `moveTo` with a route (to plan it again if it gets stuck), and how. */
+  private readonly routeTarget = new Vector3();
+  private routeRun = false;
+  /** Seconds stuck on that route, and how many times it has planned it again. */
+  private stuckTime = 0;
+  private replans = 0;
   private readonly mutableConfig: ProceduralHumanConfig;
   private readonly scaledConfig: ProceduralHumanConfig;
   private readonly maxTimeStep: number;
@@ -212,6 +226,8 @@ export class ProceduralHuman {
 
     this.locomotion = new LocomotionController(rig, forward, detector, this.scaledConfig, options.seed ?? 1);
     this.navigation = new MoveToController(this.locomotion, pickMoveToConfig(this.scaledConfig));
+    const stairs = this.locomotion.stairs;
+    this.pathPlanner = new PathPlanner(detector, () => this.locomotion.config, () => stairs.toeFront + stairs.heelBack);
     if (options.touchables) this.touchables = options.touchables;
     this.reset();
   }
@@ -249,9 +265,53 @@ export class ProceduralHuman {
     this.locomotion.targetCrouch = Math.min(Math.max(value, 0), 1);
   }
 
-  /** Walk (or run, with `run`) to a point on the ground (world), in a straight line. */
-  moveTo(point: Vector3, options: { run?: boolean } = {}): void {
-    this.navigation.setTarget(point, options.run ?? false);
+  /**
+   * Walk (or run, with `run`) to a point on the ground (world). If something it can't step is in the way (a
+   * riser higher than `maxStepUp`, a drop deeper than `maxStepDown`, a hole), it plans a route round it from
+   * the start and follows it with curves; it goes up a platform by its stairs. If the point can't be reached,
+   * it goes to the reachable one closest to it (`moveTarget`). With `avoid: false`, in a straight line (it
+   * stops in front of what it can't step). It only sees the ground: not walls or columns that aren't part of it.
+   */
+  moveTo(point: Vector3, options: { run?: boolean; avoid?: boolean } = {}): void {
+    const run = options.run ?? false;
+    const body = this.locomotion.body.state;
+    const start = this.routeStart.copy(body.position);
+    if (Number.isFinite(body.groundHeight)) start.y = body.groundHeight;
+    this.route.length = 0;
+    this.routeTarget.copy(point);
+    this.routeRun = run;
+    this.stuckTime = 0;
+    this.replans = (options.avoid ?? true) ? 0 : MAX_REPLANS;
+    if ((options.avoid ?? true) && this.pathPlanner.plan(start, point, this.route) && this.route.length > 1) {
+      this.navigation.setTarget(this.route[this.route.length - 1], run, this.route);
+    } else {
+      this.navigation.setTarget(this.route.length === 1 ? this.route[0] : point, run);
+    }
+  }
+
+  /**
+   * Walk (or run, with `run`) along a route (world points; the last one is the destination), e.g. from a
+   * navmesh: it heads for a point a little ahead on it, so it turns at its corners along curves. It doesn't
+   * check it: what it can't step, it stops in front of.
+   */
+  followPath(points: readonly Vector3[], options: { run?: boolean } = {}): void {
+    if (points.length === 0) return;
+    this.navigation.setTarget(points[points.length - 1], options.run ?? false, points);
+  }
+
+  /**
+   * Following the route of a `moveTo`, stuck (it wants to walk but doesn't move for STUCK_TIME, e.g. in front of
+   * something the route cut too close): it plans it again from where it is, at most MAX_REPLANS times.
+   */
+  private replanIfStuck(dt: number): void {
+    const n = this.navigation;
+    const body = this.locomotion.body.state;
+    const stuck = n.active && n.path.length > 0 && this.locomotion.targetSpeed > 0.2 && body.speed < 0.05;
+    this.stuckTime = stuck ? this.stuckTime + dt : 0;
+    if (this.stuckTime < STUCK_TIME || this.replans >= MAX_REPLANS) return;
+    const replans = this.replans + 1;
+    this.moveTo(this.routeTarget, { run: this.routeRun });
+    this.replans = replans;
   }
 
   /** Stop: cancels the `moveTo` and sets the desired speed to 0. */
@@ -333,6 +393,7 @@ export class ProceduralHuman {
     const step = total / steps;
     for (let i = 0; i < steps; i++) {
       const navigating = this.navigation.active;
+      this.replanIfStuck(step);
       this.navigation.update();
       this.locomotion.update(step);
       this.emitEvents(navigating);
@@ -386,9 +447,19 @@ export class ProceduralHuman {
     return this.locomotion.gait.blend;
   }
 
-  /** Destination of the current `moveTo`, or null. */
+  /** Destination of the current `moveTo` (or `followPath`), or null. */
   get moveTarget(): Vector3 | null {
     return this.navigation.active ? this.navigation.target : null;
+  }
+
+  /**
+   * What is left of the route of the current `moveTo` or `followPath` (world points, a copy; the last one is
+   * `moveTarget`), or null if it goes in a straight line or isn't going anywhere.
+   */
+  get movePath(): Vector3[] | null {
+    const n = this.navigation;
+    if (!n.active || n.path.length === 0) return null;
+    return n.path.slice(n.pathIndex).map((p) => p.clone());
   }
 
   /** State of a foot: PLANT, PLANTED, LIFT or SWING. */
