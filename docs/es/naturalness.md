@@ -376,7 +376,7 @@ escaleras separa la subida, la bajada y el llano por lo rápido que sube la pelv
 | | Mocap, llano (83) | Librería, llano | Mocap, subiendo (83) | Librería, subiendo | Mocap, trote (35) | Librería, 3 m/s |
 |---|---|---|---|---|---|---|
 | Inclinación del tronco respecto al llano (°) | | | +7,5 | +7,3 | | |
-| Inclinación de la cabeza respecto al llano (°) | | | +7,7 | +7,5 | | |
+| Inclinación de la cabeza respecto al llano (°) | | | +7,7 | +2,4 | | |
 | Cabeceo de la cabeza (± °) | 1,0 | 0,6 | 0,8 | 0,5 | 0,5–1,3 | 0,4 |
 | Velocidad del cabeceo (°/s) | 11 | 5 | 11 | 10 | 14 | 13 |
 | Ladeo de la cabeza (± °) | 1,35 | 0,8 | 2,4 | 0,4 | 0,5–0,8 | 0,55 |
@@ -397,8 +397,11 @@ Qué se cambió:
   (corriendo, la cuarta parte), llegando después (un muelle a 1/4 de `trunkFrequency`): la cadera que sube sube
   su hombro un poco más tarde. Lo hacen las clavículas, así que el cuello y la cabeza no se van de lado con ella.
   Frente a la curva de CMU de las tomas de caminar, el error de los hombros bajó de 1,1° a 0,7° RMS.
-- **Escaleras**: el tronco se inclina menos (`STAIR_LEAN_UP` 25 → 19); la cabeza mira los escalones (se inclina
-  0,6 de lo que se pide al tronco) y cabecea menos (1 / (1 + 5 × la pendiente) de `headInertia`).
+- **Escaleras**: el tronco se inclina menos (`STAIR_LEAN_UP` 25 → 19) y la cabeza cabecea menos (1 / (1 + 5 × la
+  pendiente) de `headInertia`). Adónde mira la cabeza es una elección, no sale de las capturas: antes del primer
+  escalón de un tramo (subiendo o bajando) baja la mirada hacia él (15°, desde que un rayo ~1,4 m por delante
+  encuentra un escalón); subiendo, después mira al frente (el sujeto 83 la llevaba inclinada como el tronco todo el
+  tramo), y bajando sigue mirando un poco hacia abajo (≈ 9°).
 
 Lo que sigue distinto: en escaleras la cabeza se ladea menos que el sujeto 83 (0,4° frente a 2,4°) y los hombros
 también (1,1° frente a 1,7°); subiendo, los hombros giran contra las caderas la mitad (los brazos se balancean

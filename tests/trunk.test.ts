@@ -85,9 +85,9 @@ describe('tronco: peso y retraso', () => {
   // En las tomas de CMU (sujeto 83, que sube escaleras normales, y las de caminar), con cada paso la cabeza cabecea
   // ±1° (a ~11 °/s) y se ladea ±1,3°, y la línea de los hombros se inclina ±1° (RMS). Antes la cabeza estaba casi
   // quieta (±0,1°) y los hombros nivelados (±0,3°): se veía rígido; y con un muelle rápido, subiendo, cabeceaba a
-  // 16 °/s: se veía sacudida. Subiendo, el tronco se inclina 7,5° más que en llano y la cabeza otro tanto (mira los
-  // escalones); antes el tronco, 10°, y la cabeza, 2,7°.
-  it('con cada paso la cabeza cabecea y se ladea y los hombros se inclinan; subiendo, el tronco y la cabeza se inclinan como en CMU', () => {
+  // 16 °/s: se veía sacudida. Subiendo, el tronco se inclina 7,5° más que en llano (antes, 10°); la cabeza mira el
+  // primer escalón y luego al frente (ver el test siguiente).
+  it('con cada paso la cabeza cabecea y se ladea y los hombros se inclinan; subiendo, el tronco se inclina como en CMU', () => {
     const flat = posture(false);
     const up = posture(true);
     assert.ok(flat.nod > 0.3 && flat.nod < 1.5, `en llano, la cabeza cabecea ±${flat.nod.toFixed(2)}°`);
@@ -98,8 +98,53 @@ describe('tronco: peso y retraso', () => {
     const trunk = up.trunk - flat.trunk;
     const head = up.head - flat.head;
     assert.ok(trunk > 5.5 && trunk < 9, `subiendo, el tronco se inclina ${trunk.toFixed(1)}° más que en llano`);
-    assert.ok(head > 5.5 && head < 10, `subiendo, la cabeza se inclina ${head.toFixed(1)}° más que en llano`);
+    assert.ok(head > -1 && head < 4, `subiendo, la cabeza se inclina ${head.toFixed(1)}° más que en llano`);
   });
+
+  // Antes de pisar el primer escalón (subiendo o bajando), la cabeza lo mira; subiendo, una vez en la escalera
+  // vuelve a mirar al frente; bajando, sigue mirando un poco hacia abajo. Escalera de 8 escalones de 17 × 28 cm
+  // que empieza 3 m por delante, con un rellano arriba.
+  for (const down of [false, true]) {
+    it(`${down ? 'bajando' : 'subiendo'}: mira el primer escalón antes de pisarlo y luego ${down ? 'un poco hacia abajo' : 'al frente'}`, () => {
+      const world = createWorld({
+        human: { config: { variation: 0 } },
+        buildTerrain: (t) => {
+          for (let k = 1; k <= 8; k++) {
+            const h = down ? 0.17 * (9 - k) : 0.17 * k;
+            const box = new Mesh(new BoxGeometry(1.6, h, 0.28), new MeshBasicMaterial());
+            box.position.set(0, h / 2, -3 - 0.28 * (k - 0.5));
+            t.add(box);
+          }
+          const top = new Mesh(new BoxGeometry(1.6, 1.36, 3), new MeshBasicMaterial());
+          top.position.set(0, 0.68, down ? -1.5 : -3 - 2.24 - 1.5);
+          t.add(top);
+        },
+        place: (model, scene) => { if (down) model.position.set(0, 1.36, -0.5); scene.add(model); },
+      });
+      const { human } = world;
+      const rig = human.rig;
+      const restUp = new Vector3(0, 1, 0).applyQuaternion(rig.head!.getWorldQuaternion(new Quaternion()).invert());
+      let far = 0;
+      let before = 0;
+      const flight: number[] = [];
+      simulate(world, 9, [[0, (h) => { h.targetSpeed = 1; }]], {
+        onFrame: () => {
+          const F = human.locomotion.body.state.forward;
+          const head = restUp.clone().applyQuaternion(rig.head!.getWorldQuaternion(new Quaternion()));
+          const pitch = Math.atan2(head.dot(F), head.y) * DEG;
+          const d = -human.position.z - 3; // desde el primer escalón
+          if (d > -2.5 && d < -1.6) far = Math.max(far, pitch);
+          if (d > -0.4 && d < 0) before = Math.max(before, pitch);
+          if (d > 0.7 && d < 1.7) flight.push(pitch);
+        },
+      });
+      const mean = flight.reduce((s, x) => s + x, 0) / flight.length;
+      assert.ok(far < 4, `lejos de la escalera ya mira hacia abajo (${far.toFixed(1)}°)`);
+      assert.ok(before > 8, `antes del primer escalón, la cabeza a ${before.toFixed(1)}°`);
+      if (down) assert.ok(mean > 5 && mean < 13, `bajando, la cabeza a ${mean.toFixed(1)}°`);
+      else assert.ok(mean < 4, `subiendo, la cabeza a ${mean.toFixed(1)}°`);
+    });
+  }
 });
 
 /** Media móvil centrada (ventana de `n` muestras). */

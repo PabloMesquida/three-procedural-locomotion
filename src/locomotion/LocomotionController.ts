@@ -114,10 +114,21 @@ const STAIR_LEAN_DOWN = 12;
 /** Time constant with which the lean follows the slope (s): the slope of the line changes in corners. */
 const STAIR_LEAN_TIME = 0.3;
 /**
- * On stairs the head looks down at the steps: it tilts this fraction of the extra lean requested for the trunk,
- * besides what it follows of the trunk (CMU, going up: the head tilts as much as the trunk, ≈ +7.5°).
+ * Before the first step of a flight (up or down) the head glances down at it: this much (rad), from when it sees
+ * a step `GLANCE_AHEAD` ahead until it is on the stairs, and it looks ahead again once it is going up or down
+ * them (`GLANCE_TIME`, s, smoothing). Going down, it also looks a little down all the way: `DOWN_GAZE` per unit
+ * of slope (rad; ≈ 9° on stairs of 17 × 28 cm), besides what it follows of the trunk.
  */
-const STAIR_GAZE = 0.6;
+const GLANCE = 15 * DEG;
+const GLANCE_TIME = 0.3;
+const DOWN_GAZE = 15 * DEG;
+/**
+ * It looks for the step ahead this far (× stepLength), every `GLANCE_INTERVAL` s and only walking (one ray: the
+ * budget of rays per frame is tight); a change of level of more than `GLANCE_STEP` × maxStepUp is a step.
+ */
+const GLANCE_AHEAD = 1.75;
+const GLANCE_INTERVAL = 0.25;
+const GLANCE_STEP = 0.25;
 /**
  * On stairs the head nods less (it is held to watch the steps): the nodding from `headInertia` is divided by
  * 1 + this × the slope (CMU, going up: ±0.8° against ±1° on the flat, with stronger jolts of the hips).
@@ -341,6 +352,10 @@ export class LocomotionController {
   private stairLean = 0;
   /** Slope of the stairs under the body (rise / run, smoothed like `stairLean`). */
   private stairSlope = 0;
+  /** Glance down at the first step of a flight (rad, smoothed), the change of level ahead (m) and when to look again (s). */
+  private glance = 0;
+  private levelAhead = 0;
+  private glanceProbe = 0;
   /** How much it is going down stairs (0–1), following the slope (see STAIR_DOWN_FREQUENCY). */
   private stairDescent = 0;
   /** How fast the ground under the body rises (m/s, smoothed; − going down) and the root height last frame. */
@@ -513,6 +528,9 @@ export class LocomotionController {
     this.stairLimit = Number.POSITIVE_INFINITY;
     this.stairLean = 0;
     this.stairSlope = 0;
+    this.glance = 0;
+    this.levelAhead = 0;
+    this.glanceProbe = 0;
     this.stairDescent = 0;
     this.climb = 0;
     this.lastRootHeight = Number.NaN;
@@ -829,6 +847,20 @@ export class LocomotionController {
     const stairLean = (slope > 0 ? STAIR_LEAN_UP * slope : -STAIR_LEAN_DOWN * slope) * DEG;
     this.stairLean += (stairLean - this.stairLean) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
     this.stairSlope += (slope - this.stairSlope) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
+    // Mirar el primer escalón: un escalón por delante y todavía no en la escalera.
+    const walking = !bodyState.airborne && bodyState.speed > 0.2 && this.gait.blend < 0.5;
+    this.glanceProbe -= dt;
+    if (!walking) this.levelAhead = 0;
+    else if (this.glanceProbe <= 0) {
+      this.glanceProbe = GLANCE_INTERVAL;
+      const probe = this.tmp.copy(bodyState.position).addScaledVector(bodyState.forward, GLANCE_AHEAD * cfg.stepLength);
+      probe.y = bodyState.groundHeight + cfg.groundProbeHeight;
+      this.levelAhead = this.detector.castDown(probe, cfg.groundProbeHeight + cfg.groundProbeDepth, this.sampleHit)
+        ? this.sampleHit.point.y - bodyState.groundHeight
+        : 0;
+    }
+    const glance = walking && Math.abs(this.levelAhead) > GLANCE_STEP * cfg.maxStepUp && Math.abs(this.stairSlope) < 0.25 ? GLANCE : 0;
+    this.glance += (glance - this.glance) * (1 - Math.exp(-dt / GLANCE_TIME));
     this.torso.update({
       forward: bodyState.forward,
       pelvis: this.pelvis.angles,
@@ -839,7 +871,7 @@ export class LocomotionController {
       dt,
       extraLean: ((cfg.walkLean + (cfg.runLean - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean + this.stairLean,
       airborne: bodyState.airborne,
-      headOffset: { yaw: this.variationNow.headYaw, pitch: this.variationNow.headPitch + STAIR_GAZE * this.stairLean },
+      headOffset: { yaw: this.variationNow.headYaw, pitch: this.variationNow.headPitch + this.glance + DOWN_GAZE * Math.max(-this.stairSlope, 0) },
       headNod: 1 / (1 + STAIR_HEAD_STEADY * Math.abs(this.stairSlope)),
       running: this.gait.blend,
     });

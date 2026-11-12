@@ -380,7 +380,7 @@ takes it separates going up, going down and the flat by how fast the pelvis rise
 | | Mocap, flat (83) | Library, flat | Mocap, up (83) | Library, up | Mocap, jogging (35) | Library, 3 m/s |
 |---|---|---|---|---|---|---|
 | Trunk lean relative to the flat (°) | | | +7.5 | +7.3 | | |
-| Head lean relative to the flat (°) | | | +7.7 | +7.5 | | |
+| Head lean relative to the flat (°) | | | +7.7 | +2.4 | | |
 | Head nodding (± °) | 1.0 | 0.6 | 0.8 | 0.5 | 0.5–1.3 | 0.4 |
 | Speed of the nodding (°/s) | 11 | 5 | 11 | 10 | 14 | 13 |
 | Head tilting sideways (± °) | 1.35 | 0.8 | 2.4 | 0.4 | 0.5–0.8 | 0.55 |
@@ -401,8 +401,10 @@ was changed:
   quarter), arriving later (a spring at 1/4 of `trunkFrequency`): the hip that rises raises its shoulder a little
   afterwards. The clavicles do it, so the neck and the head don't move sideways with it. Against the CMU curve
   of the walking takes, the error of the shoulders went from 1.1° to 0.7° RMS.
-- **Stairs**: the trunk leans less (`STAIR_LEAN_UP` 25 → 19); the head looks down at the steps (it tilts 0.6 of
-  the lean requested for the trunk) and nods less (1 / (1 + 5 × the slope) of `headInertia`).
+- **Stairs**: the trunk leans less (`STAIR_LEAN_UP` 25 → 19) and the head nods less (1 / (1 + 5 × the slope) of
+  `headInertia`). Where the head looks is a choice, not the captures': before the first step of a flight (up or
+  down) it glances down at it (15°, from when a ray ~1.4 m ahead finds a step), going up it then looks ahead
+  (subject 83 kept it tilted like the trunk all the way), and going down it keeps looking a little down (≈ 9°).
 
 What is still different: on stairs the head tilts sideways less than subject 83 (0.4° against 2.4°) and the
 shoulders too (1.1° against 1.7°); going up, the shoulders turn against the hips half as much (the arms swing
