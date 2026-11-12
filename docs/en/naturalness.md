@@ -344,7 +344,7 @@ with steps of about 16 cm: 83_31–83_35 and 114). The stance is when the toes s
 |---|---|---|---|---|
 | Foot height at mid-swing (fraction of the rise; < 0: above the start) | 1.48 | −0.33 | 2.2 | −0.6 |
 | Foot height at 75 % of the swing | 1.33 | 0.60 | 1.4 | −0.3 |
-| Trunk lean relative to the flat (°) | +7 | +2.5 | +7 | +2.2 |
+| Trunk lean relative to the flat (°) | +7.5 | +2.5 | +7.3 | +2.2 |
 | Steps per second | 1.34 | 1.57 | 1.40 | 1.60 |
 | Fraction of the cycle with the foot on the ground | 0.63 | 0.56 | 0.64 | 0.56 |
 | Knee bend of the stance leg when it lands (°) | 47 | 36 | 53 | 15 |
@@ -368,6 +368,46 @@ the clinical literature, 80–90° at that moment; in the mocap it is smaller be
 early and the stance, measured with the toes still, ends before). Holding the body at the height of the stance
 foot and dropping it only when the weight passes to the other one was tried: the leg landed even straighter
 (9°).
+
+## Trunk, head and shoulders with each step
+
+`npm run mocap -- postura` (`tests/tools/posture.ts`) measures the mean lean of the trunk (pelvis → base of the
+neck) and of the head, and how much they move with the steps (RMS without the 1 s moving mean): the head nodding
+and tilting sideways, the line of the shoulders tilting, and the shoulders turning against the hips. In the stair
+takes it separates going up, going down and the flat by how fast the pelvis rises; subject 83 is the reference
+(the others are pregnant or postpartum women). The library walks at 1 m/s and goes up stairs of 17 × 28 cm:
+
+| | Mocap, flat (83) | Library, flat | Mocap, up (83) | Library, up | Mocap, jogging (35) | Library, 3 m/s |
+|---|---|---|---|---|---|---|
+| Trunk lean relative to the flat (°) | | | +7.5 | +7.3 | | |
+| Head lean relative to the flat (°) | | | +7.7 | +7.5 | | |
+| Head nodding (± °) | 1.0 | 0.6 | 0.8 | 0.5 | 0.5–1.3 | 0.4 |
+| Speed of the nodding (°/s) | 11 | 5 | 11 | 10 | 14 | 13 |
+| Head tilting sideways (± °) | 1.35 | 0.8 | 2.4 | 0.4 | 0.5–0.8 | 0.55 |
+| Line of the shoulders tilting (± °) | 1.1 | 1.1 | 1.7 | 1.1 | 1.5–1.6 | 1.4 |
+| Shoulders turning against the hips (± °) | 3.9 | 3.9 | 3.4 | 1.7 | 4.8–6.2 | 7.9 |
+
+Before, the head hardly moved (±0.1° nodding, ±0.06° sideways) and the shoulders stayed level (±0.3°): the
+trunk and the head looked rigid. Going up, the trunk leaned 10° more than on the flat and the head only 2.7°. What
+was changed:
+
+- **Head** (`headInertia`): a weight on the neck. It nods and tilts with the accelerations of the hips (smoothed
+  over 0.25 s, so it settles with the step instead of shaking with each jolt), through a slow spring almost
+  without overshoot (half of `trunkFrequency`, damping 0.9); sideways three times more than forward, as in the
+  captures. Running, it tilts sideways a quarter as much. With a faster spring (3/4 of `trunkFrequency`) it
+  nodded as much as the captures (±0.9°) but twice as fast going up stairs (16 °/s): the head looked shaken. It
+  was left somewhat smaller and never faster than a person's.
+- **Shoulders** (`shoulderTilt`): the line of the shoulders keeps half of the tilt of the pelvis (running, a
+  quarter), arriving later (a spring at 1/4 of `trunkFrequency`): the hip that rises raises its shoulder a little
+  afterwards. The clavicles do it, so the neck and the head don't move sideways with it. Against the CMU curve
+  of the walking takes, the error of the shoulders went from 1.1° to 0.7° RMS.
+- **Stairs**: the trunk leans less (`STAIR_LEAN_UP` 25 → 19); the head looks down at the steps (it tilts 0.6 of
+  the lean requested for the trunk) and nods less (1 / (1 + 5 × the slope) of `headInertia`).
+
+What is still different: on stairs the head tilts sideways less than subject 83 (0.4° against 2.4°) and the
+shoulders too (1.1° against 1.7°); going up, the shoulders turn against the hips half as much (the arms swing
+less); on the flat the trunk nods less with the steps (±0.46° against ±0.97°) and sways more sideways (±1.15°
+against ±0.79°).
 
 ## Pose jumps
 

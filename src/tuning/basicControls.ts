@@ -157,7 +157,7 @@ const individualControls: readonly BasicControlInfo[] = [
       es: 'Cuerpo suelto, con inercia y retraso (más), o rígido (menos).',
     },
     kind: 'factor', min: 0.5, max: 2, neutral: 1,
-    params: ['pelvisFrequency', 'trunkFrequency', 'armSwingFrequency', 'forearmFrequency', 'handFrequency', 'fingerFrequency', 'armInertia', 'trunkInertia'],
+    params: ['pelvisFrequency', 'trunkFrequency', 'armSwingFrequency', 'forearmFrequency', 'handFrequency', 'fingerFrequency', 'armInertia', 'trunkInertia', 'headInertia'],
   },
   {
     name: 'agility',
@@ -296,6 +296,7 @@ export function applyBasicControls(base: Readonly<ProceduralHumanConfig>, values
     fingerFrequency: base.fingerFrequency / looseness,
     armInertia: base.armInertia * looseness,
     trunkInertia: base.trunkInertia * looseness,
+    headInertia: base.headInertia * looseness,
 
     acceleration: base.acceleration * agility,
     deceleration: base.deceleration * agility,

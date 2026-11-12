@@ -388,6 +388,14 @@
       "en": "Trunk inertia: how much it leans from the accelerations of the hips (degrees per m/s²): forward when their descent stops at each step, sideways against the sway.",
       "es": "Inercia del tronco: cuánto se inclina por las aceleraciones de las caderas (grados por m/s²): hacia delante al frenar su bajada en cada paso, de lado contra el balanceo."
     },
+    "shoulderTilt": {
+      "en": "Fraction of the lateral tilt of the pelvis that the line of the shoulders keeps (0–1), arriving later: the hip that rises raises its shoulder a little afterwards. The clavicles do it, so the neck and the head don't move sideways with it. 0: level shoulders. In the CMU captures the shoulders tilt about a third as much as the pelvis.",
+      "es": "Fracción de la inclinación lateral de la pelvis que conserva la línea de los hombros (0–1), llegando después: la cadera que sube sube su hombro un poco más tarde. Lo hacen las clavículas, así que el cuello y la cabeza no se van de lado con ella. 0: hombros nivelados. En las capturas de CMU los hombros se inclinan alrededor de un tercio de lo que se inclina la pelvis."
+    },
+    "headInertia": {
+      "en": "Head inertia: how much it nods and tilts with the accelerations of the hips (degrees per m/s²), settling smoothly like a weight on the neck (with a slow spring, at half of `trunkFrequency`): down when their descent stops at each step, sideways against the sway. 0: the head only follows the trunk and `headStabilization`.",
+      "es": "Inercia de la cabeza: cuánto cabecea y se ladea por las aceleraciones de las caderas (grados por m/s²), asentándose suavemente como un peso sobre el cuello (con un muelle lento, a la mitad de `trunkFrequency`): hacia abajo al frenar su bajada en cada paso, de lado contra el balanceo. 0: la cabeza solo sigue al tronco y a `headStabilization`."
+    },
     "armAbduction": {
       "en": "Arm angle away from the vertical, outwards (degrees).",
       "es": "Separación del brazo respecto a la vertical, hacia fuera (grados)."

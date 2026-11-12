@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { Vector3 } from 'three';
+import { BoxGeometry, Mesh, MeshBasicMaterial, Quaternion, Vector3 } from 'three';
 
 import { createWorld, simulate } from './helpers/sim.ts';
 
@@ -81,7 +81,84 @@ describe('tronco: peso y retraso', () => {
     assert.ok(run.head < 4, `corriendo, cabeza de lado a lado ${run.head.toFixed(1)} cm`);
     assert.ok(run.tilt < 5, `corriendo, inclinación lateral del tronco ${run.tilt.toFixed(1)}°`);
   });
+
+  // En las tomas de CMU (sujeto 83, que sube escaleras normales, y las de caminar), con cada paso la cabeza cabecea
+  // ±1° (a ~11 °/s) y se ladea ±1,3°, y la línea de los hombros se inclina ±1° (RMS). Antes la cabeza estaba casi
+  // quieta (±0,1°) y los hombros nivelados (±0,3°): se veía rígido; y con un muelle rápido, subiendo, cabeceaba a
+  // 16 °/s: se veía sacudida. Subiendo, el tronco se inclina 7,5° más que en llano y la cabeza otro tanto (mira los
+  // escalones); antes el tronco, 10°, y la cabeza, 2,7°.
+  it('con cada paso la cabeza cabecea y se ladea y los hombros se inclinan; subiendo, el tronco y la cabeza se inclinan como en CMU', () => {
+    const flat = posture(false);
+    const up = posture(true);
+    assert.ok(flat.nod > 0.3 && flat.nod < 1.5, `en llano, la cabeza cabecea ±${flat.nod.toFixed(2)}°`);
+    assert.ok(flat.nodSpeed < 12 && up.nodSpeed < 12, `la cabeza cabecea a ${flat.nodSpeed.toFixed(1)} °/s en llano y a ${up.nodSpeed.toFixed(1)} subiendo`);
+    assert.ok(flat.sway > 0.5 && flat.sway < 2, `en llano, la cabeza se ladea ±${flat.sway.toFixed(2)}°`);
+    assert.ok(flat.shoulders > 0.6 && flat.shoulders < 1.6, `en llano, los hombros se inclinan ±${flat.shoulders.toFixed(2)}°`);
+    assert.ok(up.nod > 0.3 && up.nod < 1.2, `subiendo, la cabeza cabecea ±${up.nod.toFixed(2)}°`);
+    const trunk = up.trunk - flat.trunk;
+    const head = up.head - flat.head;
+    assert.ok(trunk > 5.5 && trunk < 9, `subiendo, el tronco se inclina ${trunk.toFixed(1)}° más que en llano`);
+    assert.ok(head > 5.5 && head < 10, `subiendo, la cabeza se inclina ${head.toFixed(1)}° más que en llano`);
+  });
 });
+
+/** Media móvil centrada (ventana de `n` muestras). */
+function smooth(values: number[], n: number): number[] {
+  const half = Math.floor(n / 2);
+  return values.map((_, i) => {
+    const window = values.slice(Math.max(0, i - half), Math.min(values.length, i + half + 1));
+    return window.reduce((s, v) => s + v, 0) / window.length;
+  });
+}
+/** RMS de lo que oscila con los pasos (sin la media móvil de 1 s, a 60 frames por segundo). */
+const oscillation = (v: number[]): number => {
+  const s = smooth(v, 60);
+  return Math.sqrt(v.reduce((sum, x, i) => sum + (x - s[i]) ** 2, 0) / v.length);
+};
+
+/**
+ * Caminando a 1 m/s, en llano o subiendo una escalera de 17 × 28 cm (hacia −Z): inclinación media del tronco
+ * (pelvis → base del cuello) y de la cabeza (su "arriba" de reposo) hacia delante, y cuánto oscilan con los pasos
+ * el cabeceo y el ladeo de la cabeza y la inclinación de la línea de los hombros (grados), de 3 a 8 s.
+ */
+function posture(stairs: boolean) {
+  const world = createWorld({
+    human: { config: { variation: 0 } },
+    buildTerrain: (t) => {
+      if (!stairs) return;
+      for (let k = 1; k <= 24; k++) {
+        const box = new Mesh(new BoxGeometry(1.6, 0.17 * k, 0.28), new MeshBasicMaterial());
+        box.position.set(0, 0.085 * k, -2 - 0.28 * (k - 0.5));
+        t.add(box);
+      }
+    },
+  });
+  const { human } = world;
+  const rig = human.rig;
+  const restUp = new Vector3(0, 1, 0).applyQuaternion(rig.head!.getWorldQuaternion(new Quaternion()).invert());
+  const trunk: number[] = [];
+  const pitch: number[] = [];
+  const roll: number[] = [];
+  const shoulders: number[] = [];
+  simulate(world, 8, [[0, (h) => { h.targetSpeed = 1; }]], {
+    onFrame: (t) => {
+      if (t < 3) return;
+      const F = human.locomotion.body.state.forward;
+      const R = new Vector3().crossVectors(F, new Vector3(0, 1, 0));
+      const up = rig.neck!.getWorldPosition(new Vector3()).sub(rig.hips.getWorldPosition(new Vector3()));
+      trunk.push(Math.atan2(up.dot(F), up.y) * DEG);
+      const head = restUp.clone().applyQuaternion(rig.head!.getWorldQuaternion(new Quaternion()));
+      pitch.push(Math.atan2(head.dot(F), head.y) * DEG);
+      roll.push(Math.atan2(head.dot(R), head.y) * DEG);
+      const line = rig.leftArm!.upperArm.getWorldPosition(new Vector3()).sub(rig.rightArm!.upperArm.getWorldPosition(new Vector3()));
+      shoulders.push(Math.asin(line.y / line.length()) * DEG);
+    },
+  });
+  const mean = (v: number[]): number => v.reduce((s, x) => s + x, 0) / v.length;
+  // Velocidad del cabeceo (°/s, RMS).
+  const speed = Math.sqrt(pitch.slice(1).reduce((s, x, i) => s + ((x - pitch[i]) * 60) ** 2, 0) / (pitch.length - 1));
+  return { trunk: mean(trunk), head: mean(pitch), nod: oscillation(pitch), nodSpeed: speed, sway: oscillation(roll), shoulders: oscillation(shoulders) };
+}
 
 /** Recorrido lateral de la cabeza (cm) e inclinación lateral del tronco (grados), de extremo a extremo. */
 function lateralSway(speed: number): { head: number; tilt: number } {

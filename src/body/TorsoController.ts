@@ -7,6 +7,34 @@ import type { HumanRig } from '../rig/HumanRig.ts';
 const UP = new Vector3(0, 1, 0);
 /** Time constant (s) used to smooth the acceleration of the hips for the inertia of the trunk. */
 const HIP_ACCELERATION_SMOOTHING = 0.06;
+/**
+ * The same for the head (s): longer, so it settles with the step and doesn't shake with each jolt of the hips
+ * (going up a step).
+ */
+const HEAD_ACCELERATION_SMOOTHING = 0.25;
+/**
+ * Spring of the head: frequency (× `trunkFrequency`) and damping. Slow and almost without overshoot, so it moves
+ * smoothly, at most as fast as in the CMU captures (~10 °/s nodding).
+ */
+const HEAD_FREQUENCY = 0.5;
+const HEAD_DAMPING = 0.9;
+/**
+ * The head tilts sideways this many times more than it nods per unit of acceleration (`headInertia`): the neck
+ * holds it less sideways (CMU, walking: ±1.3° sideways and ±1° forward, with smaller lateral accelerations).
+ */
+const HEAD_ROLL_RATIO = 3;
+/**
+ * Frequency of the line of the shoulders (× `trunkFrequency`): it arrives well after the pelvis, as in the CMU
+ * captures (its tilt peaks ~10 % of the cycle after the pelvis').
+ */
+const SHOULDER_TILT_FREQUENCY = 0.25;
+/**
+ * Running, the head tilts sideways this fraction of what it does walking, and the shoulders keep this fraction
+ * of `shoulderTilt` (CMU, jogging at 3 m/s: the head ±0.6° sideways and the shoulders ±1.5°, with lateral
+ * accelerations three times larger).
+ */
+const RUN_HEAD_ROLL = 0.25;
+const RUN_SHOULDER_TILT = 0.5;
 const DEG = Math.PI / 180;
 
 export interface TorsoConfig {
@@ -48,6 +76,19 @@ export interface TorsoConfig {
    * their descent stops at each step, sideways against the sway.
    */
   trunkInertia: number;
+  /**
+   * Fraction of the lateral tilt of the pelvis that the line of the shoulders keeps (0–1), arriving later: the hip
+   * that rises raises its shoulder a little afterwards. The clavicles do it, so the neck and the head don't move
+   * sideways with it. 0: level shoulders. In the CMU captures the shoulders tilt about a third as much as the
+   * pelvis.
+   */
+  shoulderTilt: number;
+  /**
+   * Head inertia: how much it nods and tilts with the accelerations of the hips (degrees per m/s²), settling
+   * smoothly like a weight on the neck (with a slow spring, at half of `trunkFrequency`): down when their descent
+   * stops at each step, sideways against the sway. 0: the head only follows the trunk and `headStabilization`.
+   */
+  headInertia: number;
 }
 
 /** Motion data that orients the torso. */
@@ -74,6 +115,10 @@ export interface TorsoMotion {
   airborne?: boolean;
   /** Gaze offset (rad): turn (positive = left) and tilt (positive = down), e.g. natural variation. */
   headOffset?: { yaw: number; pitch: number };
+  /** Fraction of the nodding from `headInertia` (1 by default; less on stairs: the head watches the steps). */
+  headNod?: number;
+  /** From walking (0) to running (1): running, the head and the shoulders tilt less sideways. */
+  running?: number;
 }
 
 /**
@@ -90,7 +135,8 @@ export interface TorsoMotion {
  *
  * Weight and lag: the spine and chest angles are not applied instantly; each one chases its own like a
  * damped spring (the chest more slowly than the spine), so the trunk arrives a little after the pelvis
- * instead of moving with it as a block. It also leans by inertia with the accelerations of the hips.
+ * instead of moving with it as a block. It also leans by inertia with the accelerations of the hips, the
+ * shoulders keep part of the tilt of the pelvis, and the head nods and tilts a little with each step.
  */
 export class TorsoController {
   /** Lean applied in the last update (rad, positive = forward). */
@@ -99,6 +145,11 @@ export class TorsoController {
   turnLean = 0;
   /** Turn anticipation, smoothed (rad, positive = left). */
   turnLead = 0;
+  /**
+   * Tilt of the line of the shoulders (rad, about the direction of travel, like the pelvis roll): the clavicles
+   * apply it (see ArmController).
+   */
+  shoulderLineTilt = 0;
 
   private readonly config: TorsoConfig;
   private readonly root: Object3D;
@@ -116,12 +167,15 @@ export class TorsoController {
   private readonly qTarget = new Quaternion();
 
   private readonly hips: Bone;
-  /** State of the springs: spine (turn, side, forward) and chest (turn). */
+  /** State of the springs: spine (turn, side, forward), chest (turn), line of the shoulders and head (forward, side). */
   private readonly springs = {
     spineYaw: createSpring(),
     spineRoll: createSpring(),
     spinePitch: createSpring(),
     chestYaw: createSpring(),
+    shoulderTilt: createSpring(),
+    headPitch: createSpring(),
+    headRoll: createSpring(),
   };
   private initialized = false;
   private readonly hipPosition = new Vector3();
@@ -132,6 +186,8 @@ export class TorsoController {
   private hipSamples = 0;
   /** Filtered acceleration of the hips (m/s²): what the trunk "feels", without one-frame spikes. */
   private readonly hipAccelerationSmooth = new Vector3();
+  /** The same, smoothed longer: what the head feels. */
+  private readonly headAcceleration = new Vector3();
 
   constructor(rig: HumanRig, config: TorsoConfig) {
     this.config = config;
@@ -158,6 +214,7 @@ export class TorsoController {
     this.hipSamples = 0;
     this.hipAcceleration.set(0, 0, 0);
     this.hipAccelerationSmooth.set(0, 0, 0);
+    this.headAcceleration.set(0, 0, 0);
   }
 
   /**
@@ -180,7 +237,10 @@ export class TorsoController {
     this.hipSamples = Math.min(this.hipSamples + 1, 2);
     // Media exponencial (≈ 60 ms): en el doble apoyo la aceleración frame a frame oscila
     // ±10 m/s² aunque el cambio neto de velocidad es pequeño.
-    if (dt > 0) this.hipAccelerationSmooth.lerp(this.hipAcceleration, 1 - Math.exp(-dt / HIP_ACCELERATION_SMOOTHING));
+    if (dt > 0) {
+      this.hipAccelerationSmooth.lerp(this.hipAcceleration, 1 - Math.exp(-dt / HIP_ACCELERATION_SMOOTHING));
+      this.headAcceleration.lerp(this.hipAcceleration, 1 - Math.exp(-dt / HEAD_ACCELERATION_SMOOTHING));
+    }
   }
 
   /** Only the pose (without forgetting the smoothed state). */
@@ -188,6 +248,7 @@ export class TorsoController {
     for (const { bone, rest } of this.bones) bone.quaternion.copy(rest);
     this.lean = 0;
     this.turnLean = 0;
+    this.shoulderLineTilt = 0;
   }
 
   /** Must be called after orienting the pelvis. */
@@ -217,10 +278,20 @@ export class TorsoController {
     const s = this.springs;
     s.spineYaw.target = -yaw * c.spineCounterRotation;
     // La compensación de la caída de la pelvis es postural e inmediata (el tronco sigue
-    // erguido); con retraso solo va lo demás (inclinación en curva e inercia).
+    // erguido); con retraso va lo demás: inclinación en curva e inercia y, en la línea de los hombros, la parte
+    // de la inclinación de la pelvis que conserva (la cadera que sube sube su hombro, un poco después).
     s.spineRoll.target = -this.turnLean + rollInertia;
     s.spinePitch.target = -this.lean - pitchInertia;
     s.chestYaw.target = -yaw * c.chestCounterRotation + chestLead;
+    const running = clamp(motion.running ?? 0, 0, 1);
+    s.shoulderTilt.target = roll * c.shoulderTilt * (1 + (RUN_SHOULDER_TILT - 1) * running);
+    // La cabeza, como un peso sobre el cuello: al frenar la bajada de las caderas cabecea hacia delante; al
+    // acelerar de lado se queda atrás.
+    const headInertia = c.headInertia * DEG;
+    const a = this.headAcceleration;
+    s.headPitch.target = motion.airborne ? 0 : -clamp(headInertia * (motion.headNod ?? 1) * a.y, -maxInertia, maxInertia);
+    const sway = HEAD_ROLL_RATIO * (1 + (RUN_HEAD_ROLL - 1) * running);
+    s.headRoll.target = clamp(sway * headInertia * a.dot(R), -maxInertia, maxInertia);
     // …que columna y pecho siguen con retraso (el pecho, a 3/4 de la frecuencia de la columna).
     const w = 2 * Math.PI * c.trunkFrequency;
     if (!this.initialized || !(motion.dt > 0)) {
@@ -231,6 +302,9 @@ export class TorsoController {
       stepSpring(s.spineRoll, w, c.trunkDamping, motion.dt);
       stepSpring(s.spinePitch, w, c.trunkDamping, motion.dt);
       stepSpring(s.chestYaw, 0.75 * w, c.trunkDamping, motion.dt);
+      stepSpring(s.shoulderTilt, SHOULDER_TILT_FREQUENCY * w, c.trunkDamping, motion.dt);
+      stepSpring(s.headPitch, HEAD_FREQUENCY * w, HEAD_DAMPING, motion.dt);
+      stepSpring(s.headRoll, HEAD_FREQUENCY * w, HEAD_DAMPING, motion.dt);
     }
 
     // Columna: contrarrotación parcial, deshace la caída de la pelvis, se inclina
@@ -259,7 +333,10 @@ export class TorsoController {
       above = this.chest;
     }
 
-    // Cabeza: se acerca a su orientación de reposo respecto al personaje y mira hacia el giro.
+    this.shoulderLineTilt = s.shoulderTilt.value;
+
+    // Cabeza: se acerca a su orientación de reposo respecto al personaje y mira hacia el giro; encima, lo que
+    // cabecea y se ladea por inercia.
     if (this.head) {
       const headLead = clamp(this.turnLead * c.headTurnLead, -c.maxHeadTurn * DEG, c.maxHeadTurn * DEG);
       worldQuaternion(this.root, this.qTarget).premultiply(this.q.setFromAxisAngle(UP, headLead + (motion.headOffset?.yaw ?? 0)));
@@ -268,6 +345,8 @@ export class TorsoController {
       updateDown(above, this.head);
       worldQuaternion(this.head, this.qWorld);
       this.qWorld.slerp(this.qTarget, c.headStabilization);
+      this.qWorld.premultiply(this.q.setFromAxisAngle(R, s.headPitch.value));
+      this.qWorld.premultiply(this.q.setFromAxisAngle(F, s.headRoll.value));
       setWorldQuaternionNode(this.head, this.qWorld);
     }
     const top = this.spine ?? this.chest ?? this.head;

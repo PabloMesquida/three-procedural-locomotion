@@ -97,6 +97,11 @@ export interface ArmMotion {
    * swing.
    */
   touch?: { left: number; right: number };
+  /**
+   * Tilt of the line of the shoulders (rad, about the direction of travel, like the pelvis roll; see
+   * `TorsoController.shoulderLineTilt`): both clavicles turn it.
+   */
+  shoulderTilt?: number;
 }
 
 interface ArmRuntime {
@@ -298,6 +303,8 @@ export class ArmController {
         this.boneDirection(shoulder, upperArm, this.dir);
         const downSign = -Math.sign(this.axis.crossVectors(F, this.dir).dot(UP)) || 1;
         this.rotateWorld(shoulder, this.q.setFromAxisAngle(F, cfg.shoulderDrop * DEG * downSign));
+        // Inclinar la línea de los hombros: las dos clavículas, el mismo giro sobre el eje de avance.
+        if (motion.shoulderTilt) this.rotateWorld(shoulder, this.q.setFromAxisAngle(F, motion.shoulderTilt));
       }
 
       // 1. Brazo: de su dirección actual a colgar con una pequeña separación hacia fuera…

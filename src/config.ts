@@ -42,7 +42,7 @@ export const ACCELERATION_PARAMS = [
   'acceleration', 'deceleration', 'gravity', 'maxLateralAcceleration',
 ] as const satisfies readonly (keyof ProceduralHumanConfig)[];
 export const PER_ACCELERATION_PARAMS = [
-  'leanPerAcceleration', 'armInertia', 'trunkInertia',
+  'leanPerAcceleration', 'armInertia', 'trunkInertia', 'headInertia',
 ] as const satisfies readonly (keyof ProceduralHumanConfig)[];
 
 /** Default values (calibrated for an adult human of ~1.8 m). */
@@ -107,6 +107,8 @@ export function validateConfig(input: ProceduralHumanConfigInput, base: Procedur
   if (num('variation') < 0) problems.push(`"variation" must be ≥ 0 (got ${num('variation')})`);
   if (num('turnSlowdown') < 0 || num('turnSlowdown') > 1) problems.push(`"turnSlowdown" must be between 0 and 1 (got ${num('turnSlowdown')})`);
   if (num('chestRollShare') < 0 || num('chestRollShare') > 1) problems.push(`"chestRollShare" must be between 0 and 1 (got ${num('chestRollShare')})`);
+  if (num('shoulderTilt') < 0 || num('shoulderTilt') > 1) problems.push(`"shoulderTilt" must be between 0 and 1 (got ${num('shoulderTilt')})`);
+  if (num('headInertia') < 0) problems.push(`"headInertia" must be ≥ 0 (got ${num('headInertia')})`);
   if (num('fingerCurl') < 0) problems.push(`"fingerCurl" must be ≥ 0 (got ${num('fingerCurl')})`);
   if (!(num('touchMaxReach') > 0 && num('touchMaxReach') <= 1)) problems.push(`"touchMaxReach" must be in (0, 1] (got ${num('touchMaxReach')})`);
   for (const key of ['touchHoldTime', 'touchCooldown', 'touchCurveRadius'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);

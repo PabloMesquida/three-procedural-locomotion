@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-122 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+124 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -151,6 +151,8 @@ opcionales y se validan (nombre, número finito y rango).
 | `trunkFrequency` | 4 | Frecuencia natural del tronco (Hz): con qué rapidez columna y pecho siguen a la pelvis. Más baja = tronco más pesado, que llega más tarde (el pecho, algo más que la columna). |
 | `trunkDamping` | 0.6 | Amortiguación del tronco (1 = sin rebote; menos = se pasa un poco y vuelve). |
 | `trunkInertia` | 0.5 | Inercia del tronco: cuánto se inclina por las aceleraciones de las caderas (grados por m/s²): hacia delante al frenar su bajada en cada paso, de lado contra el balanceo. |
+| `shoulderTilt` | 0.5 | Fracción de la inclinación lateral de la pelvis que conserva la línea de los hombros (0–1), llegando después: la cadera que sube sube su hombro un poco más tarde. Lo hacen las clavículas, así que el cuello y la cabeza no se van de lado con ella. 0: hombros nivelados. En las capturas de CMU los hombros se inclinan alrededor de un tercio de lo que se inclina la pelvis. |
+| `headInertia` | 1.6 | Inercia de la cabeza: cuánto cabecea y se ladea por las aceleraciones de las caderas (grados por m/s²), asentándose suavemente como un peso sobre el cuello (con un muelle lento, a la mitad de `trunkFrequency`): hacia abajo al frenar su bajada en cada paso, de lado contra el balanceo. 0: la cabeza solo sigue al tronco y a `headStabilization`. |
 
 ## Brazos
 

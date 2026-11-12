@@ -348,6 +348,8 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   trunkFrequency: 4,
   trunkDamping: 0.6,
   trunkInertia: 0.5,
+  shoulderTilt: 0.5,
+  headInertia: 1.6,
 
   armAbduction: 6,
   armForward: 0,

@@ -159,7 +159,7 @@ const sections = [
   [{ en: 'Turning', es: 'Giro' }, (n) => n.startsWith('turn') || n === 'maxTurnPerStep' || n === 'maxLateralAcceleration'],
   [{ en: 'Weight shift', es: 'Reparto del peso' }, (n) => n.startsWith('lateralShift')],
   [{ en: 'Pelvis', es: 'Pelvis' }, (n) => n.startsWith('pelvis')],
-  [{ en: 'Torso and head', es: 'Torso y cabeza' }, (n) => ['spineCounterRotation', 'chestCounterRotation', 'chestRollShare', 'leanPerAcceleration', 'maxLean', 'headStabilization', 'headTurnLead', 'maxHeadTurn', 'chestTurnLead', 'maxChestTurn', 'maxTurnLean', 'trunkFrequency', 'trunkDamping', 'trunkInertia'].includes(n)],
+  [{ en: 'Torso and head', es: 'Torso y cabeza' }, (n) => ['spineCounterRotation', 'chestCounterRotation', 'chestRollShare', 'leanPerAcceleration', 'maxLean', 'headStabilization', 'headTurnLead', 'maxHeadTurn', 'chestTurnLead', 'maxChestTurn', 'maxTurnLean', 'trunkFrequency', 'trunkDamping', 'trunkInertia', 'shoulderTilt', 'headInertia'].includes(n)],
   [{ en: 'Arms', es: 'Brazos' }, (n) => ['armAbduction', 'elbowBend', 'armForward', 'idleArmAbduction', 'idleElbowBend', 'idleArmForward', 'armSwing', 'elbowSwingBend', 'armSwingFrequency', 'armSwingDamping', 'armInertia', 'shoulderSwing', 'shoulderDrop', 'shoulderForward', 'forearmFrequency', 'handFrequency', 'fingerCurl', 'fingerFrequency'].includes(n)],
   [{ en: 'Touching surfaces', es: 'Tocar superficies' }, (n) => n.startsWith('touch')],
   [{ en: 'Natural variation', es: 'Variación natural' }, (n) => n === 'variation'],

@@ -106,13 +106,23 @@ const MAX_DROP_DELAY = 0.8;
 /**
  * Extra forward lean requested for the trunk on stairs, per unit of slope (degrees; rise / run): going up
  * and going down. Measured on the trunk (pelvis → neck) it gives what the mocap of stairs shows (CMU),
- * relative to walking on the flat: ≈ +7° going up and ≈ +2.5° going down on stairs of slope 0.6 (17 × 28
- * cm); the spine takes only part of the requested lean.
+ * relative to walking on the flat: ≈ +7.5° going up (subject 83, `npm run mocap -- postura`) and ≈ +2.5° going
+ * down on stairs of slope 0.6 (17 × 28 cm); the spine takes only part of the requested lean.
  */
-const STAIR_LEAN_UP = 25;
+const STAIR_LEAN_UP = 19;
 const STAIR_LEAN_DOWN = 12;
 /** Time constant with which the lean follows the slope (s): the slope of the line changes in corners. */
 const STAIR_LEAN_TIME = 0.3;
+/**
+ * On stairs the head looks down at the steps: it tilts this fraction of the extra lean requested for the trunk,
+ * besides what it follows of the trunk (CMU, going up: the head tilts as much as the trunk, ≈ +7.5°).
+ */
+const STAIR_GAZE = 0.6;
+/**
+ * On stairs the head nods less (it is held to watch the steps): the nodding from `headInertia` is divided by
+ * 1 + this × the slope (CMU, going up: ±0.8° against ±1° on the flat, with stronger jolts of the hips).
+ */
+const STAIR_HEAD_STEADY = 5;
 /**
  * Going down a step, the foot lands on the ball with the heel raised this much (rad) and then lowers the heel,
  * as a person does: the ankle reaches further down and the stance knee bends less.
@@ -329,6 +339,8 @@ export class LocomotionController {
   private stairLimit = Number.POSITIVE_INFINITY;
   /** Extra lean of the trunk on stairs (rad), following the slope (see STAIR_LEAN_UP). */
   private stairLean = 0;
+  /** Slope of the stairs under the body (rise / run, smoothed like `stairLean`). */
+  private stairSlope = 0;
   /** How much it is going down stairs (0–1), following the slope (see STAIR_DOWN_FREQUENCY). */
   private stairDescent = 0;
   /** How fast the ground under the body rises (m/s, smoothed; − going down) and the root height last frame. */
@@ -500,6 +512,7 @@ export class LocomotionController {
     this.stairs.reset();
     this.stairLimit = Number.POSITIVE_INFINITY;
     this.stairLean = 0;
+    this.stairSlope = 0;
     this.stairDescent = 0;
     this.climb = 0;
     this.lastRootHeight = Number.NaN;
@@ -815,6 +828,7 @@ export class LocomotionController {
     const slope = Math.min(Math.max(this.stairs.slope(bodyState.position, bodyState.forward), -1), 1);
     const stairLean = (slope > 0 ? STAIR_LEAN_UP * slope : -STAIR_LEAN_DOWN * slope) * DEG;
     this.stairLean += (stairLean - this.stairLean) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
+    this.stairSlope += (slope - this.stairSlope) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
     this.torso.update({
       forward: bodyState.forward,
       pelvis: this.pelvis.angles,
@@ -825,7 +839,9 @@ export class LocomotionController {
       dt,
       extraLean: ((cfg.walkLean + (cfg.runLean - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean + this.stairLean,
       airborne: bodyState.airborne,
-      headOffset: { yaw: this.variationNow.headYaw, pitch: this.variationNow.headPitch },
+      headOffset: { yaw: this.variationNow.headYaw, pitch: this.variationNow.headPitch + STAIR_GAZE * this.stairLean },
+      headNod: 1 / (1 + STAIR_HEAD_STEADY * Math.abs(this.stairSlope)),
+      running: this.gait.blend,
     });
 
     // 9. Brazos: relajados y en oposición a las piernas.
@@ -856,6 +872,7 @@ export class LocomotionController {
       acceleration: bodyState.acceleration,
       swingScale: { left: this.variationNow.armLeft, right: this.variationNow.armRight },
       touch: { left: this.touch.weight('left'), right: this.touch.weight('right') },
+      shoulderTilt: this.torso.shoulderLineTilt,
       pose: {
         armAbduction: relax(mix(c.armAbduction, c.runArmAbduction), c.idleArmAbduction),
         elbowBend: relax(mix(c.elbowBend, c.runElbowBend), c.idleElbowBend) + k * c.crouchElbowBend,

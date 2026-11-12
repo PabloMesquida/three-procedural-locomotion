@@ -340,7 +340,7 @@ escalones de unos 16 cm: 83_31–83_35 y 114). El apoyo es mientras los dedos es
 |---|---|---|---|---|
 | Altura del pie a mitad del swing (fracción del desnivel; < 0: por encima del inicio) | 1,48 | −0,33 | 2,2 | −0,6 |
 | Altura del pie al 75 % del swing | 1,33 | 0,60 | 1,4 | −0,3 |
-| Inclinación del tronco respecto al llano (°) | +7 | +2,5 | +7 | +2,2 |
+| Inclinación del tronco respecto al llano (°) | +7,5 | +2,5 | +7,3 | +2,2 |
 | Pasos por segundo | 1,34 | 1,57 | 1,40 | 1,60 |
 | Fracción del ciclo con el pie en el suelo | 0,63 | 0,56 | 0,64 | 0,56 |
 | Flexión de la rodilla de apoyo al apoyar (°) | 47 | 36 | 53 | 15 |
@@ -364,6 +364,46 @@ se dobla mucho (78°; en la literatura clínica, 80–90° en ese momento; en el
 ruedan pronto sobre el borde y el apoyo, medido con los dedos quietos, termina antes). Se probó mantener el
 cuerpo a la altura del pie de apoyo y bajarlo solo al pasar el peso al otro: la pierna apoyaba aún más estirada
 (9°).
+
+## Tronco, cabeza y hombros con cada paso
+
+`npm run mocap -- postura` (`tests/tools/posture.ts`) mide la inclinación media del tronco (pelvis → base del
+cuello) y de la cabeza, y cuánto se mueven con los pasos (RMS sin la media móvil de 1 s): el cabeceo y el ladeo de
+la cabeza, la inclinación de la línea de los hombros y el giro de los hombros contra las caderas. En las tomas de
+escaleras separa la subida, la bajada y el llano por lo rápido que sube la pelvis; la referencia es el sujeto 83
+(las demás son mujeres embarazadas o recién paridas). La librería camina a 1 m/s y sube escaleras de 17 × 28 cm:
+
+| | Mocap, llano (83) | Librería, llano | Mocap, subiendo (83) | Librería, subiendo | Mocap, trote (35) | Librería, 3 m/s |
+|---|---|---|---|---|---|---|
+| Inclinación del tronco respecto al llano (°) | | | +7,5 | +7,3 | | |
+| Inclinación de la cabeza respecto al llano (°) | | | +7,7 | +7,5 | | |
+| Cabeceo de la cabeza (± °) | 1,0 | 0,6 | 0,8 | 0,5 | 0,5–1,3 | 0,4 |
+| Velocidad del cabeceo (°/s) | 11 | 5 | 11 | 10 | 14 | 13 |
+| Ladeo de la cabeza (± °) | 1,35 | 0,8 | 2,4 | 0,4 | 0,5–0,8 | 0,55 |
+| Inclinación de la línea de los hombros (± °) | 1,1 | 1,1 | 1,7 | 1,1 | 1,5–1,6 | 1,4 |
+| Giro de los hombros contra las caderas (± °) | 3,9 | 3,9 | 3,4 | 1,7 | 4,8–6,2 | 7,9 |
+
+Antes la cabeza casi no se movía (±0,1° de cabeceo, ±0,06° de lado) y los hombros quedaban nivelados (±0,3°): el
+tronco y la cabeza se veían rígidos. Subiendo, el tronco se inclinaba 10° más que en llano y la cabeza solo 2,7°.
+Qué se cambió:
+
+- **Cabeza** (`headInertia`): un peso sobre el cuello. Cabecea y se ladea con las aceleraciones de las caderas
+  (suavizadas en 0,25 s, para que se asiente con el paso en vez de temblar con cada tirón), a través de un muelle
+  lento y casi sin rebote (la mitad de `trunkFrequency`, amortiguación 0,9); de lado, tres veces más que hacia
+  delante, como en las capturas. Corriendo, se ladea la cuarta parte. Con un muelle más rápido (3/4 de
+  `trunkFrequency`) cabeceaba tanto como en las capturas (±0,9°) pero, subiendo escaleras, al doble de velocidad
+  (16 °/s): la cabeza se veía sacudida. Quedó algo menor y nunca más rápida que la de una persona.
+- **Hombros** (`shoulderTilt`): la línea de los hombros conserva la mitad de la inclinación de la pelvis
+  (corriendo, la cuarta parte), llegando después (un muelle a 1/4 de `trunkFrequency`): la cadera que sube sube
+  su hombro un poco más tarde. Lo hacen las clavículas, así que el cuello y la cabeza no se van de lado con ella.
+  Frente a la curva de CMU de las tomas de caminar, el error de los hombros bajó de 1,1° a 0,7° RMS.
+- **Escaleras**: el tronco se inclina menos (`STAIR_LEAN_UP` 25 → 19); la cabeza mira los escalones (se inclina
+  0,6 de lo que se pide al tronco) y cabecea menos (1 / (1 + 5 × la pendiente) de `headInertia`).
+
+Lo que sigue distinto: en escaleras la cabeza se ladea menos que el sujeto 83 (0,4° frente a 2,4°) y los hombros
+también (1,1° frente a 1,7°); subiendo, los hombros giran contra las caderas la mitad (los brazos se balancean
+menos); en llano el tronco cabecea menos con los pasos (±0,46° frente a ±0,97°) y se balancea más de lado (±1,15°
+frente a ±0,79°).
 
 ## Saltos de pose
 
