@@ -219,7 +219,10 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   maxStepUp: number;
   /** Deepest step it goes down (m): from a deeper drop it doesn't step down, it stops at the edge. */
   maxStepDown: number;
-  /** Height above the root from which the ground under the body is searched (m). */
+  /**
+   * Height above the root from which the ground under the body is searched (m). A block of ground taller than
+   * this is still a wall (see `GroundDetector.castDown`).
+   */
   groundProbeHeight: number;
   /** Depth below the root down to which the ground is searched when walking (m). */
   groundProbeDepth: number;

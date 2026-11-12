@@ -133,6 +133,51 @@ describe('StaticGroundDetector', () => {
     assert.ok(detector.castDown(new Vector3(0, 1, 0), 2, hit) && Math.abs(hit.point.y - 0.4) < 1e-9);
   });
 
+  // Con el origen dentro de un bloque (más alto que el inicio del rayo sobre el suelo de al lado), el suelo es su
+  // cara de arriba, por encima del origen: para el personaje, una pared. Antes el rayo empezaba dentro, no veía el
+  // bloque y daba el suelo de debajo: el personaje se metía en una tarima de 1,7 m.
+  it('con el origen dentro de un bloque, da su cara de arriba (los dos detectores)', () => {
+    const block = (h: number, y = 0, side: typeof FrontSide | typeof BackSide | typeof DoubleSide = FrontSide): Mesh => {
+      const m = new Mesh(new BoxGeometry(2, h, 2), new MeshBasicMaterial({ side }));
+      m.position.y = y + h / 2;
+      return m;
+    };
+    const flipped = (): Mesh => {
+      // Una caja con las normales hacia dentro y BackSide: se ve igual que una normal.
+      const g = new BoxGeometry(2, 1.7, 2);
+      g.index!.array.reverse();
+      const m = new Mesh(g, new MeshBasicMaterial({ side: BackSide }));
+      m.position.y = 0.85;
+      return m;
+    };
+    // [nombre, suelo, altura del origen, altura que debe dar, ¿dentro?]
+    const cases: [string, () => Object3D[], number, number, boolean][] = [
+      ['tarima de 1,7 m sobre el suelo', () => [plane(FrontSide), block(1.7)], 1.5, 1.7, true],
+      ['hundida 30 cm en el suelo', () => [plane(FrontSide), block(2, -0.3)], 1.5, 1.7, true],
+      ['de 3 m, con el origen a media altura', () => [plane(FrontSide), block(3)], 0.4, 3, true],
+      ['con las caras hacia dentro y BackSide', () => [plane(FrontSide), flipped()], 1.5, 1.7, true],
+      ['dos apiladas, en la de abajo', () => [plane(FrontSide), block(1), block(1.5, 1)], 0.8, 1, true],
+      ['dos apiladas, en la de arriba', () => [plane(FrontSide), block(1), block(1.5, 1)], 1.5, 2.5, true],
+      ['DoubleSide (no tiene dentro)', () => [plane(FrontSide), block(1.7, 0, DoubleSide)], 1.5, 0, false],
+      ['bajo un puente macizo (de 2 a 2,2 m)', () => [plane(FrontSide), block(0.2, 2)], 1.5, 0, false],
+      ['bajo un techo (un plano mirando abajo) a 1,8 m', () => { const c = plane(FrontSide).rotateX(Math.PI); c.position.y = 1.8; return [plane(FrontSide), c]; }, 1.5, 0, false],
+      ['encima de la tarima', () => [plane(FrontSide), block(1.7)], 2.5, 1.7, false],
+    ];
+    for (const [name, make, y, expected, inside] of cases) {
+      const ground = new Group().add(...make());
+      ground.updateMatrixWorld(true);
+      for (const detector of [new RaycastGroundDetector([ground]), new StaticGroundDetector([ground])]) {
+        const hit = createGroundHit();
+        const found = detector.castDown(new Vector3(0.3, y, -0.2), 3, hit);
+        const label = `${name} (${detector.constructor.name})`;
+        assert.ok(found, `${label}: sin suelo`);
+        assert.ok(Math.abs(hit.point.y - expected) < 1e-6, `${label}: suelo a ${hit.point.y} m`);
+        assert.equal(hit.distance < 0, inside, `${label}: distancia ${hit.distance}`);
+        assert.ok(Math.abs(hit.normal.y - 1) < 1e-6, `${label}: normal ${hit.normal.toArray()}`);
+      }
+    }
+  });
+
   it('caminando por la pista irregular, el movimiento es el mismo que con el raycast de Three', () => {
     const run = (staticGround: boolean): Vector3[] => {
       const world = createWorld({ terrain: 'bumpy', staticGround });

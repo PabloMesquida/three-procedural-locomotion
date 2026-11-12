@@ -285,8 +285,8 @@
       "es": "Escalón más hondo que baja (m): de un desnivel más hondo no baja, se para en el borde."
     },
     "groundProbeHeight": {
-      "en": "Height above the root from which the ground under the body is searched (m).",
-      "es": "Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m)."
+      "en": "Height above the root from which the ground under the body is searched (m). A block of ground taller than this is still a wall (see `GroundDetector.castDown`).",
+      "es": "Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m). Un bloque de suelo más alto sigue siendo una pared (ver `GroundDetector.castDown`)."
     },
     "groundProbeDepth": {
       "en": "Depth below the root down to which the ground is searched when walking (m).",

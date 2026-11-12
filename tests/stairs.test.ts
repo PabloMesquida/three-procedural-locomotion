@@ -439,6 +439,73 @@ describe('escaleras', () => {
     });
   }
 
+  // Bloques más altos que groundProbeHeight (1,5 m) sobre el suelo de al lado: el rayo que busca el suelo empieza
+  // dentro de ellos. Antes no los veía y el personaje se metía (en la tarima de 1,7 m del caracol del Laboratorio).
+  // Ahora son una pared: se para delante sin meterse, o los rodea con moveTo, o sube por su escalera.
+  for (const [height, avoid] of [[1.7, false], [3, false], [3, true]] as const) {
+    it(`un bloque de ${height} m: ${avoid ? 'moveTo detrás de él lo rodea' : 'moveTo contra él se para delante'}, sin meterse`, () => {
+      const world = createWorld({
+        buildTerrain: (terrain) => {
+          const mesh = new Mesh(new BoxGeometry(3, height, 3), new MeshBasicMaterial());
+          mesh.position.set(0, height / 2, -START - 1.5);
+          terrain.add(mesh);
+        },
+      });
+      const { human } = world;
+      const loco = human.locomotion;
+      const inside = (p: Vector3): number => Math.min(1.5 - Math.abs(p.x), -START - p.z, p.z + START + 3);
+      let deepest = Number.NEGATIVE_INFINITY;
+      let worstY = 0;
+      const target = new Vector3(0, 0, -START - 4.5);
+      simulate(world, 14, [[0, (h) => h.moveTo(target, { avoid })]], {
+        onFrame: () => {
+          worstY = Math.max(worstY, Math.abs(human.position.y));
+          deepest = Math.max(deepest, inside(human.position));
+          for (const side of SIDES) {
+            if (loco.feet[side].phase === 'SWING') continue;
+            worstY = Math.max(worstY, Math.abs(loco.feet[side].planted.y - loco.planner.placement(side).ankleHeight));
+            deepest = Math.max(deepest, inside(human.rig[side].toe!.getWorldPosition(new Vector3())));
+          }
+        },
+      });
+      assert.ok(deepest < 0, `la raíz o un pie apoyado se metió ${(deepest * 100).toFixed(1)} cm en el bloque`);
+      assert.ok(worstY < 0.01, `cambió de nivel ${worstY.toFixed(2)} m`);
+      const left = human.position.distanceTo(target);
+      if (avoid) assert.ok(left < 0.3, `se quedó a ${left.toFixed(2)} m del destino`);
+      else assert.ok(human.speed < 0.05 && human.position.z > -START, `no se paró delante (z ${human.position.z.toFixed(2)}, ${human.speed.toFixed(2)} m/s)`);
+    });
+  }
+
+  it('una tarima de 1,7 m con escalera: moveTo arriba desde el suelo, por el lado sin escalera, sube por ella', () => {
+    // Tarima de x −1,5 a 1,5 y de z −3 a −6, con la escalera (10 × 17 cm) en su cara de +X; destino en el medio.
+    const top = 1.7;
+    const world = createWorld({
+      buildTerrain: (terrain) => {
+        const deck = new Mesh(new BoxGeometry(3, top, 3), new MeshBasicMaterial());
+        deck.position.set(0, top / 2, -4.5);
+        terrain.add(deck);
+        for (let k = 1; k < 10; k++) {
+          const step = new Mesh(new BoxGeometry(0.28, 0.17 * k, 1.2), new MeshBasicMaterial());
+          step.position.set(1.5 + 0.28 * (10 - k - 0.5), 0.085 * k, -4.5);
+          terrain.add(step);
+        }
+      },
+    });
+    const { human } = world;
+    let inside = false;
+    let arrived = false;
+    human.on('arrive', () => { arrived = true; });
+    simulate(world, 20, [[0, (h) => h.moveTo(new Vector3(0, top, -4.5))]], {
+      onFrame: () => {
+        const p = human.position;
+        // Dentro de su planta y muy por debajo de su cara de arriba (al subir el último escalón, la raíz sube suavizada).
+        if (Math.abs(p.x) < 1.3 && p.z < -3.2 && p.z > -5.8 && p.y < top - 0.3) inside = true;
+      },
+    });
+    assert.ok(!inside, 'se metió en la tarima');
+    assert.ok(arrived && Math.abs(human.position.y - top) < 0.01, `no llegó arriba (raíz a ${human.position.y.toFixed(2)} m)`);
+  });
+
   // La plataforma del Laboratorio: 1,02 m, de x 3 a 6,5 y de z −2 a 4, con una escalera en la cara de +X
   // (z 1,9–3,3). Recorridos al azar (repetibles) desde arriba y desde abajo, con clics a los dos niveles,
   // algunos dobles. Antes: subía o bajaba por los bordes, un pie apoyaba en el otro nivel, y parado junto al

@@ -164,7 +164,10 @@ running ≤ 1.75).
 What each query costs depends on the detector. `RaycastGroundDetector` uses Three's raycast, which tests
 every triangle (~2 ms each with 50,000: the ~14 at the start of a step make a ~25 ms frame).
 `StaticGroundDetector` indexes the triangles a vertical ray can hit in a tree by their footprint seen from
-above (XZ, median split, leaves of 8) with their height range: 2–5 µs per query. It replicates what Three
+above (XZ, median split, leaves of 8) with their height range: 2–5 µs per query. Both also find out whether the
+origin is inside a block (see *Tall blocks* in the guide): the static one with a second tree of the single-sided
+faces seen from below; the raycast casts its ray from high above (the same ray sees what is above the origin and
+the ground), and one more upwards when there is something above. It replicates what Three
 r186's raycast does (material side, groups, `drawRange`, layer 0, negative scales, interpolated vertex
 normal); `tests/ground.test.ts` compares it ray by ray and with a full route. The whole suite can run with
 it: `PH_GROUND=static npm test`. The benchmark measures both (`malla`, `malla-static`).

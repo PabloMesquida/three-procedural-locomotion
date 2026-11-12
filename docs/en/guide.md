@@ -344,16 +344,25 @@ It only reads regular meshes (`Mesh`); `InstancedMesh`, `SkinnedMesh` and `Batch
 warning. For ground that moves every frame (platforms, elevators), use the raycast (`ground: [meshes]`), or
 combine both with your own `GroundDetector` that queries both and keeps the highest.
 
+**Tall blocks.** The ground is searched from `groundProbeHeight` (1.5 m) above the feet, but a block that is
+taller (a platform, a big rock, a hill of the terrain) is still a wall, not something the character walks into:
+if the ray starts inside it (the nearest surface above is its top, seen from inside, and not a ceiling seen from
+below), both detectors return its top. For that, the block needs a single-sided material (`FrontSide`, the
+default, or `BackSide`): a `DoubleSide` face has no inside. An up-facing surface with nothing in between counts
+as the top of what is below it (as in a terrain mesh): make an upper floor or a bridge the character walks under
+with some thickness (a box), not a single plane. The character walks under something whose underside is higher
+than `groundProbeHeight`.
+
 For another system (heightmap, physics engine), implement `GroundDetector`:
 
 ```ts
 const heightmapGround: GroundDetector = {
   castDown(origin, maxDistance, out) {
     const y = heightAt(origin.x, origin.z);
-    if (origin.y - y > maxDistance || y > origin.y) return false;
+    if (origin.y - y > maxDistance) return false;
     out.point.set(origin.x, y, origin.z);
     out.normal.copy(normalAt(origin.x, origin.z)); // unit length, pointing up
-    out.distance = origin.y - y;
+    out.distance = origin.y - y; // negative if the ground is above the origin (inside a hill): a wall
     return true;
   },
 };

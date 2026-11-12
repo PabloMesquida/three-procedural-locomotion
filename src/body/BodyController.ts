@@ -292,8 +292,13 @@ export class BodyController {
     this.followed = Number.NaN;
 
     this.tmp.set(p.x, p.y + this.config.groundProbeHeight, p.z);
-    s.grounded = this.detector.castDown(this.tmp, AIR_PROBE_DISTANCE, this.rootHit);
-    if (s.grounded) s.groundHeight = this.rootHit.point.y;
+    const found = this.detector.castDown(this.tmp, AIR_PROBE_DISTANCE, this.rootHit);
+    // Dentro de un bloque más alto que groundProbeHeight (saltando contra él), su cara de arriba no es donde
+    // aterriza: sigue con el suelo de antes.
+    if (!found || this.rootHit.distance >= 0) {
+      s.grounded = found;
+      if (found) s.groundHeight = this.rootHit.point.y;
+    }
     if (s.grounded && s.verticalVelocity <= 0 && p.y <= s.groundHeight) {
       // Parte de este frame ya transcurrió tras el contacto (lo que el cuerpo se hundió).
       s.timeSinceLanding = Math.min((s.groundHeight - p.y) / Math.max(-s.verticalVelocity, 1e-6), dt);

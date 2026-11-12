@@ -209,7 +209,7 @@ opcionales y se validan (nombre, número finito y rango).
 | `maxExtraStepHeight` ↔ | 0.3 | Altura extra máxima del swing para salvar obstáculos (m). |
 | `maxStepUp` ↔ | 0.35 | Escalón más alto que sube (m): una contrahuella más alta es una pared, y el personaje se para delante. |
 | `maxStepDown` ↔ | 0.35 | Escalón más hondo que baja (m): de un desnivel más hondo no baja, se para en el borde. |
-| `groundProbeHeight` ↔ | 1.5 | Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m). |
+| `groundProbeHeight` ↔ | 1.5 | Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m). Un bloque de suelo más alto sigue siendo una pared (ver `GroundDetector.castDown`). |
 | `groundProbeDepth` ↔ | 2.5 | Profundidad bajo la raíz hasta la que se busca el suelo al caminar (m). |
 | `footProbeHeight` ↔ | 0.5 | Altura sobre el tobillo deseado desde la que se busca el suelo bajo cada pie (m). |
 | `footProbeDepth` ↔ | 0.6 | Profundidad bajo el tobillo deseado hasta la que se busca el suelo bajo cada pie (m). |

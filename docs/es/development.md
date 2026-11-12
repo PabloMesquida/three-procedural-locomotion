@@ -157,7 +157,10 @@ y se repite cada `IDLE_RECHECK_TIME` (0,25 s) para notar cambios de configuraci�
 Lo que cuesta cada consulta depende del detector. `RaycastGroundDetector` usa el raycast de Three, que prueba
 todos los triángulos (~2 ms cada uno con 50.000: los ~14 del inicio de un paso dan un frame de ~25 ms).
 `StaticGroundDetector` indexa los triángulos que un rayo vertical puede tocar en un árbol por su huella en planta
-(XZ, división por la mediana, hojas de 8) con su rango de alturas: 2–5 µs por consulta. Replica lo que hace el
+(XZ, división por la mediana, hojas de 8) con su rango de alturas: 2–5 µs por consulta. Los dos averiguan
+también si el origen está dentro de un bloque (ver *Bloques altos* en la guía): el estático, con un segundo árbol de
+las caras de un solo lado que se ven desde abajo; el raycast lanza su rayo desde muy arriba (el mismo rayo ve lo
+que hay por encima del origen y el suelo), y otro hacia arriba cuando hay algo encima. Replica lo que hace el
 raycast de Three r186 (cara del material, grupos, `drawRange`, capa 0, escalas negativas, normal de los vértices
 interpolada); `tests/ground.test.ts` lo compara rayo a rayo y con un recorrido completo. Toda la suite puede
 correr con él: `PH_GROUND=static npm test`. El benchmark mide los dos (`malla`, `malla-static`).

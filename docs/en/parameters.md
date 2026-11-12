@@ -209,7 +209,7 @@ are optional and validated (name, finite number and range).
 | `maxExtraStepHeight` ↔ | 0.3 | Maximum extra swing height to clear obstacles (m). |
 | `maxStepUp` ↔ | 0.35 | Highest step it climbs (m): a higher riser is a wall, and the character stops in front of it. |
 | `maxStepDown` ↔ | 0.35 | Deepest step it goes down (m): from a deeper drop it doesn't step down, it stops at the edge. |
-| `groundProbeHeight` ↔ | 1.5 | Height above the root from which the ground under the body is searched (m). |
+| `groundProbeHeight` ↔ | 1.5 | Height above the root from which the ground under the body is searched (m). A block of ground taller than this is still a wall (see `GroundDetector.castDown`). |
 | `groundProbeDepth` ↔ | 2.5 | Depth below the root down to which the ground is searched when walking (m). |
 | `footProbeHeight` ↔ | 0.5 | Height above the target ankle from which the ground under each foot is searched (m). |
 | `footProbeDepth` ↔ | 0.6 | Depth below the target ankle down to which the ground under each foot is searched (m). |

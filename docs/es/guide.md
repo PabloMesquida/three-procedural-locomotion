@@ -346,22 +346,32 @@ Solo lee mallas normales (`Mesh`); `InstancedMesh`, `SkinnedMesh` y `BatchedMesh
 suelo que se mueve cada frame (plataformas, ascensores), usa el raycast (`ground: [mallas]`), o combina los dos
 con un `GroundDetector` propio que consulte ambos y se quede con el más alto.
 
+**Bloques altos.** El suelo se busca desde `groundProbeHeight` (1,5 m) por encima de los pies, pero un bloque
+más alto (una tarima, una roca grande, un cerro del terreno) sigue siendo una pared, no algo en lo que el personaje
+se mete: si el rayo empieza dentro de él (lo más cercano por encima es su cara de arriba, vista desde dentro, y no
+un techo visto desde abajo), los dos detectores devuelven su cara de arriba. Para eso el bloque necesita un
+material de un solo lado (`FrontSide`, el de por defecto, o `BackSide`): una cara `DoubleSide` no tiene dentro.
+Una superficie que mira hacia arriba sin nada en medio cuenta como la cara de arriba de lo que tiene debajo (como
+en una malla de terreno): un piso de arriba o un puente por debajo del que pasa el personaje, con algo de grosor
+(una caja), no como un plano suelto. Por debajo de algo cuya cara de abajo está más alta que `groundProbeHeight`,
+pasa.
+
 Para otro sistema (heightmap, motor de física) implementa `GroundDetector`:
 
 ```ts
 const heightmapGround: GroundDetector = {
   castDown(origin, maxDistance, out) {
     const y = heightAt(origin.x, origin.z);
-    if (origin.y - y > maxDistance || y > origin.y) return false;
+    if (origin.y - y > maxDistance) return false;
     out.point.set(origin.x, y, origin.z);
     out.normal.copy(normalAt(origin.x, origin.z)); // unitaria, hacia arriba
-    out.distance = origin.y - y;
+    out.distance = origin.y - y; // negativa si el suelo está por encima del origen (dentro de un cerro): una pared
     return true;
   },
 };
 ```
 
-El cuerpo es cinemático: no hay colisiones con obstáculos ni paredes; solo se busca el suelo bajo el cuerpo
+El cuerpo es cinemático: solo se busca el suelo bajo el cuerpo
 y bajo cada pie (obstáculos que no son suelo, solo si se los das como `colliders`). Escalones bajos y pendientes
 moderadas sí: los pies se apoyan en su altura y se inclinan. También el terreno irregular sin escalones, como un
 montón de rocas: cada pie se apoya en lo más alto que tiene debajo (sobre un hueco entre rocas la planta puede
