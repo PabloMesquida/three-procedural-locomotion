@@ -485,21 +485,28 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
   HTML) que añadir, y un `update()` que llamar después de `human.update(dt)`:
 
   ```ts
-  import { FootDebug, GaitDiagram, LocomotionDebug, RigDebug } from 'three-procedural-locomotion/debug';
+  import { FootDebug, GaitDiagram, LocomotionDebug, NavigationDebug, RigDebug } from 'three-procedural-locomotion/debug';
 
   const debug = new LocomotionDebug(human.locomotion); // posiciones neutras, aterrizajes, trayectorias, centro de masa
   const feet = (['left', 'right'] as const).map((side) => new FootDebug(human.footGround(side))); // rayos de los pies
   const bones = new RigDebug(human.rig); // los huesos mapeados
+  const route = new NavigationDebug(human); // moveTo / followPath: el destino y lo que queda de la ruta
   const gait = new GaitDiagram(human.locomotion.gait, { language: 'es' }); // fases de la marcha
-  scene.add(debug.group, bones.group, ...feet.map((f) => f.group));
+  scene.add(debug.group, bones.group, route.group, ...feet.map((f) => f.group));
   document.body.append(gait.element);
 
   // cada frame, después de human.update(dt)
-  debug.update(); bones.update(); gait.update();
+  debug.update(); bones.update(); route.update(); gait.update();
   for (const f of feet) f.update();
   ```
 
-  `IKDebug` muestra el IK de una pierna con un objetivo puesto a mano (`new IKDebug(human.rig.left, objetivo, pole, color)`).
+  `NavigationDebug` dibuja el destino de `moveTo` / `followPath` (`moveTarget`) como un aro plano en el suelo,
+  mientras lo hay, y una línea desde los pies por lo que queda de la ruta planificada (`movePath`), por encima de
+  todo. Opciones: `color` (`0x66ff99` por defecto), `straightLine: true` (la línea también cuando va en línea
+  recta, de los pies al destino: por defecto, solo con una ruta planificada) y `maxPoints` (256). `dispose()`
+  libera sus geometrías y materiales. `IKDebug` muestra el IK de una pierna con un objetivo puesto a mano
+  (`new IKDebug(human.rig.left, objetivo, pole, color)`). `LocomotionDebug`, `RigDebug`, `IKDebug` y
+  `NavigationDebug` se ocultan con `visible = false`.
 
 ## Limitaciones actuales
 

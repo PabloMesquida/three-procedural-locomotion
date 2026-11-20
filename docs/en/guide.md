@@ -479,21 +479,28 @@ measures it on your machine.
   `element`) to add, and an `update()` to call after `human.update(dt)`:
 
   ```ts
-  import { FootDebug, GaitDiagram, LocomotionDebug, RigDebug } from 'three-procedural-locomotion/debug';
+  import { FootDebug, GaitDiagram, LocomotionDebug, NavigationDebug, RigDebug } from 'three-procedural-locomotion/debug';
 
   const debug = new LocomotionDebug(human.locomotion); // neutral positions, landings, swing paths, centre of mass
   const feet = (['left', 'right'] as const).map((side) => new FootDebug(human.footGround(side))); // foot raycasts
   const bones = new RigDebug(human.rig); // the mapped bones
+  const route = new NavigationDebug(human); // moveTo / followPath: destination and what is left of the route
   const gait = new GaitDiagram(human.locomotion.gait); // phases of the gait ({ language: 'es' } for Spanish)
-  scene.add(debug.group, bones.group, ...feet.map((f) => f.group));
+  scene.add(debug.group, bones.group, route.group, ...feet.map((f) => f.group));
   document.body.append(gait.element);
 
   // every frame, after human.update(dt)
-  debug.update(); bones.update(); gait.update();
+  debug.update(); bones.update(); route.update(); gait.update();
   for (const f of feet) f.update();
   ```
 
-  `IKDebug` shows the leg IK of a hand-placed target (`new IKDebug(human.rig.left, target, pole, color)`).
+  `NavigationDebug` draws the destination of `moveTo` / `followPath` (`moveTarget`) as a flat ring on the ground,
+  while there is one, and a line from the feet along what is left of the planned route (`movePath`), over
+  everything. Options: `color` (`0x66ff99` by default), `straightLine: true` (the line also when it goes in a
+  straight line, from the feet to the destination: by default only with a planned route) and `maxPoints` (256).
+  `dispose()` frees its geometries and materials. `IKDebug` shows the leg IK of a hand-placed target
+  (`new IKDebug(human.rig.left, target, pole, color)`). `LocomotionDebug`, `RigDebug`, `IKDebug` and
+  `NavigationDebug` can be hidden with `visible = false`.
 
 ## Current limitations
 
