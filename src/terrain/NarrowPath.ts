@@ -8,14 +8,14 @@ const UP = new Vector3(0, 1, 0);
  * path between such drops, narrower than `narrowWidth`, is narrow.
  */
 export const NARROW_DROP = 0.125;
-/** Bisection steps to find each edge (with `narrowWidth` 0.3 m, to ≈ 2 cm). */
-const EDGE_STEPS = 3;
+/** Bisection steps to find each edge (with `narrowWidth` 0.3 m, to ≈ 1 cm). */
+const EDGE_STEPS = 4;
 /**
- * Two centres measured at least this far apart (m) give the direction of the path: the middle of any cut across
- * it, also slanting, is on its middle line. It is used only if it is more than ALONG_SLANT (cosine) off the travel:
- * the edges are found to ≈ 1 cm, and along the path the direction of travel is more precise.
+ * The direction of the path: it finds the same edge again this far behind the probe (m), towards the body, and
+ * the path runs along the line between both. It is used only if it is more than ALONG_SLANT (cosine) off the travel:
+ * walking along the path, the direction of travel is more precise than two edges a step apart.
  */
-const MIN_ALONG = 0.25;
+const ALONG_PROBE = 0.25;
 const ALONG_SLANT = Math.cos((10 * Math.PI) / 180);
 
 /** Where and how it looks for the edges of the path (see NarrowPath.probe). */
@@ -54,9 +54,8 @@ export class NarrowPath {
   /** Centre of the path where it was last measured (world; on the ground of the body). */
   readonly center = new Vector3();
   /**
-   * Direction across the path (horizontal, unit; to the right of the travel): from two centres measured one after
-   * the other on the path or, with only one, across the travel then. The path runs perpendicular to it through
-   * `center`.
+   * Direction across the path (horizontal, unit; to the right of the travel): from its edge, measured where it
+   * crosses the probe and a little behind (ALONG_PROBE). The path runs perpendicular to it through `center`.
    */
   readonly across = new Vector3(1, 0, 0);
   /** Width of the path where it was last measured (m; Infinity if not narrow). */
@@ -73,8 +72,8 @@ export class NarrowPath {
   private readonly right = new Vector3();
   /** Height the sides are compared with in the current probe (m, world). */
   private level = 0;
-  /** Centre from which it measures the direction of the path (NaN: none yet). */
-  private readonly lastCenter = new Vector3(Number.NaN, 0, 0);
+  /** Point the rays are cast across from (the probe's, or the one behind it). */
+  private readonly base = new Vector3();
   /** Side the next probe looks at first (+1 right, −1 left). */
   private side = 1;
 
@@ -87,7 +86,6 @@ export class NarrowPath {
     this.narrow = false;
     this.width = Number.POSITIVE_INFINITY;
     this.end.x = Number.NaN;
-    this.lastCenter.x = Number.NaN;
     this.side = 1;
   }
 
@@ -95,7 +93,6 @@ export class NarrowPath {
   shift(offset: Vector3): void {
     this.center.add(offset);
     this.end.add(offset);
-    this.lastCenter.add(offset);
   }
 
   /** On a narrow path, or still before the point where it ended (going `forward` from `position`). */
@@ -115,6 +112,7 @@ export class NarrowPath {
       rays++;
       return this.dropAt(probe, right, x);
     };
+    this.base.copy(probe.point);
     const s = this.side;
     this.side = -s;
     const half = probe.width / 2;
@@ -144,7 +142,7 @@ export class NarrowPath {
     const other = this.edge(c, across, drops);
     this.center.copy(probe.point).addScaledVector(right, (edge + other) / 2);
     this.center.y = this.level;
-    this.alongPath(right);
+    rays += this.direction(probe, right, s, edge, (edge + other) / 2);
     this.narrow = true;
     this.end.x = Number.NaN;
     // Medido en un corte oblicuo, el ancho de verdad es menor.
@@ -152,23 +150,39 @@ export class NarrowPath {
     return rays;
   }
 
-  /** `across` from the new centre and the last one (see MIN_ALONG) or, if it can't, `right`. */
-  private alongPath(right: Vector3): void {
-    const last = this.lastCenter;
-    if (!this.narrow || Number.isNaN(last.x)) {
-      this.across.copy(right);
-      last.copy(this.center);
-      return;
+  /**
+   * `across`: the edge on side `s` (at `edge`, lateral offset from the probe) found again ALONG_PROBE behind, and the
+   * path along the line between both; `right` if it can't find it there or the path goes almost along the travel.
+   * Returns the rays it cast.
+   */
+  private direction(probe: NarrowProbe, right: Vector3, s: number, edge: number, middle: number): number {
+    let rays = 0;
+    this.across.copy(right);
+    const forward = probe.forward;
+    this.base.copy(probe.point).addScaledVector(forward, -ALONG_PROBE);
+    const drops = (x: number): boolean => {
+      rays++;
+      return this.dropAt(probe, right, x);
+    };
+    // Del medio (aún en el camino) a todo el ancho de ese lado (ya fuera).
+    const outside = middle + s * probe.width;
+    if (drops(middle) || !drops(outside)) {
+      this.base.copy(probe.point);
+      return rays;
     }
-    const dx = this.center.x - last.x;
-    const dz = this.center.z - last.z;
-    const d = Math.hypot(dx, dz);
-    if (d < MIN_ALONG) return;
-    // A lo largo (dx, dz) × arriba = (−dz, 0, dx), hacia la derecha del avance.
-    const sign = -dz * right.x + dx * right.z >= 0 ? 1 : -1;
-    this.across.set((-dz / d) * sign, 0, (dx / d) * sign);
+    const behind = this.edge(middle, outside, drops);
+    this.base.copy(probe.point);
+    // El borde va de (−ALONG_PROBE, behind) a (0, edge) en (adelante, derecha).
+    const ahead = ALONG_PROBE;
+    const sideways = edge - behind;
+    const length = Math.hypot(ahead, sideways);
+    // A lo largo: adelante·ahead + derecha·sideways; a lo ancho, a su derecha.
+    const ax = (forward.x * ahead + right.x * sideways) / length;
+    const az = (forward.z * ahead + right.z * sideways) / length;
+    this.across.set(-az, 0, ax);
+    if (this.across.dot(right) < 0) this.across.negate();
     if (this.across.dot(right) > ALONG_SLANT) this.across.copy(right);
-    last.copy(this.center);
+    return rays;
   }
 
   /** Distance (m, horizontal) from `point` to the middle of the path, in the direction of `across` (negative: against it). */
@@ -181,7 +195,6 @@ export class NarrowPath {
     this.narrow = false;
     this.width = Number.POSITIVE_INFINITY;
     this.end.copy(point);
-    this.lastCenter.x = Number.NaN;
   }
 
   /** Edge between `inside` (ground) and `outside` (drop), lateral offsets (m), by bisection. */
@@ -194,9 +207,9 @@ export class NarrowPath {
     return (inside + outside) / 2;
   }
 
-  /** The ground `x` m to the right of the point (left if negative) is lower than `level` by `drop`, or missing. */
+  /** The ground `x` m to the right of `base` (left if negative) is lower than `level` by `drop`, or missing. */
   private dropAt(probe: NarrowProbe, right: Vector3, x: number): boolean {
-    const origin = this.origin.copy(probe.point).addScaledVector(right, x);
+    const origin = this.origin.copy(this.base).addScaledVector(right, x);
     origin.y = this.level + probe.rayHeight;
     if (!this.detector.castDown(origin, probe.rayHeight + probe.drop, this.hit)) return true;
     return this.hit.point.y < this.level - probe.drop;

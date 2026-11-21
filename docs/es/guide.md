@@ -457,8 +457,11 @@ su pose normal y deja de corregir (`narrowTouchRelax`); los pies siguen en líne
 
 Una ruta de `moveTo` va por un camino angosto solo si el destino está en él o no puede rodearlo (un tablón hasta un
 pedestal, el único muro entre dos plataformas): cuesta mucho más que el suelo abierto. Uno bajo que se cruza en el
-camino (una viga a la que puede subir) lo pasa por encima. Si el destino está en uno, sube a él solo por su
-extremo, en línea con él, no de lado: si llega en ángulo, la ruta pasa antes por un punto delante del extremo. De camino frena hasta `narrowMaxSpeed`, apunta a
+camino (una viga a la que puede subir) lo pasa por encima. Si el destino está en uno bajo, sube a él ahí mismo por
+su costado (se acerca de frente y sube de un paso) y, ya arriba, se gira en el sitio hasta quedar a lo largo de él,
+en el punto exacto del destino; o por su extremo, si por ahí es más corto. A uno más alto (lo alto de un muro) sube
+solo por su extremo, en línea con él: si llega en ángulo, la ruta pasa antes por un punto delante del extremo. De
+camino frena hasta `narrowMaxSpeed`, apunta a
 un punto más cercano de la ruta y se corrige de lado hacia su línea, así que entra recto y por el medio aunque
 acabe de dar la vuelta.
 

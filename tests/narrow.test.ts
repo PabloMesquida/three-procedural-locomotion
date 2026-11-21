@@ -278,33 +278,55 @@ describe('caminos angostos', () => {
   // Viga baja (30 cm, se puede pisar desde el suelo) detrás y a la derecha del personaje, de z = 1 a 7.
   const lowBeam = (terrain: Object3D): void => block(terrain, BEAM_WIDTH, 0.3, 6, 2, 4);
 
-  for (const z of [1.6, 4, 6.5]) {
-    it(`clic en una viga baja (z = ${z}): sube por un extremo, en línea, y se para con los dos pies en ella`, () => {
-      const world = createWorld({ buildTerrain: lowBeam });
-      const { human } = world;
-      const loco = human.locomotion;
-      const target = new Vector3(2, 0.3, z);
-      human.moveTo(target);
-      // Desde que pisa la viga con los dos pies, ningún pie vuelve al suelo (antes subía de lado y no se aclaraba).
-      let both = false;
-      let backDown = 0;
-      const r = simulate(world, 18, [], {
-        onFrame: () => {
-          const up = SIDES.map((side) => human.footPhase(side) !== 'SWING' && loco.feet[side].planted.y > 0.2);
-          if (up[0] && up[1]) both = true;
-          for (const side of SIDES) if (both && human.footPhase(side) !== 'SWING' && loco.feet[side].planted.y < 0.2) backDown++;
-        },
+  // Clic en un punto de una viga baja, desde un lado: sube por el costado ahí mismo (no rodea su extremo), se gira
+  // a lo largo de ella y se para con los dos pies arriba. Antes, subiendo de lado se quedaba atravesado y con un pie
+  // en el suelo, dando pasos sin aclararse.
+  // Ni pasa un pie por encima de la viga al suelo del otro lado, quedando a horcajadas (como escalón, la viga es más
+  // corta que el pie y la escalera lo ponía detrás).
+  for (const [sx, sz, scale] of [[0, 0, 1], [0, 4, 1], [3.5, 4, 1], [0.5, 2.5, 1], [0, 0, 0.896], [-1.5, 4, 0.896]] as const) {
+    for (const z of [2, 4, 5.5]) {
+      it(`clic en una viga baja (z = ${z}) desde (${sx}, ${sz}), escala ${scale}: sube por el costado y se para a lo largo de ella`, () => {
+        const world = createWorld({ buildTerrain: lowBeam, modelScale: scale });
+        const { human } = world;
+        world.model.position.set(sx, 0, sz);
+        world.model.updateMatrixWorld(true);
+        human.reset();
+        const loco = human.locomotion;
+        const target = new Vector3(2, 0.3, z);
+        human.moveTo(target);
+        let both = false;
+        let backDown = 0;
+        let roundEnd = false;
+        let farSide = 0;
+        const side = Math.sign(sx - 2);
+        const r = simulate(world, 16, [], {
+          onFrame: () => {
+            const up = SIDES.map((side) => human.footPhase(side) !== 'SWING' && loco.feet[side].planted.y > 0.2);
+            if (up[0] && up[1]) both = true;
+            for (const side of SIDES) if (both && human.footPhase(side) !== 'SWING' && loco.feet[side].planted.y < 0.2) backDown++;
+            // Junto a la viga, más allá de sus extremos: la rodeaba.
+            const p = human.position;
+            if (Math.abs(p.x - 2) < 0.4 && (p.z < 1 || p.z > 7)) roundEnd = true;
+            for (const s of SIDES) {
+              const f = loco.feet[s].planted;
+              if (human.footPhase(s) !== 'SWING' && (f.x - 2) * side < -0.1 && f.y < 0.2) farSide++;
+            }
+          },
+        });
+        assert.equal(human.moveTarget, null, 'no llegó');
+        assert.ok(human.position.distanceTo(target) < 0.1, `se paró en ${human.position.toArray().map((v) => v.toFixed(2))}`);
+        assert.ok(!roundEnd, 'rodeó el extremo de la viga');
+        assert.equal(farSide, 0, 'un pie pasó la viga por encima y se apoyó al otro lado');
+        assert.equal(backDown, 0, 'un pie volvió a bajar al suelo');
+        for (const side of SIDES) {
+          const p = loco.feet[side].planted;
+          assert.ok(p.y > 0.2 && Math.abs(p.x - 2) < 0.07, `pie ${side} en ${p.toArray().map((v) => v.toFixed(2))}`);
+        }
+        assert.ok(Math.abs(loco.body.state.forward.z) > 0.99, 'no quedó a lo largo de la viga');
+        assert.ok(human.balance > 0.99);
+        assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001 && r.finiteOK);
       });
-      assert.equal(human.moveTarget, null, 'no llegó');
-      assert.ok(human.position.distanceTo(target) < 0.15, `se paró en ${human.position.toArray().map((v) => v.toFixed(2))}`);
-      assert.equal(backDown, 0, 'un pie volvió a bajar al suelo');
-      for (const side of SIDES) {
-        const p = loco.feet[side].planted;
-        assert.ok(p.y > 0.2 && Math.abs(p.x - 2) < 0.07, `pie ${side} en ${p.toArray().map((v) => v.toFixed(2))}`);
-      }
-      assert.ok(human.balance > 0.99);
-      assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001 && r.finiteOK);
-    });
+    }
   }
 
   for (const target of [new Vector3(4, 0, 4), new Vector3(4, 0, 6)]) {
@@ -329,6 +351,47 @@ describe('caminos angostos', () => {
       assert.ok(crossed > 1.2 && crossed < 6.8, `cruzó la línea de la viga en z = ${crossed.toFixed(2)}`);
       assert.ok(human.position.distanceTo(target) < 0.15, `no llegó: ${human.position.toArray().map((v) => v.toFixed(2))}`);
       assert.ok(longest < 0.3, `se paró ${longest.toFixed(2)} s`);
+      assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001 && r.finiteOK);
+    });
+  }
+
+  // Viga encima del borde de una tarima: de 20 × 25 cm sobre una tarima de 30 cm (x de −6,5 a −4, z de −2 a −6),
+  // enrasada con su borde +X. Desde la tarima se sube a ella de un paso; desde fuera hay 55 cm (no se sube ni se baja),
+  // y sus extremos dan al suelo: solo se sube desde la tarima, por el costado.
+  const edgeBeam = (terrain: Object3D): void => {
+    block(terrain, 2.5, 0.3, 4, -5.25, -4);
+    const beamOnTop = new Mesh(new BoxGeometry(0.2, 0.25, 4), new MeshBasicMaterial());
+    beamOnTop.position.set(-4.1, 0.3 + 0.125, -4);
+    terrain.add(beamOnTop);
+  };
+  for (const [name, start, z] of [['el suelo de fuera', new Vector3(0, 0, 0), -4], ['el suelo, cerca de un extremo', new Vector3(0, 0, 0), -2.5], ['la tarima', new Vector3(-5.5, 0.3, -4), -4.5]] as const) {
+    it(`viga encima del borde de una tarima, desde ${name}: sube a ella desde la tarima y se para a lo largo de ella`, () => {
+      const world = createWorld({ buildTerrain: edgeBeam });
+      const { human } = world;
+      world.model.position.copy(start);
+      world.model.updateMatrixWorld(true);
+      human.reset();
+      const loco = human.locomotion;
+      const target = new Vector3(-4.1, 0.55, z);
+      human.moveTo(target);
+      let outside = 0;
+      const r = simulate(world, 20, [], {
+        onFrame: () => {
+          // Un pie en el suelo de fuera, junto a la viga, con el cuerpo arriba.
+          for (const side of SIDES) {
+            const f = loco.feet[side].planted;
+            if (human.footPhase(side) !== 'SWING' && human.position.y > 0.4 && f.y < 0.2 && f.x > -4 && f.x < -3.6) outside++;
+          }
+        },
+      });
+      assert.equal(human.moveTarget, null, 'no llegó');
+      assert.ok(Math.hypot(human.position.x - target.x, human.position.z - target.z) < 0.1, `se paró en ${human.position.toArray().map((v) => v.toFixed(2))}`);
+      assert.equal(outside, 0, 'un pie bajó al suelo de fuera');
+      for (const side of SIDES) {
+        const p = loco.feet[side].planted;
+        assert.ok(p.y > 0.5 && Math.abs(p.x + 4.1) < 0.07, `pie ${side} en ${p.toArray().map((v) => v.toFixed(2))}`);
+      }
+      assert.ok(Math.abs(loco.body.state.forward.z) > 0.99, 'no quedó a lo largo de la viga');
       assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001 && r.finiteOK);
     });
   }

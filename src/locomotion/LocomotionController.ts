@@ -276,6 +276,12 @@ const FOOT_WIDTH = 0.5;
 const NARROW_FINGER_CURL = 0.3;
 /** How often the balance corrections of the arms change (≈ times per second). */
 const NARROW_TILT_RATE = 0.6;
+/** Steps that land this close to `standTarget` (× stepLength) land there as planned. */
+const STAND_REACH = 0.5;
+/** …and no further ahead of it or behind it than this (× stepLength): on the path, not past it. */
+const STAND_OVERSHOOT = 0.06;
+/** Balancing, the feet are settled with this much less sideways error (fraction of idleStepThreshold). */
+const NARROW_SETTLE = 0.6;
 const UP = new Vector3(0, 1, 0);
 /** Difference relative to the step length below which two measurements are considered equal. */
 const TIE_TOLERANCE = 1e-9;
@@ -321,6 +327,12 @@ export class LocomotionController {
    * touch gesture predicts where the shoulder will be with it (see predictTravel).
    */
   travelLimit = Number.POSITIVE_INFINITY;
+  /**
+   * Where it is about to stand (world; NaN x = nowhere in particular): getting onto a low narrow path from its side
+   * (see PathPlanner), the steps that land near it go there as planned. As a tread, the path is shallower than the
+   * foot, and the stairs would put the foot past it, on the ground on the other side.
+   */
+  readonly standTarget = new Vector3(Number.NaN, 0, 0);
   /** Obstacles that aren't ground (see Colliders): it doesn't go through them; null = none. */
   colliders: Colliders | null = null;
 
@@ -564,6 +576,7 @@ export class LocomotionController {
     this.lastFootDt = 0;
     this.stairs.reset();
     this.narrowPath.reset();
+    this.standTarget.x = Number.NaN;
     this.narrowProbe = 0;
     this.balance = 0;
     this.balanceTilt = 0;
@@ -1148,18 +1161,21 @@ export class LocomotionController {
     const maxAngle = (c.idleTurnThreshold * Math.PI) / 180;
     const forward = this.body.state.forward;
     const maxStagger = IDLE_STAGGER * c.stepLength;
+    // Haciendo equilibrio, los pies se recolocan con menos desvío de lado: en un camino angosto, 2 cm sobran.
+    const maxAcross = c.idleStepThreshold * (1 - NARROW_SETTLE * smoothstep(this.balance));
+    const onPath = this.onNarrowPath();
     let along = 0;
     for (const side of SIDES) {
       // Sobre una escalera, el sitio del pie es el de la huella (sin raycasts de más, ver StairPlanner); si
       // no es donde está, se recoloca aunque esté poco adelantado: estaría pisando un borde.
       let onTread = false;
       const e = this.planner.settleError(this.feet[side], this.settleOffset, (target, rotation) => {
-        onTread = this.planStairLanding(side, this.feet[side].planted, 0, target, rotation, false);
+        if (!onPath) onTread = this.planStairLanding(side, this.feet[side].planted, 0, target, rotation, false);
       });
       const ahead = this.settleOffset.dot(forward);
       const across = Math.sqrt(Math.max(e.distance * e.distance - ahead * ahead, 0));
       const maxAhead = onTread ? c.idleStepThreshold : maxStagger;
-      if (across >= c.idleStepThreshold || Math.abs(ahead) >= maxAhead || e.angle >= maxAngle) return false;
+      if (across >= maxAcross || Math.abs(ahead) >= maxAhead || e.angle >= maxAngle) return false;
       along += ahead / 2;
     }
     return Math.abs(along) < Math.max(maxStagger / 2, c.idleStepThreshold);
@@ -1274,7 +1290,22 @@ export class LocomotionController {
       yaw,
       footYaw,
     );
-    this.planStairLanding(foot.side, swing.start, footYaw, swing.landing, swing.landingRotation);
+    // Ya sobre un camino angosto, no: el perfil del suelo, en diagonal a él (girando), lo veía como un escalón y
+    // ponía el pie en el suelo de al lado. Subiendo a él, sí (si no, el paso podía saltar una viga baja).
+    const stand = this.standTarget;
+    const standing = !Number.isNaN(stand.x) && Math.hypot(swing.landing.x - stand.x, swing.landing.z - stand.z) < STAND_REACH * this.config.stepLength;
+    if (standing) {
+      // A no más de STAND_OVERSHOOT de él, por delante o por detrás: el paso adelantado caía al otro lado del camino,
+      // y el de atrás, recolocándose, antes de su borde.
+      const f = this.body.state.forward;
+      const ahead = (swing.landing.x - stand.x) * f.x + (swing.landing.z - stand.z) * f.z;
+      const limit = STAND_OVERSHOOT * this.config.stepLength;
+      const past = ahead - clamp(ahead, -limit, limit);
+      if (past !== 0) {
+        this.tmp.copy(swing.landing).addScaledVector(f, -past);
+        this.planner.placeLanding(foot.side, this.tmp, footYaw, swing.landing, swing.landingRotation);
+      }
+    } else if (!this.onNarrowPath()) this.planStairLanding(foot.side, swing.start, footYaw, swing.landing, swing.landingRotation);
     // Subiendo o bajando un escalón, el pie apoya plano (en el mocap de escaleras, ±3°), y bajando, avanza
     // antes de bajar (ver evaluateSwing).
     const level = this.stairs.active ? swing.landing.y - foot.planted.y : 0;
@@ -1292,6 +1323,13 @@ export class LocomotionController {
     // Bajando, de antepié: el tobillo extendido llega más abajo y las caderas no tienen que bajar tanto.
     if (swing.dropDelay > 0) swing.heelStrike = -STAIR_TOE_STRIKE;
     strikeRoll(this.legs[foot.side].roll, swing.end, swing.endRotation, swing.heelStrike);
+  }
+
+  /** Balancing on a narrow path, with the body already at its level (not stepping onto it). */
+  private onNarrowPath(): boolean {
+    const s = this.body.state;
+    if (this.balance < 0.5 || !this.narrowPath.narrow || !Number.isFinite(s.groundHeight)) return false;
+    return Math.abs(s.groundHeight - this.narrowPath.center.y) < (NARROW_DROP / 2) * this.config.stepLength;
   }
 
   /**

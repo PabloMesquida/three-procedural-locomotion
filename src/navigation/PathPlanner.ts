@@ -65,6 +65,13 @@ const NARROW_APPROACH = 1;
 const NARROW_IN_LINE = 0.15;
 /** A stretch of the route within this angle of a narrow path (cosine; 30°) comes in line with it. */
 const NARROW_ALIGNED_COS = Math.cos(Math.PI / 6);
+/**
+ * To a destination on a low narrow path (one it can step onto from the ground beside it), it can also get on it
+ * from its side, right there: the route goes first to the ground this far from its middle (× stepLength), across
+ * it, and from there straight onto it; there it turns to stand along it (`arrival`). It does this when that route
+ * is shorter than getting on it at an end.
+ */
+const SIDE_APPROACH = 0.6;
 /** Bisection steps to find each edge of a narrow path (to ≈ 1 cm with cells of 15 cm). */
 const NARROW_EDGE_STEPS = 4;
 
@@ -123,6 +130,11 @@ interface Cell {
 export class PathPlanner {
   /** Raycasts of the last plan (to measure its cost). */
   raycasts = 0;
+  /**
+   * The last route ends on a narrow path got on from its side (see SIDE_APPROACH): the direction (world,
+   * horizontal, unit) to turn to there, along the path. NaN (x) otherwise.
+   */
+  readonly arrival = new Vector3(Number.NaN, 0, 0);
 
   private readonly detector: GroundDetector;
   private readonly config: () => LocomotionConfig;
@@ -163,6 +175,94 @@ export class PathPlanner {
    * (`out` empty). In `narrow`, for each point, whether the stretch that ends at it goes along a narrow path.
    */
   plan(start: Vector3, target: Vector3, out: Vector3[], narrow: boolean[] = []): boolean {
+    this.arrival.x = Number.NaN;
+    this.raycasts = 0;
+    const found = this.route(start, target, out, narrow);
+    // Si llega al destino (si no, la ruta acaba en el punto alcanzable más cercano a él).
+    const last = out[out.length - 1];
+    const reached = found && last !== undefined && Math.hypot(last.x - target.x, last.z - target.z) < this.size && Math.abs(last.y - target.y) < this.narrowDrop();
+    // A un camino angosto bajo, también por su costado: la más corta de las dos, o esta si la otra no llega.
+    const side = this.sideRoute(start, target, out);
+    if (side && (!reached || length(start, side.points) < length(start, out))) {
+      out.length = 0;
+      narrow.length = 0;
+      out.push(...side.points);
+      narrow.push(...side.points.map(() => false));
+      this.arrival.copy(side.arrival);
+      return true;
+    }
+    return found;
+  }
+
+  /**
+   * Route to a destination on a low narrow path getting on it from its side (see SIDE_APPROACH), or null if the
+   * destination isn't on one, it is on it already, or it can't get there. `end` is the route to it at an end.
+   */
+  private sideRoute(start: Vector3, target: Vector3, end: readonly Vector3[]): { points: Vector3[]; arrival: Vector3 } | null {
+    const config = this.config();
+    if (!(config.narrowWidth > 0)) return null;
+    this.reset(start);
+    const s = this.size;
+    const ti = Math.round((target.x - this.x0) / s);
+    const tj = Math.round((target.z - this.z0) / s);
+    const c = this.cell(ti, tj, target.y);
+    if (!this.isNarrow(ti, tj)) return null;
+    // Ya en él (o en otro a su altura): va por él.
+    const here = this.cell(0, 0, start.y);
+    if (this.isNarrow(0, 0) && Math.abs(here.height - c.height) < this.narrowDrop()) return null;
+    const middle = this.narrowMiddle(target.x, target.z, ti, tj, new Vector3(target.x, c.height, target.z));
+    const [di, dj] = ACROSS[c.across!];
+    const across = Math.hypot(di, dj);
+    const ax = di / across;
+    const az = dj / across;
+    // Por cada lado, desde el suelo de al lado (si se sube de un paso desde él): el lado por el que llega primero y
+    // el otro (pegado a una tarima, solo se sube desde ella); la ruta más corta de las que llegan.
+    const near = Math.sign((start.x - middle.x) * ax + (start.z - middle.z) * az) || 1;
+    const d = SIDE_APPROACH * config.stepLength;
+    let points: Vector3[] | null = null;
+    for (const side of [near, -near]) {
+      const px = middle.x + ax * side * d;
+      const pz = middle.z + az * side * d;
+      // Los rayos, desde la altura del camino (route() vacía la rejilla: cada lado, de nuevo).
+      this.reset(start);
+      const ground = this.cell(Math.round((px - this.x0) / s), Math.round((pz - this.z0) / s), c.height);
+      const rise = c.height - ground.height;
+      if (!(rise >= this.narrowDrop() && rise <= config.maxStepUp)) continue;
+      const approach = new Vector3(px, ground.height, pz);
+      const candidate: Vector3[] = [];
+      if (!this.route(start, approach, candidate, [])) continue;
+      const end = candidate[candidate.length - 1];
+      if (Math.hypot(end.x - approach.x, end.z - approach.z) > s || Math.abs(end.y - approach.y) > this.narrowDrop()) continue;
+      candidate.push(middle.clone());
+      if (!points || length(start, candidate) < length(start, points)) points = candidate;
+    }
+    if (!points) return null;
+    // Allí se pone a lo largo del camino, hacia donde estaba yendo (o, si llega de frente, hacia el lado del final
+    // de la otra ruta).
+    let ux = -az;
+    let uz = ax;
+    const towards = end.length > 0 ? end[0] : start;
+    if ((middle.x - towards.x) * ux + (middle.z - towards.z) * uz < 0) {
+      ux = -ux;
+      uz = -uz;
+    }
+    return { points, arrival: new Vector3(ux, 0, uz) };
+  }
+
+  /** Starts a new search from `start`: the grid around it, empty. */
+  private reset(start: Vector3): void {
+    const config = this.config();
+    this.size = CELL * config.stepLength;
+    this.berth = BERTH * config.stepLength;
+    this.x0 = start.x;
+    this.z0 = start.z;
+    this.cells.clear();
+    this.blockers = this.colliders();
+    this.blockers?.update();
+  }
+
+  /** `plan` without getting on narrow paths from their side. */
+  private route(start: Vector3, target: Vector3, out: Vector3[], narrow: boolean[]): boolean {
     out.length = 0;
     narrow.length = 0;
     const config = this.config();
@@ -171,7 +271,6 @@ export class PathPlanner {
     this.x0 = start.x;
     this.z0 = start.z;
     this.cells.clear();
-    this.raycasts = 0;
     this.blockers = this.colliders();
     this.blockers?.update();
     const hard = this.clearanceNeeded();
@@ -741,6 +840,17 @@ export class PathPlanner {
     }
     return true;
   }
+}
+
+/** Length (m, horizontal) of the route `points` from `start`. */
+function length(start: Vector3, points: readonly Vector3[]): number {
+  let total = 0;
+  let from = start;
+  for (const p of points) {
+    total += Math.hypot(p.x - from.x, p.z - from.z);
+    from = p;
+  }
+  return total;
 }
 
 /** Key of cell (i, j) (|i|, |j| < 32768). */

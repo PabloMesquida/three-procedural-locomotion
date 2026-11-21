@@ -303,7 +303,7 @@ export class ProceduralHuman {
     this.replans = (options.avoid ?? true) ? 0 : MAX_REPLANS;
     const planned = (options.avoid ?? true) && this.pathPlanner.plan(start, point, this.route, this.routeNarrow);
     if (planned && (this.route.length > 1 || this.routeNarrow[0])) {
-      this.navigation.setTarget(this.route[this.route.length - 1], run, this.route, this.routeNarrow);
+      this.navigation.setTarget(this.route[this.route.length - 1], run, this.route, this.routeNarrow, this.pathPlanner.arrival);
     } else {
       this.navigation.setTarget(this.route.length === 1 ? this.route[0] : point, run);
     }

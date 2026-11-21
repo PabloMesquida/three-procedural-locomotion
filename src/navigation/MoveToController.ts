@@ -69,6 +69,8 @@ const NARROW_ALIGN_SPEED = 0.4;
  * make to be in line with it, down to this: turning less wide, it doesn't overshoot its end.
  */
 const NARROW_TURN_SPEED = 0.35;
+/** Turning to its final heading (see `arrival`), it has arrived within this much of it (rad). */
+const FACE_TOLERANCE = (3 * Math.PI) / 180;
 
 export interface MoveToConfig {
   /** Distance to the target at which it counts as arrived (m). */
@@ -133,6 +135,13 @@ export class MoveToController {
   pathIndex = 0;
   /** For each point of `path`, whether the stretch that ends at it goes along a narrow path. */
   readonly narrow: boolean[] = [];
+  /**
+   * Once there, it turns to face this direction (world, horizontal; NaN x = no): on a narrow path got on from its
+   * side, along it.
+   */
+  readonly arrival = new Vector3(Number.NaN, 0, 0);
+  /** Arrived, it is turning to `arrival`. */
+  private facing = false;
   /** Braking to stop at the destination (it stays on until stopped). */
   private braking = false;
   /** Turning around by pivoting towards a destination behind (see PIVOT_START). */
@@ -160,11 +169,17 @@ export class MoveToController {
    * New destination. It already turns the heading towards it, even if it is very close. With `path` (world
    * points; the last one, the destination), it goes there along it.
    */
-  setTarget(point: Vector3, run = false, path: readonly Vector3[] = [], narrow: readonly boolean[] = []): void {
+  setTarget(point: Vector3, run = false, path: readonly Vector3[] = [], narrow: readonly boolean[] = [], arrival?: Vector3): void {
     this.target.copy(point);
     this.run = run;
     this.active = true;
     this.braking = false;
+    this.facing = false;
+    if (arrival && !Number.isNaN(arrival.x)) this.arrival.copy(arrival);
+    else this.arrival.x = Number.NaN;
+    // Subiendo a un camino angosto por su costado: los últimos pasos, sobre él (ver standTarget).
+    if (Number.isNaN(this.arrival.x)) this.controller.standTarget.x = Number.NaN;
+    else this.controller.standTarget.copy(path.length > 0 ? path[path.length - 1] : point);
     this.pivoting = false;
     this.exiting = false;
     this.path.length = 0;
@@ -307,11 +322,45 @@ export class MoveToController {
     this.controller.body.drift.z += nz * move;
   }
 
+  /** At the destination: done, or first it turns to `arrival`. */
+  private arrive(): void {
+    if (Number.isNaN(this.arrival.x)) {
+      this.active = false;
+      return;
+    }
+    this.facing = true;
+    this.face();
+  }
+
+  /**
+   * Turning on the spot to `arrival`: when it faces it and has stopped turning, it has arrived. Meanwhile it moves
+   * onto the destination itself (it stopped within `arriveRadius` of it: on a narrow path, off its middle).
+   */
+  private face(dt = 0): void {
+    const state = this.controller.body.state;
+    this.controller.targetSpeed = 0;
+    const dx = this.target.x - state.position.x;
+    const dz = this.target.z - state.position.z;
+    const off = Math.hypot(dx, dz);
+    const move = Math.min(off, NARROW_ALIGN_SPEED * this.controller.config.stepLength * dt);
+    if (off > 1e-6) {
+      this.controller.body.drift.x += (dx / off) * move;
+      this.controller.body.drift.z += (dz / off) * move;
+    }
+    this.controller.targetHeading = this.headingTo(this.toTarget.copy(state.position).add(this.arrival));
+    const error = Math.abs(wrapAngle(this.controller.targetHeading - state.heading));
+    if (error < FACE_TOLERANCE && !this.controller.body.isTurning()) {
+      this.active = false;
+      this.controller.standTarget.x = Number.NaN;
+    }
+  }
+
   /** Drops the destination and stops (the manual controls are in charge again). */
   cancel(): void {
     if (!this.active) return;
     this.active = false;
     this.controller.targetSpeed = 0;
+    this.controller.standTarget.x = Number.NaN;
   }
 
   /** What is left to walk to the destination (m): along the route, if there is one; 0 without a destination. */
@@ -342,6 +391,10 @@ export class MoveToController {
   update(dt = 0): void {
     this.updateTurnLimits();
     if (!this.active) return;
+    if (this.facing) {
+      this.face(dt);
+      return;
+    }
     if (dt > 0) this.alignToNarrow(dt);
     const c = this.config;
     const loco = this.controller.config;
@@ -361,7 +414,7 @@ export class MoveToController {
       this.controller.targetSpeed = 0;
       if (state.speed < 1e-3) {
         // Parado: si se quedó cerca, ha llegado; si no (p. ej. frenó al cambiar de destino), sigue.
-        if (distance <= c.arriveRadius + c.stopTolerance) this.active = false;
+        if (distance <= c.arriveRadius + c.stopTolerance) this.arrive();
         else this.braking = false;
       }
       return;
@@ -400,8 +453,8 @@ export class MoveToController {
       this.controller.targetHeading = state.heading + bearing;
     } else if (distance * Math.cos(bearing) <= c.arriveRadius) {
       // Cerca y el destino ya no queda delante: está en el punto más cercano.
-      this.active = false;
       this.controller.targetSpeed = 0;
+      this.arrive();
       return;
     }
 

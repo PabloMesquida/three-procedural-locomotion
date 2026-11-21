@@ -451,8 +451,10 @@ its normal pose and stops correcting (`narrowTouchRelax`); the feet still go in 
 
 A `moveTo` route goes along a narrow path only if the destination is on it or it can't go round it (a plank to a
 pedestal, the only wall between two platforms): it costs much more than open ground. A low one in the way (a
-beam it can step onto) it crosses over. If the destination is on one, it gets on it only at its end, in line with
-it, not from the side: if it comes at an angle, the route first goes to a point before the end. On the way there it slows down to
+beam it can step onto) it crosses over. If the destination is on a low one, it gets on it right there from its side
+(walking up to it square on, then stepping onto it), and once on it turns on the spot to stand along it, on the
+destination itself; or at its end, if that way is shorter. On a higher one (the top of a wall) it gets on only at
+its end, in line with it: if it comes at an angle, the route first goes to a point before the end. On the way there it slows down to
 `narrowMaxSpeed`, heads for a closer point on the route and steps sideways towards its line, so it gets on
 straight and along the middle even if it had to turn round just before.
 
