@@ -307,6 +307,32 @@ describe('caminos angostos', () => {
     });
   }
 
+  for (const target of [new Vector3(4, 0, 4), new Vector3(4, 0, 6)]) {
+    it(`moveTo al otro lado de una viga baja (${target.x}, ${target.z}): la cruza por encima, no la rodea`, () => {
+      const world = createWorld({ buildTerrain: lowBeam });
+      const { human } = world;
+      human.moveTo(target);
+      // Por dónde cruza la línea de la viga (x = 2): entre sus extremos (z de 1 a 7), no rodeándola.
+      let crossed = Number.NaN;
+      let previousX = human.position.x;
+      let stopped = 0;
+      let longest = 0;
+      const r = simulate(world, 14, [], {
+        onFrame: (t) => {
+          const p = human.position;
+          if (previousX < 2 && p.x >= 2) crossed = p.z;
+          previousX = p.x;
+          stopped = t > 1.5 && human.moveTarget && human.speed < 0.05 && p.distanceTo(target) > 0.5 ? stopped + 1 / 60 : 0;
+          longest = Math.max(longest, stopped);
+        },
+      });
+      assert.ok(crossed > 1.2 && crossed < 6.8, `cruzó la línea de la viga en z = ${crossed.toFixed(2)}`);
+      assert.ok(human.position.distanceTo(target) < 0.15, `no llegó: ${human.position.toArray().map((v) => v.toFixed(2))}`);
+      assert.ok(longest < 0.3, `se paró ${longest.toFixed(2)} s`);
+      assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001 && r.finiteOK);
+    });
+  }
+
   it('subiendo a una viga desde el suelo, hace equilibrio desde el primer paso en ella', () => {
     // La viga empieza en z = −1, delante del personaje (que mira hacia −Z).
     const world = createWorld({ buildTerrain: (terrain) => block(terrain, BEAM_WIDTH, 0.3, 6, 0, -4) });

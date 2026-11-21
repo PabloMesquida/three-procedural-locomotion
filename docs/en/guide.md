@@ -450,9 +450,9 @@ else: the hand rests on it (and slides along it) and, since it is holding on, th
 its normal pose and stops correcting (`narrowTouchRelax`); the feet still go in line.
 
 A `moveTo` route goes along a narrow path only if the destination is on it or it can't go round it (a plank to a
-pedestal, the only wall between two platforms): it costs much more than open ground. It gets on and off it only
-at its ends, never across it (not even a low beam it could step onto from the side), in line with it: if it
-comes at an angle, the route first goes to a point before the end. On the way there it slows down to
+pedestal, the only wall between two platforms): it costs much more than open ground. A low one in the way (a
+beam it can step onto) it crosses over. If the destination is on one, it gets on it only at its end, in line with
+it, not from the side: if it comes at an angle, the route first goes to a point before the end. On the way there it slows down to
 `narrowMaxSpeed`, heads for a closer point on the route and steps sideways towards its line, so it gets on
 straight and along the middle even if it had to turn round just before.
 

@@ -117,8 +117,8 @@ interface Cell {
  *
  * Narrow paths (a beam or the top of a wall between drops, narrower than `narrowWidth`) are walked on, though
  * all of them may be next to an edge: the character crosses them balancing. They cost much more than open
- * ground (it goes along them only if it can't go round them) and are got on and off only at their ends, not
- * across them.
+ * ground (it goes along them only if it can't go round them). A low one (a beam it can step onto) it crosses over
+ * if it is in the way; but if the destination is on one, it gets on it only at its end, in line with it.
  */
 export class PathPlanner {
   /** Raycasts of the last plan (to measure its cost). */
@@ -139,6 +139,8 @@ export class PathPlanner {
   private z0 = 0;
   private size = 0.15;
   private berth = 0.5;
+  /** The destination is on a narrow path: it gets on narrow paths only at their ends (see alongNarrow). */
+  private narrowEnds = false;
 
   constructor(
     detector: GroundDetector,
@@ -179,6 +181,9 @@ export class PathPlanner {
     // En línea recta, si cabe.
     const ti = Math.round((target.x - this.x0) / s);
     const tj = Math.round((target.z - this.z0) / s);
+    this.narrowEnds = false;
+    this.cell(ti, tj, target.y);
+    this.narrowEnds = this.isNarrow(ti, tj);
     if (this.lineClear(start.x, start.z, start0.height, target.x, target.z, hard, true)) {
       const end = this.cellAt(ti, tj);
       out.push(new Vector3(target.x, end && Number.isFinite(end.height) ? end.height : target.y, target.z));
@@ -216,7 +221,9 @@ export class PathPlanner {
       const tight = ((room < hard && !nearGoal) || this.isEdge(ni, nj)) && !nearStart;
       if (tight && !this.onNarrow(ni, nj, hard)) return Number.NaN;
       const crowd = room >= this.berth ? 0 : BERTH_COST * (1 - Math.max(room - hard, 0) / (this.berth - hard));
-      return step * s * (1 + crowd + (tight || this.isNarrow(ni, nj) ? NARROW_COST : 0));
+      // Ir a lo largo de un camino angosto cuesta más; cruzarlo por encima (uno bajo), no.
+      const along = (tight || this.isNarrow(ni, nj)) && !(this.isNarrow(ni, nj) && this.acrossNarrow(ni, nj, ni - i, nj - j));
+      return step * s * (1 + crowd + (along ? NARROW_COST : 0));
     };
     const forward = new MinHeap();
     forward.push(startKey, HEURISTIC_WEIGHT * Math.hypot(ti, tj) * s);
@@ -331,7 +338,7 @@ export class PathPlanner {
     this.round(start.x, start.z, start0.height, hard + ROUND_MARGIN * config.stepLength, out);
     this.markNarrow(start, out, narrow);
     this.approachNarrow(start, out, narrow);
-    this.centerNarrow(out);
+    this.centerNarrow(out, narrow);
     return true;
   }
 
@@ -339,9 +346,12 @@ export class PathPlanner {
    * The points of the route on a narrow path, to its middle: the cells are as wide as half a path, and their centre
    * can be right at its edge.
    */
-  private centerNarrow(points: Vector3[]): void {
+  private centerNarrow(points: Vector3[], narrow: readonly boolean[]): void {
     const s = this.size;
-    for (const p of points) {
+    for (let k = 0; k < points.length; k++) {
+      // Solo los de un tramo a lo largo de él (cruzándolo, el medio está en su línea).
+      if (!narrow[k] && !narrow[k + 1]) continue;
+      const p = points[k];
       const i = Math.round((p.x - this.x0) / s);
       const j = Math.round((p.z - this.z0) / s);
       this.cell(i, j, p.y);
@@ -468,7 +478,10 @@ export class PathPlanner {
     }
   }
 
-  /** For each point of the route (after `start`), whether the stretch that ends at it crosses narrow-path cells. */
+  /**
+   * For each point of the route (after `start`), whether the stretch that ends at it goes along a narrow path (on
+   * its cells and not across it: crossing a low beam over is not walking along it).
+   */
   private markNarrow(start: Vector3, points: readonly Vector3[], narrow: boolean[]): void {
     narrow.length = 0;
     const s = this.size;
@@ -483,7 +496,7 @@ export class PathPlanner {
         const i = Math.round((ax + (p.x - ax) * t - this.x0) / s);
         const j = Math.round((az + (p.z - az) * t - this.z0) / s);
         this.cell(i, j, p.y);
-        found = this.isNarrow(i, j);
+        found = this.isNarrow(i, j) && !this.acrossNarrow(i, j, p.x - ax, p.z - az);
       }
       narrow.push(found);
       ax = p.x;
@@ -588,6 +601,14 @@ export class PathPlanner {
     return near;
   }
 
+  /** Going in the direction (`dx`, `dz`) over the narrow cell (i, j) crosses its path (see NARROW_SIDE_COS). */
+  private acrossNarrow(i: number, j: number, dx: number, dz: number): boolean {
+    const length = Math.hypot(dx, dz);
+    if (length < 1e-6) return false;
+    const [di, dj] = ACROSS[this.cell(i, j, 0).across!];
+    return Math.abs(dx * di + dz * dj) / (length * Math.hypot(di, dj)) > NARROW_SIDE_COS;
+  }
+
   /** Change of level at the sides of a narrow path (m; see NARROW_DROP). */
   private narrowDrop(): number {
     return NARROW_DROP * this.config().stepLength;
@@ -598,7 +619,8 @@ export class PathPlanner {
    * NARROW_SIDE_COS): up or down onto a beam from its side.
    */
   private alongNarrow(ai: number, aj: number, bi: number, bj: number): boolean {
-    if (!(this.config().narrowWidth > 0)) return true;
+    // Solo yendo a un destino sobre un camino angosto: cruzar uno bajo por encima (pasar al otro lado), sí.
+    if (!this.narrowEnds || !(this.config().narrowWidth > 0)) return true;
     const a = this.cell(ai, aj, 0);
     const b = this.cell(bi, bj, a.height);
     if (!(Math.abs(b.height - a.height) >= this.narrowDrop())) return true;
