@@ -54,6 +54,21 @@ const PIVOT_MAX_STEER = (170 * Math.PI) / 180;
  * along a curve instead of going point to point. Shorter, it would follow it closer and turn more sharply.
  */
 const PATH_LOOKAHEAD = 0.75;
+/**
+ * Narrow paths on the route (see PathPlanner): from this far before one (× stepLength, along the route) and while
+ * on it, it heads for a closer point (NARROW_LOOKAHEAD × stepLength) and steps sideways towards the line of the
+ * route (NARROW_ALIGN_RATE, 1/s, at most NARROW_ALIGN_SPEED × stepLength per s): it gets on it straight, along the
+ * middle, even if turning round left it to one side.
+ */
+const NARROW_APPROACH = 1.5;
+const NARROW_LOOKAHEAD = 0.3;
+const NARROW_ALIGN_RATE = 3;
+const NARROW_ALIGN_SPEED = 0.4;
+/**
+ * Before getting on a narrow path, the speed (× narrowMaxSpeed) falls with the cosine of the turn it still has to
+ * make to be in line with it, down to this: turning less wide, it doesn't overshoot its end.
+ */
+const NARROW_TURN_SPEED = 0.35;
 
 export interface MoveToConfig {
   /** Distance to the target at which it counts as arrived (m). */
@@ -116,6 +131,8 @@ export class MoveToController {
    */
   readonly path: Vector3[] = [];
   pathIndex = 0;
+  /** For each point of `path`, whether the stretch that ends at it goes along a narrow path. */
+  readonly narrow: boolean[] = [];
   /** Braking to stop at the destination (it stays on until stopped). */
   private braking = false;
   /** Turning around by pivoting towards a destination behind (see PIVOT_START). */
@@ -143,7 +160,7 @@ export class MoveToController {
    * New destination. It already turns the heading towards it, even if it is very close. With `path` (world
    * points; the last one, the destination), it goes there along it.
    */
-  setTarget(point: Vector3, run = false, path: readonly Vector3[] = []): void {
+  setTarget(point: Vector3, run = false, path: readonly Vector3[] = [], narrow: readonly boolean[] = []): void {
     this.target.copy(point);
     this.run = run;
     this.active = true;
@@ -151,9 +168,12 @@ export class MoveToController {
     this.pivoting = false;
     this.exiting = false;
     this.path.length = 0;
+    this.narrow.length = 0;
     this.pathIndex = 0;
-    if (path.length > 1) {
+    // Un solo tramo, como ruta si va por un camino angosto (para entrar en él alineado).
+    if (path.length > 1 || (path.length === 1 && narrow[0])) {
       for (const p of path) this.path.push(p.clone());
+      for (let k = 0; k < path.length; k++) this.narrow.push(narrow[k] ?? false);
       this.target.copy(this.path[this.path.length - 1]);
       this.pathStart.copy(this.controller.body.state.position);
     }
@@ -175,7 +195,7 @@ export class MoveToController {
     const path = this.path;
     if (path.length === 0) return this.target;
     const p = this.controller.body.state.position;
-    const lookahead = PATH_LOOKAHEAD * this.controller.config.stepLength;
+    const lookahead = (this.narrowAhead() >= 0 ? NARROW_LOOKAHEAD : PATH_LOOKAHEAD) * this.controller.config.stepLength;
     // El tramo en que está: el primero cuyo final aún no ha pasado.
     let from = this.pathIndex === 0 ? this.pathStart : path[this.pathIndex - 1];
     let t = 0;
@@ -185,8 +205,11 @@ export class MoveToController {
       const dz = to.z - from.z;
       const length2 = dx * dx + dz * dz;
       t = length2 > 1e-12 ? ((p.x - from.x) * dx + (p.z - from.z) * dz) / length2 : 1;
-      // Pasado el final del tramo, o ya cerca de él y con el siguiente por delante: al siguiente.
-      const near = Math.hypot(to.x - p.x, to.z - p.z) < lookahead / 2;
+      // Pasado el final del tramo, o ya cerca de él y con el siguiente por delante: al siguiente. También si ya está
+      // más allá de él en el tramo siguiente (con la mira corta de los caminos angostos, se pasaba del punto un poco
+      // de lado y daba vueltas alrededor de él); pasada la mitad del tramo: si la ruta vuelve sobre sí misma, antes
+      // de llegar al punto ya parece estar más allá de él.
+      const near = Math.hypot(to.x - p.x, to.z - p.z) < lookahead / 2 || (t > 0.5 && this.beyond(this.pathIndex, p));
       if ((t < 1 && !near) || this.pathIndex === path.length - 1) break;
       from = to;
       this.pathIndex++;
@@ -208,6 +231,80 @@ export class MoveToController {
       z = q.z;
     }
     return this.target;
+  }
+
+  /**
+   * The stretch of the route along a narrow path it is on or about to get on (within NARROW_APPROACH along the
+   * route): its index in `path`, or −1.
+   */
+  private narrowAhead(): number {
+    const path = this.path;
+    if (!this.narrow.includes(true)) return -1;
+    const p = this.controller.body.state.position;
+    const approach = NARROW_APPROACH * this.controller.config.stepLength;
+    let from: Vector3 = p;
+    let along = 0;
+    for (let k = this.pathIndex; k < path.length && along <= approach; k++) {
+      if (this.narrow[k]) return k;
+      along += Math.hypot(path[k].x - from.x, path[k].z - from.z);
+      from = path[k];
+    }
+    return -1;
+  }
+
+  /**
+   * `p` is already past point `k` of the route, on the stretch after it (its projection on it is ahead of the
+   * point), and close to that stretch (within PATH_LOOKAHEAD / 2).
+   */
+  private beyond(k: number, p: Vector3): boolean {
+    if (k + 1 >= this.path.length) return false;
+    const a = this.path[k];
+    const b = this.path[k + 1];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 1e-6) return true;
+    const along = ((p.x - a.x) * dx + (p.z - a.z) * dz) / length;
+    const off = Math.abs((p.x - a.x) * dz - (p.z - a.z) * dx) / length;
+    return along > 0 && off < (PATH_LOOKAHEAD * this.controller.config.stepLength) / 2;
+  }
+
+  /** Cosine of the angle between the heading and the stretch `k` of the route (1 = in line with it). */
+  private alignment(k: number): number {
+    const a = k === 0 ? this.pathStart : this.path[k - 1];
+    const b = this.path[k];
+    const length = Math.hypot(b.x - a.x, b.z - a.z);
+    if (length < 1e-6) return 1;
+    const f = this.controller.body.state.forward;
+    return ((b.x - a.x) * f.x + (b.z - a.z) * f.z) / length;
+  }
+
+  /** From the stretch it is on to the destination, the route goes along a narrow path. */
+  private narrowToEnd(): boolean {
+    if (this.path.length === 0) return false;
+    for (let k = this.pathIndex; k < this.path.length; k++) if (!this.narrow[k]) return false;
+    return true;
+  }
+
+  /** Near or on a narrow stretch of the route, it steps sideways towards its line (see NARROW_APPROACH). */
+  private alignToNarrow(dt: number): void {
+    const k = this.narrowAhead();
+    const state = this.controller.body.state;
+    if (k < 0 || state.airborne) return;
+    const a = k === 0 ? this.pathStart : this.path[k - 1];
+    const b = this.path[k];
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 1e-6) return;
+    // Distancia con signo a la línea del tramo (hacia su izquierda, en planta) y lo que se acerca a ella.
+    const nx = -dz / length;
+    const nz = dx / length;
+    const off = (state.position.x - a.x) * nx + (state.position.z - a.z) * nz;
+    const most = NARROW_ALIGN_SPEED * this.controller.config.stepLength * dt;
+    const move = Math.max(-most, Math.min(most, -off * (1 - Math.exp(-NARROW_ALIGN_RATE * dt))));
+    this.controller.body.drift.x += nx * move;
+    this.controller.body.drift.z += nz * move;
   }
 
   /** Drops the destination and stops (the manual controls are in charge again). */
@@ -238,10 +335,14 @@ export class MoveToController {
     return Math.hypot(this.target.x - p.x, this.target.z - p.z);
   }
 
-  /** Decides the desired speed and heading. Call every frame before LocomotionController.update. */
-  update(): void {
+  /**
+   * Decides the desired speed and heading. Call every frame before LocomotionController.update, with the time
+   * of that frame (s; without it, it doesn't align itself with the narrow paths of the route).
+   */
+  update(dt = 0): void {
     this.updateTurnLimits();
     if (!this.active) return;
+    if (dt > 0) this.alignToNarrow(dt);
     const c = this.config;
     const loco = this.controller.config;
     const distance = this.distance();
@@ -249,8 +350,13 @@ export class MoveToController {
     const state = this.controller.body.state;
     // Por una ruta, hacia un punto por delante en ella; hasta que el destino queda a menos de eso: entonces,
     // como en línea recta (frena y llega).
-    const aim = this.aimPoint();
+    // En el último tramo, si va por un camino angosto (allí mira más cerca), también: frena a tiempo.
+    const lastNarrow = this.pathIndex === this.path.length - 1 && this.narrow[this.pathIndex];
+    const aim = lastNarrow ? this.target : this.aimPoint();
     const onRoute = aim !== this.target;
+    // Por un camino angosto hasta el final: frena según lo que le queda por él (no sale de él para frenar).
+    const narrowToEnd = this.narrowToEnd();
+    const left = narrowToEnd ? this.remaining() : distance;
     if (this.braking) {
       this.controller.targetSpeed = 0;
       if (state.speed < 1e-3) {
@@ -264,7 +370,7 @@ export class MoveToController {
     const bearing = this.headingTo(aim) - state.heading; // ángulo del destino respecto a la dirección actual
     const aimDistance = onRoute ? Math.hypot(aim.x - state.position.x, aim.z - state.position.z) : distance;
     const stopDistance = this.controller.body.stoppingDistance(state.speed);
-    if (!onRoute && distance - c.arriveRadius <= stopDistance && Math.cos(bearing) > BRAKE_MIN_COS) {
+    if ((!onRoute || narrowToEnd) && left - c.arriveRadius <= stopDistance && Math.cos(bearing) > BRAKE_MIN_COS) {
       this.braking = true;
       this.controller.targetSpeed = 0;
       return;
@@ -304,7 +410,12 @@ export class MoveToController {
     const cosMax = Math.cos((c.maxWalkTurnAngle * Math.PI) / 180);
     const turnFactor = clamp01((Math.cos(error) - cosMax) / (1 - cosMax));
 
-    const cruise = this.cruiseSpeed();
+    // Llegando a un camino angosto de la ruta, ya a la velocidad de ir por él (no frena de golpe al subir), y más
+    // despacio cuanto más tiene que girar para ponerse en línea con él: el giro se abre menos.
+    const narrowStretch = this.narrowAhead();
+    const cruise = narrowStretch >= 0
+      ? Math.min(this.cruiseSpeed(), loco.narrowMaxSpeed * Math.max(NARROW_TURN_SPEED, this.alignment(narrowStretch)))
+      : this.cruiseSpeed();
     const omega = (loco.turnSpeed * Math.PI) / 180;
     // Radio de la curva que alcanza el destino: r = d / (2·sen α). Girando a ω, v ≤ ω·r;
     // con la aceleración lateral limitada (ω ≤ a/v), además v ≤ √(a·r).

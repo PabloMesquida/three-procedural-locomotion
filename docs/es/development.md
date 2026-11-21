@@ -149,10 +149,11 @@ matrices de cada frame (2.148 → 351 por personaje). Las matrices resultantes s
 referencias exactas lo comprueban.
 
 Raycasts por personaje: 1 por frame (sonda de la raíz, que además detecta cambios del suelo bajo el cuerpo) y
-~14 al empezar cada paso (aterrizaje: talón y punta; altura del arco: 12 muestras de la punta). Parado, la
+~14 al empezar cada paso (aterrizaje: talón y punta; altura del arco: 12 muestras de la punta), más 1 cada 0,25 s
+buscando caminos angostos (cada 1 s parado; ~10 en un camino angosto, ver `NarrowPath`). Parado, la
 comprobación de si los pies están recolocados (4 raycasts) se reutiliza mientras la matriz de la raíz no cambie
 y se repite cada `IDLE_RECHECK_TIME` (0,25 s) para notar cambios de configuración o del terreno bajo los pies.
-`tests/raycasts.test.ts` fija el presupuesto (parado ≤ 1,3/frame, caminando ≤ 1,5, corriendo ≤ 1,75).
+`tests/raycasts.test.ts` fija el presupuesto (parado ≤ 1,3/frame, caminando ≤ 1,55, corriendo ≤ 1,82).
 
 Lo que cuesta cada consulta depende del detector. `RaycastGroundDetector` usa el raycast de Three, que prueba
 todos los triángulos (~2 ms cada uno con 50.000: los ~14 del inicio de un paso dan un frame de ~25 ms).

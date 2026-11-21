@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-124 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+135 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -80,6 +80,22 @@ opcionales y se validan (nombre, número finito y rango).
 | `crouchArmForward` | 15 | Agachado: adelanto de los brazos (grados). |
 | `crouchMaxSpeed` | 0.8 | Agachado: velocidad máxima (m/s). |
 | `crouchRate` | 1.8 | Rapidez con la que se agacha o se levanta (fracción de agachado por segundo). |
+
+## Caminos angostos
+
+| Parámetro | Por defecto | Descripción |
+|---|---|---|
+| `narrowWidth` ↔ | 0.3 | Caminos angostos (una viga, lo alto de un muro, un riel): si el suelo a la altura del cuerpo cae a los dos lados en menos de este ancho, camina haciendo equilibrio: un pie delante del otro por el medio del camino, despacio, con los brazos abiertos y mirando hacia abajo (m; 0 = nunca). Se detecta por la geometría. |
+| `narrowStepWidth` ↔ | 0.03 | Camino angosto: separación lateral entre pies al caminar (m; parado, no se superponen). |
+| `narrowMaxSpeed` | 0.6 | Camino angosto: velocidad máxima (m/s). |
+| `narrowArmAbduction` | 50 | Camino angosto: separación del brazo respecto a la vertical (grados; 90 = horizontal). |
+| `narrowElbowBend` | 15 | Camino angosto: flexión del codo (grados). |
+| `narrowArmForward` | 5 | Camino angosto: ángulo del brazo por delante de la vertical (grados). |
+| `narrowArmSwing` | 3 | Camino angosto: balanceo de los brazos hacia delante y atrás (grados). |
+| `narrowArmTilt` | 10 | Camino angosto: correcciones de equilibrio, subiendo un brazo y bajando el otro, despacio e irregularmente (grados, como mucho). |
+| `narrowTouchRelax` | 0.85 | Camino angosto, con una mano apoyada en algo (una baranda, una pared; ver tocar superficies): cuánto vuelve el otro brazo a su pose normal y deja de corregir (0 = sigue abierto, 1 = del todo). |
+| `narrowGaze` | 20 | Camino angosto: cuánto mira la cabeza hacia abajo, al camino (grados). |
+| `narrowRate` | 2 | Rapidez con la que empieza o deja de hacer equilibrio (fracción del cambio completo por segundo). |
 
 ## Salto
 

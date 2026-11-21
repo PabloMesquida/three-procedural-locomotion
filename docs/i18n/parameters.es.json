@@ -164,6 +164,50 @@
       "en": "How fast it crouches or stands up (fraction of a full crouch per second).",
       "es": "Rapidez con la que se agacha o se levanta (fracción de agachado por segundo)."
     },
+    "narrowWidth": {
+      "en": "Narrow paths (a beam, the top of a wall, a rail): if the ground at the level of the body drops on both sides within less than this width, it walks balancing: one foot in front of the other along the middle of the path, slowly, with the arms out and looking down (m; 0 = never). Detected from the geometry.",
+      "es": "Caminos angostos (una viga, lo alto de un muro, un riel): si el suelo a la altura del cuerpo cae a los dos lados en menos de este ancho, camina haciendo equilibrio: un pie delante del otro por el medio del camino, despacio, con los brazos abiertos y mirando hacia abajo (m; 0 = nunca). Se detecta por la geometría."
+    },
+    "narrowStepWidth": {
+      "en": "Narrow path: lateral distance between the feet when walking (m; when standing, they don't overlap).",
+      "es": "Camino angosto: separación lateral entre pies al caminar (m; parado, no se superponen)."
+    },
+    "narrowMaxSpeed": {
+      "en": "Narrow path: maximum speed (m/s).",
+      "es": "Camino angosto: velocidad máxima (m/s)."
+    },
+    "narrowArmAbduction": {
+      "en": "Narrow path: arm angle away from the vertical (degrees; 90 = horizontal).",
+      "es": "Camino angosto: separación del brazo respecto a la vertical (grados; 90 = horizontal)."
+    },
+    "narrowElbowBend": {
+      "en": "Narrow path: elbow bend (degrees).",
+      "es": "Camino angosto: flexión del codo (grados)."
+    },
+    "narrowArmForward": {
+      "en": "Narrow path: upper arm angle in front of the vertical (degrees).",
+      "es": "Camino angosto: ángulo del brazo por delante de la vertical (grados)."
+    },
+    "narrowArmSwing": {
+      "en": "Narrow path: forward/backward arm swing (degrees).",
+      "es": "Camino angosto: balanceo de los brazos hacia delante y atrás (grados)."
+    },
+    "narrowArmTilt": {
+      "en": "Narrow path: balance corrections, raising one arm and lowering the other, slowly and irregularly (degrees, maximum).",
+      "es": "Camino angosto: correcciones de equilibrio, subiendo un brazo y bajando el otro, despacio e irregularmente (grados, como mucho)."
+    },
+    "narrowTouchRelax": {
+      "en": "Narrow path, with a hand resting on something (a railing, a wall; see touching surfaces): how far the other arm goes back to its normal pose, and stops correcting (0 = it stays out, 1 = all the way).",
+      "es": "Camino angosto, con una mano apoyada en algo (una baranda, una pared; ver tocar superficies): cuánto vuelve el otro brazo a su pose normal y deja de corregir (0 = sigue abierto, 1 = del todo)."
+    },
+    "narrowGaze": {
+      "en": "Narrow path: how much the head looks down at the path (degrees).",
+      "es": "Camino angosto: cuánto mira la cabeza hacia abajo, al camino (grados)."
+    },
+    "narrowRate": {
+      "en": "How fast it starts or stops balancing (fraction of the full change per second).",
+      "es": "Rapidez con la que empieza o deja de hacer equilibrio (fracción del cambio completo por segundo)."
+    },
     "gravity": {
       "en": "Gravity (m/s²).",
       "es": "Gravedad (m/s²)."

@@ -154,6 +154,7 @@ const sections = [
   [{ en: 'Running', es: 'Correr' }, (n) => n.startsWith('run') && !['runSpeed', 'runStartSpeed', 'runTransition'].includes(n)],
   [{ en: 'Posture', es: 'Postura' }, (n) => n === 'walkLean' || n === 'ankleBack'],
   [{ en: 'Crouching', es: 'Agacharse' }, (n) => n.startsWith('crouch')],
+  [{ en: 'Narrow paths', es: 'Caminos angostos' }, (n) => n.startsWith('narrow')],
   [{ en: 'Jumping', es: 'Salto' }, (n) => n === 'gravity' || n.startsWith('jump') || n.startsWith('landing') || n === 'maxLandingDip'],
   [{ en: 'Standing still', es: 'Pararse' }, (n) => n.startsWith('idle')],
   [{ en: 'Turning', es: 'Giro' }, (n) => n.startsWith('turn') || n === 'maxTurnPerStep' || n === 'maxLateralAcceleration'],

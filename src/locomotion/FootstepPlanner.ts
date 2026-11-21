@@ -22,6 +22,13 @@ const NATURAL_STEP_WIDTH = 0.8;
  */
 export class FootstepPlanner {
   readonly config: LocomotionConfig;
+  /**
+   * Lateral distance between the feet to use instead of `config.stepWidth` (m, world; null = the config's),
+   * e.g. on a narrow path. Applied by `syncStepWidth`.
+   */
+  widthOverride: number | null = null;
+  /** Added to every landing (world, m), e.g. to put the steps along the middle of a narrow path. */
+  readonly landingShift = new Vector3();
 
   private readonly rig: HumanRig;
   private readonly placements: Record<Side, FootPlacement>;
@@ -110,7 +117,7 @@ export class FootstepPlanner {
    * be changed at runtime.
    */
   syncStepWidth(): void {
-    const width = this.config.stepWidth;
+    const width = this.widthOverride ?? this.config.stepWidth;
     const back = this.config.ankleBack;
     if (width === this.appliedStepWidth && back === this.appliedAnkleBack) return;
     this.appliedStepWidth = width;
@@ -193,7 +200,7 @@ export class FootstepPlanner {
       const root = this.rig.root.getWorldPosition(this.rootWorld);
       outPosition.sub(root).applyAxisAngle(UP, yaw).add(root);
     }
-    outPosition.add(bodyDisplacement);
+    outPosition.add(bodyDisplacement).add(this.landingShift);
     this.tmp2.set(direction.x, 0, direction.z);
     if (this.tmp2.lengthSq() > 1e-8) outPosition.addScaledVector(this.tmp2.normalize(), lead);
 
@@ -210,6 +217,13 @@ export class FootstepPlanner {
   /** Foot placement of a side: its last query of the ground and the height of its ankle. */
   placement(side: Side): FootPlacement {
     return this.placements[side];
+  }
+
+  /** Lateral distance between the neutral feet with `config.stepWidth` (m, world). */
+  naturalStepWidth(): number {
+    const width = this.config.stepWidth;
+    // Escala de la raíz leída de su matriz world, sin recalcularla (como standHeight).
+    return width ?? this.hipWidthLocal * NATURAL_STEP_WIDTH * this.tmp.setFromMatrixScale(this.rig.root.matrixWorld).x;
   }
 
   /** Adjusts the lateral distance between the neutral feet. */

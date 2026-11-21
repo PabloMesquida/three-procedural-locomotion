@@ -74,6 +74,10 @@ export interface ArmPose {
   elbowSwingBend: number;
   /** Adelanto fijo de ambos brazos (grados), p. ej. al agacharse. */
   armForward?: number;
+  /** Raises the right arm and lowers the left one this much (degrees; negative = the other way), e.g. balancing. */
+  abductionTilt?: number;
+  /** How much the fingers close, instead of the configuration's `fingerCurl` (e.g. open hands balancing). */
+  fingerCurl?: number;
 }
 
 /** Motion data that swings the arms. */
@@ -138,6 +142,12 @@ const ARM_SWING_ABDUCTION = 0.2;
 const MAX_FINGER_LAG = (20 * Math.PI) / 180;
 /** The most the clavicle turns, back or forward, to put the shoulder at `shoulderForward` (rad). */
 const MAX_SHOULDER_PLACEMENT = (30 * Math.PI) / 180;
+/**
+ * Raising the arm sideways beyond SHOULDER_RHYTHM_FROM degrees, the clavicle rises SHOULDER_RHYTHM of what
+ * exceeds it (the shoulder blade turns up with the arm). Below it (hanging, walking, running), nothing.
+ */
+const SHOULDER_RHYTHM_FROM = 30;
+const SHOULDER_RHYTHM = 0.25;
 /** Damping of forearm and hand: some overshoot, like a loose segment. */
 const LIMB_DAMPING = 0.55;
 
@@ -282,8 +292,10 @@ export class ArmController {
       const swing = arm.angle;
       const touch = motion.touch ? (arm.sign > 0 ? motion.touch.right : motion.touch.left) : 0;
       // Mano relajada (en el espacio local de los dedos: el brazo los lleva después); tocando, abierta.
-      arm.fingers?.pose(cfg.fingerCurl + (TOUCH_FINGER_CURL - cfg.fingerCurl) * touch);
+      const curl = c.fingerCurl ?? cfg.fingerCurl;
+      arm.fingers?.pose(curl + (TOUCH_FINGER_CURL - curl) * touch);
       const forward = (c.armForward ?? 0) * DEG;
+      const armAbduction = c.armAbduction + (c.abductionTilt ?? 0) * arm.sign;
 
       // 0. Hombro: en su sitio (shoulderForward), sigue la intención del balanceo (más rápido que el brazo:
       //    llega antes) y cae un poco por el peso del brazo.
@@ -302,7 +314,8 @@ export class ArmController {
         // Bajarlo: giro sobre el eje de avance en el sentido que baja su extremo.
         this.boneDirection(shoulder, upperArm, this.dir);
         const downSign = -Math.sign(this.axis.crossVectors(F, this.dir).dot(UP)) || 1;
-        this.rotateWorld(shoulder, this.q.setFromAxisAngle(F, cfg.shoulderDrop * DEG * downSign));
+        const raise = Math.max(armAbduction - SHOULDER_RHYTHM_FROM, 0) * SHOULDER_RHYTHM;
+        this.rotateWorld(shoulder, this.q.setFromAxisAngle(F, (cfg.shoulderDrop - raise) * DEG * downSign));
         // Inclinar la línea de los hombros: las dos clavículas, el mismo giro sobre el eje de avance.
         if (motion.shoulderTilt) this.rotateWorld(shoulder, this.q.setFromAxisAngle(F, motion.shoulderTilt));
       }
@@ -314,7 +327,7 @@ export class ArmController {
       this.side.copy(R).multiplyScalar(Math.sign(this.dir.dot(R)) || arm.sign);
       // El balanceo no es un plano: hacia delante el brazo se abre un poco y hacia atrás se cierra
       // (en las capturas de movimiento la muñeca se separa ~3 cm más del cuerpo adelante que atrás).
-      const abduction = Math.max(c.armAbduction * DEG + ARM_SWING_ABDUCTION * swing, 0);
+      const abduction = Math.max(armAbduction * DEG + ARM_SWING_ABDUCTION * swing, 0);
       this.target
         .copy(UP)
         .multiplyScalar(-Math.cos(abduction))

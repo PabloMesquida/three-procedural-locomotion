@@ -170,6 +170,8 @@ export class ProceduralHuman {
   private readonly pathPlanner: PathPlanner;
   private colliderList: Collider[] | null = null;
   private readonly route: Vector3[] = [];
+  /** For each point of `route`, whether the stretch that ends at it goes along a narrow path. */
+  private readonly routeNarrow: boolean[] = [];
   private readonly routeStart = new Vector3();
   /** Destination of the last `moveTo` with a route (to plan it again if it gets stuck), and how. */
   private readonly routeTarget = new Vector3();
@@ -299,8 +301,9 @@ export class ProceduralHuman {
     this.routeRun = run;
     this.stuckTime = 0;
     this.replans = (options.avoid ?? true) ? 0 : MAX_REPLANS;
-    if ((options.avoid ?? true) && this.pathPlanner.plan(start, point, this.route) && this.route.length > 1) {
-      this.navigation.setTarget(this.route[this.route.length - 1], run, this.route);
+    const planned = (options.avoid ?? true) && this.pathPlanner.plan(start, point, this.route, this.routeNarrow);
+    if (planned && (this.route.length > 1 || this.routeNarrow[0])) {
+      this.navigation.setTarget(this.route[this.route.length - 1], run, this.route, this.routeNarrow);
     } else {
       this.navigation.setTarget(this.route.length === 1 ? this.route[0] : point, run);
     }
@@ -421,7 +424,7 @@ export class ProceduralHuman {
     for (let i = 0; i < steps; i++) {
       const navigating = this.navigation.active;
       this.replanIfStuck(step);
-      this.navigation.update();
+      this.navigation.update(step);
       // Hasta dónde llegará (para el gesto de tocar: en un tramo corto, se para antes de que llegue la mano).
       this.locomotion.travelLimit = this.navigation.active ? this.navigation.remaining() : Number.POSITIVE_INFINITY;
       this.locomotion.update(step);
@@ -464,6 +467,14 @@ export class ProceduralHuman {
   /** Agachado actual (0–1). */
   get crouch(): number {
     return this.locomotion.crouch;
+  }
+
+  /**
+   * How much it is balancing on a narrow path (0–1; see `narrowWidth`): feet in line, arms out, slower. It
+   * detects the path on its own.
+   */
+  get balance(): number {
+    return this.locomotion.balance;
   }
 
   /** idle (still, feet on the ground) or walk (taking steps, walking or running). */

@@ -3,6 +3,7 @@ import { Vector3 } from 'three';
 import type { LocomotionConfig } from '../locomotion/LocomotionConfig.ts';
 import type { Colliders } from '../terrain/Colliders.ts';
 import { createGroundHit, type GroundDetector, type GroundHit } from '../terrain/GroundDetector.ts';
+import { NARROW_DROP } from '../terrain/NarrowPath.ts';
 
 /** Side of the cells of the grid it searches on (× stepLength; 15 cm with the default one). */
 const CELL = 0.19;
@@ -12,6 +13,11 @@ const CELL = 0.19;
  */
 const BERTH = 0.6;
 const BERTH_COST = 4;
+/**
+ * On a narrow path (or getting on or off it) each cell costs this much more than on open ground, besides the
+ * cost of the edge: it goes along it only if going round is much longer.
+ */
+const NARROW_COST = 6;
 /**
  * If the destination can't be reached, it goes to the reachable point closest to it, counting as this much more
  * (per metre) what that point is below it: a click on the side of a step or a platform (a point halfway up a
@@ -43,6 +49,25 @@ const ROUND_CUT = 0.25;
 const ROUND_MAX_CUT = 6;
 const ROUND_MARGIN = 0.2;
 
+/** Directions across which it measures the width of a narrow path: along X, along Z and the two diagonals. */
+const ACROSS: [number, number][] = [[1, 0], [0, 1], [1, 1], [1, -1]];
+/**
+ * A narrow path is got on and off only at its ends: a step that changes level by NARROW_DROP or more onto it or
+ * off it can't go across it (closer than this to its direction across, cosine).
+ */
+const NARROW_SIDE_COS = 0.5;
+/**
+ * Getting on a narrow path at an angle, the route first goes to a point this far before its end, in line with
+ * it (× stepLength): the character gets on straight. Less if there isn't room.
+ */
+const NARROW_APPROACH = 1;
+/** A route already in line with the narrow path (closer than this to its line, × stepLength) needs no approach. */
+const NARROW_IN_LINE = 0.15;
+/** A stretch of the route within this angle of a narrow path (cosine; 30°) comes in line with it. */
+const NARROW_ALIGNED_COS = Math.cos(Math.PI / 6);
+/** Bisection steps to find each edge of a narrow path (to ≈ 1 cm with cells of 15 cm). */
+const NARROW_EDGE_STEPS = 4;
+
 const NEIGHBORS:[number, number, number][] = [
   [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
   [1, 1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [-1, -1, Math.SQRT2],
@@ -53,6 +78,15 @@ interface Cell {
   height: number;
   /** Next to a change of level it can't step (or no ground): it isn't walked on. undefined: not known yet. */
   edge?: boolean;
+  /**
+   * On a narrow path (see `narrowWidth`): an edge, but with drops on both sides close enough; it is walked on,
+   * balancing. undefined: not known yet.
+   */
+  narrow?: boolean;
+  /** On a narrow path: the direction across it (index in ACROSS). */
+  across?: number;
+  /** Within reach of a narrow path (to get on and off it), though close to an edge. undefined: not known yet. */
+  nearNarrow?: boolean;
   /** Room: distance to the nearest edge cell, up to `BERTH`, or to a collider (m). NaN: not known yet. */
   clearance: number;
   /** Distance to the nearest collider (m; negative inside). NaN: not known yet. */
@@ -80,6 +114,11 @@ interface Cell {
  *
  * Besides, it goes round the colliders (see Colliders): what isn't ground and is between the step it can
  * take and its height.
+ *
+ * Narrow paths (a beam or the top of a wall between drops, narrower than `narrowWidth`) are walked on, though
+ * all of them may be next to an edge: the character crosses them balancing. They cost much more than open
+ * ground (it goes along them only if it can't go round them) and are got on and off only at their ends, not
+ * across them.
  */
 export class PathPlanner {
   /** Raycasts of the last plan (to measure its cost). */
@@ -119,10 +158,11 @@ export class PathPlanner {
    * Route from `start` (world, on the ground at `start.y`) to `target`: puts its points in `out` (world, at
    * the height of the ground; the first one after `start`, the last one the destination or, if it can't be
    * reached, the reachable point closest to it). Returns false if it found no route out of where it is
-   * (`out` empty).
+   * (`out` empty). In `narrow`, for each point, whether the stretch that ends at it goes along a narrow path.
    */
-  plan(start: Vector3, target: Vector3, out: Vector3[]): boolean {
+  plan(start: Vector3, target: Vector3, out: Vector3[], narrow: boolean[] = []): boolean {
     out.length = 0;
+    narrow.length = 0;
     const config = this.config();
     this.size = CELL * config.stepLength;
     this.berth = BERTH * config.stepLength;
@@ -142,6 +182,7 @@ export class PathPlanner {
     if (this.lineClear(start.x, start.z, start0.height, target.x, target.z, hard, true)) {
       const end = this.cellAt(ti, tj);
       out.push(new Vector3(target.x, end && Number.isFinite(end.height) ? end.height : target.y, target.z));
+      this.markNarrow(start, out, narrow);
       return true;
     }
 
@@ -162,7 +203,7 @@ export class PathPlanner {
       if (Math.abs(ni) > limit + Math.abs(ti) || Math.abs(nj) > limit + Math.abs(tj)) return Number.NaN;
       const n = this.cell(ni, nj, c.height);
       const steps = (a: Cell, b: Cell): boolean => (backward ? this.canStep(b, a) : this.canStep(a, b));
-      if (!steps(c, n)) return Number.NaN;
+      if (!steps(c, n) || !this.alongNarrow(i, j, ni, nj)) return Number.NaN;
       // En diagonal, sin recortar una esquina: también por los dos de al lado.
       if (ni !== i && nj !== j && (!steps(c, this.cell(ni, j, c.height)) || !steps(c, this.cell(i, nj, c.height)))) return Number.NaN;
       const room = this.clearance(ni, nj);
@@ -171,9 +212,11 @@ export class PathPlanner {
       // Dentro de un collider o rozándolo, nunca (ni junto al destino: se queda a su borde).
       if (this.apart(ni, nj) < hard && !nearStart) return Number.NaN;
       const nearGoal = Math.hypot(ni - ti, nj - tj) * s <= hard + s;
-      if (((room < hard && !nearGoal) || this.isEdge(ni, nj)) && !nearStart) return Number.NaN;
+      // Al borde no, salvo por un camino angosto (o para subir a él o bajar), y entonces cuesta más.
+      const tight = ((room < hard && !nearGoal) || this.isEdge(ni, nj)) && !nearStart;
+      if (tight && !this.onNarrow(ni, nj, hard)) return Number.NaN;
       const crowd = room >= this.berth ? 0 : BERTH_COST * (1 - Math.max(room - hard, 0) / (this.berth - hard));
-      return step * s * (1 + crowd);
+      return step * s * (1 + crowd + (tight || this.isNarrow(ni, nj) ? NARROW_COST : 0));
     };
     const forward = new MinHeap();
     forward.push(startKey, HEURISTIC_WEIGHT * Math.hypot(ti, tj) * s);
@@ -189,7 +232,7 @@ export class PathPlanner {
         const i = ti + di;
         const j = tj + dj;
         const c = this.cell(i, j, target.y);
-        if (!Number.isFinite(c.height) || this.isEdge(i, j) || this.apart(i, j) < hard) continue;
+        if (!Number.isFinite(c.height) || (this.isEdge(i, j) && !this.isNarrow(i, j)) || this.apart(i, j) < hard) continue;
         const d = away(i, j, c.height);
         if (d < goalAway) {
           goalAway = d;
@@ -286,7 +329,166 @@ export class PathPlanner {
       index = far + 1;
     }
     this.round(start.x, start.z, start0.height, hard + ROUND_MARGIN * config.stepLength, out);
+    this.markNarrow(start, out, narrow);
+    this.approachNarrow(start, out, narrow);
+    this.centerNarrow(out);
     return true;
+  }
+
+  /**
+   * The points of the route on a narrow path, to its middle: the cells are as wide as half a path, and their centre
+   * can be right at its edge.
+   */
+  private centerNarrow(points: Vector3[]): void {
+    const s = this.size;
+    for (const p of points) {
+      const i = Math.round((p.x - this.x0) / s);
+      const j = Math.round((p.z - this.z0) / s);
+      this.cell(i, j, p.y);
+      if (this.isNarrow(i, j)) this.narrowMiddle(p.x, p.z, i, j, p);
+    }
+  }
+
+  /**
+   * Middle of the narrow path at cell (i, j), across it from (`x`, `z`): finds both edges by bisection
+   * (NARROW_EDGE_STEPS raycasts each). Puts it in `out` (x, z).
+   */
+  private narrowMiddle(x: number, z: number, i: number, j: number, out: Vector3): Vector3 {
+    const c = this.cell(i, j, 0);
+    const [di, dj] = ACROSS[c.across!];
+    const length = Math.hypot(di, dj);
+    const ax = di / length;
+    const az = dj / length;
+    const drop = this.narrowDrop();
+    const config = this.config();
+    // Desde (x, z), a `t` m a lo ancho: el suelo cae (o no hay).
+    const drops = (t: number): boolean => {
+      this.origin.set(x + ax * t, c.height + config.groundProbeHeight, z + az * t);
+      this.raycasts++;
+      if (!this.detector.castDown(this.origin, config.groundProbeHeight + drop, this.hit)) return true;
+      return this.hit.point.y < c.height - drop;
+    };
+    const most = config.narrowWidth + this.size;
+    const edge = (sign: number): number => {
+      let inside = 0;
+      let outside = sign * most;
+      if (!drops(outside)) return Number.NaN;
+      for (let k = 0; k < NARROW_EDGE_STEPS; k++) {
+        const mid = (inside + outside) / 2;
+        if (drops(mid)) outside = mid;
+        else inside = mid;
+      }
+      return (inside + outside) / 2;
+    };
+    const plus = edge(1);
+    const minus = edge(-1);
+    if (Number.isNaN(plus) || Number.isNaN(minus)) return out;
+    const middle = (plus + minus) / 2;
+    out.x = x + ax * middle;
+    out.z = z + az * middle;
+    return out;
+  }
+
+  /**
+   * Where the route gets on a narrow path at an angle (a stretch marked in `narrow` after one that isn't), it
+   * adds a point before it in line with the path (NARROW_APPROACH), if it can walk there and from there on.
+   */
+  private approachNarrow(start: Vector3, points: Vector3[], narrow: boolean[]): void {
+    const s = this.size;
+    const step = this.config().stepLength;
+    for (let k = 0; k < points.length; k++) {
+      if (!narrow[k] || (k > 0 && narrow[k - 1])) continue;
+      const a = k === 0 ? start : points[k - 1];
+      const b = points[k];
+      // Donde empieza el camino angosto en este tramo, y su dirección a lo largo (hacia `b`).
+      const length = Math.hypot(b.x - a.x, b.z - a.z);
+      const samples = Math.max(Math.ceil(length / (s / 2)), 1);
+      let entry = -1;
+      let ei = 0;
+      let ej = 0;
+      for (let n = 0; n <= samples && entry < 0; n++) {
+        ei = Math.round((a.x + ((b.x - a.x) * n) / samples - this.x0) / s);
+        ej = Math.round((a.z + ((b.z - a.z) * n) / samples - this.z0) / s);
+        this.cell(ei, ej, b.y);
+        if (this.isNarrow(ei, ej)) entry = n / samples;
+      }
+      if (entry < 0) continue;
+      const [di, dj] = ACROSS[this.cell(ei, ej, b.y).across!];
+      // La entrada, en el medio del camino (no en el centro de su celda, que puede estar en su borde).
+      const middle = this.narrowMiddle(this.x0 + ei * s, this.z0 + ej * s, ei, ej, new Vector3());
+      const ex = middle.x;
+      const ez = middle.z;
+      let ux = -dj;
+      let uz = di;
+      const u = Math.hypot(ux, uz);
+      ux /= u;
+      uz /= u;
+      // Hacia donde va por el camino: el último punto seguido sobre él (el primero puede estar justo en la entrada).
+      let last = k;
+      while (last + 1 < points.length && narrow[last + 1]) last++;
+      const far = points[last];
+      if ((far.x - ex) * ux + (far.z - ez) * uz < 0) {
+        ux = -ux;
+        uz = -uz;
+      }
+      const approach = NARROW_APPROACH * step;
+      // Lo que llega antes de la entrada, a lo largo del camino, y lo que va de lado.
+      const before = (ex - a.x) * ux + (ez - a.z) * uz;
+      const side = Math.abs((a.x - ex) * uz - (a.z - ez) * ux);
+      const inLine = side < NARROW_IN_LINE * step;
+      // Ya llega en línea con él y desde bastante antes (desde media aproximación si también llega a ese punto en
+      // línea; si gira en él, desde toda): nada.
+      const prev = k > 1 ? points[k - 2] : start;
+      const incoming = Math.hypot(a.x - prev.x, a.z - prev.z);
+      const aligned = incoming > 1e-6 && ((a.x - prev.x) * ux + (a.z - prev.z) * uz) / incoming > NARROW_ALIGNED_COS;
+      if (inLine && before >= (aligned ? 0.5 : 0.8) * approach) continue;
+      // En línea pero justo al lado del extremo (llega a ese punto en diagonal): el punto de antes, más atrás.
+      const replace = inLine && k > 0;
+      const from = replace ? (k > 1 ? points[k - 2] : start) : a;
+      // Todo el tramo de aproximación, salvo que ese punto quede muy cerca de donde ya está (volver atrás un poco para
+      // girar enseguida, daba vueltas alrededor del punto): entonces no más atrás de donde está. Si no cabe, a la mitad.
+      const close = Math.hypot(a.x - (ex - ux * approach), a.z - (ez - uz * approach)) < approach / 2;
+      const back = replace || before <= 0 || !close ? approach : Math.min(approach, Math.max(before, approach / 2));
+      const backs = [back, back / 2];
+      for (const back of backs) {
+        const px = ex - ux * back;
+        const pz = ez - uz * back;
+        const pc = this.cell(Math.round((px - this.x0) / s), Math.round((pz - this.z0) / s), a.y);
+        if (!Number.isFinite(pc.height)) continue;
+        if (!this.lineClear(from.x, from.z, from.y, px, pz, 0, false) || !this.lineClear(px, pz, pc.height, b.x, b.z, 0, false)) continue;
+        if (replace) {
+          points[k - 1] = new Vector3(px, pc.height, pz);
+        } else {
+          points.splice(k, 0, new Vector3(px, pc.height, pz));
+          narrow.splice(k, 0, false);
+          k++;
+        }
+        break;
+      }
+    }
+  }
+
+  /** For each point of the route (after `start`), whether the stretch that ends at it crosses narrow-path cells. */
+  private markNarrow(start: Vector3, points: readonly Vector3[], narrow: boolean[]): void {
+    narrow.length = 0;
+    const s = this.size;
+    const on = this.config().narrowWidth > 0;
+    let ax = start.x;
+    let az = start.z;
+    for (const p of points) {
+      let found = false;
+      const samples = Math.max(Math.ceil(Math.hypot(p.x - ax, p.z - az) / (s / 2)), 1);
+      for (let n = 0; n <= samples && on && !found; n++) {
+        const t = n / samples;
+        const i = Math.round((ax + (p.x - ax) * t - this.x0) / s);
+        const j = Math.round((az + (p.z - az) * t - this.z0) / s);
+        this.cell(i, j, p.y);
+        found = this.isNarrow(i, j);
+      }
+      narrow.push(found);
+      ax = p.x;
+      az = p.z;
+    }
   }
 
   /**
@@ -363,6 +565,99 @@ export class PathPlanner {
   }
 
   /**
+   * Cell (i, j) is on a narrow path, or close enough to one (`hard` m and a cell) to get on or off it, without
+   * being an edge itself.
+   */
+  private onNarrow(i: number, j: number, hard: number): boolean {
+    if (!(this.config().narrowWidth > 0)) return false;
+    if (this.isEdge(i, j)) return this.isNarrow(i, j);
+    const c = this.cell(i, j, 0);
+    if (c.nearNarrow !== undefined) return c.nearNarrow;
+    const reach = hard + this.size;
+    const r = Math.ceil(reach / this.size);
+    let near = false;
+    for (let di = -r; di <= r && !near; di++) {
+      for (let dj = -r; dj <= r && !near; dj++) {
+        if (Math.hypot(di, dj) * this.size > reach) continue;
+        // A la misma altura: el camino, no el suelo de abajo junto a él.
+        const n = this.cell(i + di, j + dj, c.height);
+        near = this.canStep(c, n) && this.canStep(n, c) && Math.abs(n.height - c.height) < this.narrowDrop() && this.isNarrow(i + di, j + dj);
+      }
+    }
+    c.nearNarrow = near;
+    return near;
+  }
+
+  /** Change of level at the sides of a narrow path (m; see NARROW_DROP). */
+  private narrowDrop(): number {
+    return NARROW_DROP * this.config().stepLength;
+  }
+
+  /**
+   * The step from cell (ai, aj) to the next one (bi, bj) doesn't get on or off a narrow path across it (see
+   * NARROW_SIDE_COS): up or down onto a beam from its side.
+   */
+  private alongNarrow(ai: number, aj: number, bi: number, bj: number): boolean {
+    if (!(this.config().narrowWidth > 0)) return true;
+    const a = this.cell(ai, aj, 0);
+    const b = this.cell(bi, bj, a.height);
+    if (!(Math.abs(b.height - a.height) >= this.narrowDrop())) return true;
+    const si = bi - ai;
+    const sj = bj - aj;
+    const length = Math.hypot(si, sj);
+    for (const [i, j, c] of [[ai, aj, a], [bi, bj, b]] as const) {
+      if (!this.isNarrow(i, j)) continue;
+      const [di, dj] = ACROSS[c.across!];
+      if (Math.abs(si * di + sj * dj) / (length * Math.hypot(di, dj)) > NARROW_SIDE_COS) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Cell (i, j) is on a narrow path: across it (along X, Z or a diagonal), the ground drops (NARROW_DROP or more)
+   * on both sides within `narrowWidth`: with n cells between both drops, the path is at least n − 1 cells wide (it
+   * may be up to n + 1).
+   */
+  private isNarrow(i: number, j: number): boolean {
+    const width = this.config().narrowWidth;
+    if (!(width > 0)) return false;
+    const c = this.cell(i, j, 0);
+    if (c.narrow !== undefined) return c.narrow;
+    let narrow = false;
+    if (Number.isFinite(c.height)) {
+      for (const [di, dj] of ACROSS) {
+        const length = Math.hypot(di, dj) * this.size;
+        const most = Math.floor(width / length) + 2;
+        const a = this.dropAt(i, j, c, di, dj, most);
+        const b = a > 0 ? this.dropAt(i, j, c, -di, -dj, most) : 0;
+        if (b > 0 && (a + b - 2) * length < width) {
+          narrow = true;
+          c.across = ACROSS.findIndex(([x, z]) => x === di && z === dj);
+          break;
+        }
+      }
+    }
+    c.narrow = narrow;
+    return narrow;
+  }
+
+  /**
+   * Going from cell `c` (i, j) in steps of (di, dj): after how many it finds a drop (NARROW_DROP or more, or no
+   * ground), within `most`; 0 if none (or it finds a rise as high first: a wall, not the side of a path).
+   */
+  private dropAt(i: number, j: number, c: Cell, di: number, dj: number, most: number): number {
+    const drop = this.narrowDrop();
+    let previous = c;
+    for (let k = 1; k <= most; k++) {
+      const n = this.cell(i + k * di, j + k * dj, previous.height);
+      if (!(n.height > previous.height - drop)) return k;
+      if (n.height >= previous.height + drop) return 0;
+      previous = n;
+    }
+    return 0;
+  }
+
+  /**
    * Room at cell (i, j) (m): distance to the nearest edge cell, up to `berth` (Infinity if none that close),
    * or to a collider, if it is closer (measured exactly: negative inside it).
    */
@@ -404,13 +699,17 @@ export class PathPlanner {
     const s = this.size;
     const length = Math.hypot(bx - ax, bz - az);
     const samples = Math.max(Math.ceil(length / (s / 2)), 1);
-    let previous = this.cell(Math.round((ax - this.x0) / s), Math.round((az - this.z0) / s), ay);
+    let pi = Math.round((ax - this.x0) / s);
+    let pj = Math.round((az - this.z0) / s);
+    let previous = this.cell(pi, pj, ay);
     for (let n = 1; n <= samples; n++) {
       const t = n / samples;
       const i = Math.round((ax + (bx - ax) * t - this.x0) / s);
       const j = Math.round((az + (bz - az) * t - this.z0) / s);
       const c = this.cell(i, j, previous.height);
-      if (c !== previous && !this.canStep(previous, c)) return false;
+      if (c !== previous && (!this.canStep(previous, c) || !this.alongNarrow(pi, pj, i, j))) return false;
+      pi = i;
+      pj = j;
       const fromEnd = Math.min(t, 1 - t) * length;
       if (!(ignoreEnds && fromEnd <= room + s) && this.clearance(i, j) < room) return false;
       // Un collider, tampoco junto al destino (si está dentro de uno, la ruta acaba a su borde); junto a la

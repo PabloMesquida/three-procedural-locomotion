@@ -99,7 +99,7 @@ marcan `turnSpeed` y `maxLateralAcceleration`.
 Correr no es un modo aparte: `walkSpeed` (1,4 m/s) es la velocidad normal de caminar, pero se sigue caminando, a
 paso vivo, hasta `runStartSpeed` (1,7 m/s); por encima la marcha pasa gradualmente a carrera (`runBlend`) en
 `runTransition` (completa hacia 2,3 m/s; una persona cambia hacia los 2 m/s) y se puede acelerar hasta `runSpeed`.
-Agachado la velocidad se limita a `crouchMaxSpeed`.
+Agachado la velocidad se limita a `crouchMaxSpeed`, y en un camino angosto a `narrowMaxSpeed`.
 
 ## Estado
 
@@ -111,6 +111,7 @@ Agachado la velocidad se limita a `crouchMaxSpeed`.
 | `gaitMode` | `'idle'` (quieto, pies apoyados) o `'walk'` (dando pasos, caminando o corriendo). |
 | `runBlend` | 0 = caminar, 1 = correr. |
 | `crouch` | Agachado actual (0–1). |
+| `balance` | Cuánto hace equilibrio en un camino angosto (0–1, ver [Caminos angostos](#caminos-angostos)). |
 | `airborne`, `jumpPhase` | En el aire; fase del salto: `GROUNDED`, `TAKEOFF`, `AIRBORNE`, `LANDING`. |
 | `moveTarget` | Destino del `moveTo` (o `followPath`) en curso, o `null`. |
 | `movePath` | Lo que queda de su ruta (puntos, una copia; el último es `moveTarget`), o `null` si va en línea recta. |
@@ -429,6 +430,37 @@ que frenar a tiempo; unas 10 más si ahí el suelo queda fuera del alcance de un
 una escalera, unas 50–90 por paso (el perfil del suelo por delante).
 Parado, si el suelo bajo los pies cambia sin que se mueva el cuerpo (un objeto que aparece, un cambio de
 `setConfig`), se recoloca en como mucho 0,25 s.
+
+### Caminos angostos
+
+Una viga, lo alto de un muro, un riel, un bordillo alto: los caminos angostos también se detectan en la geometría,
+sin marcar nada. Mientras se mueve (y cada segundo parado) el personaje mira el suelo a lo ancho de su dirección de
+avance, un poco por delante del cuerpo (más lejos cuanto más rápido va, para frenar a tiempo): si el suelo a la
+altura del cuerpo cae (10 cm o más, escalado con el tamaño) a los dos lados en menos de `narrowWidth` (30 cm por
+defecto), el camino es angosto y camina haciendo equilibrio (`balance`, 0–1, cambia en `1 / narrowRate` s):
+
+- un pie delante del otro por el medio del camino (`narrowStepWidth` entre ellos); el pie en el aire rodea un poco
+  el tobillo de apoyo en vez de atravesarlo, y el cuerpo vuelve al medio si iba desviado;
+- más despacio (`narrowMaxSpeed`, 0,6 m/s);
+- con los brazos abiertos en A (`narrowArmAbduction`, `narrowElbowBend`, `narrowArmForward`), casi sin
+  balanceo (`narrowArmSwing`) y con correcciones lentas e irregulares, subiendo uno y bajando el otro
+  (`narrowArmTilt`); los hombros suben un poco con los brazos. Mira hacia abajo, al camino (`narrowGaze`).
+
+Parado sobre él, los pies quedan uno al lado del otro, lo más juntos que pueden sin superponerse. Cuando el camino
+se ensancha o se acaba, vuelve a caminar normal al llegar ahí. Con `narrowWidth: 0` nunca hace equilibrio. Una
+línea pintada en el suelo no es un camino: hace falta un desnivel a los dos lados. Cuesta una consulta al suelo
+cada 0,25 s en marcha (cada segundo parado) y, en un camino angosto, unas 10 cada vez (mide los dos bordes).
+
+Con [tocar superficies](#tocar-superficies) activado, una baranda o una pared junto al camino se tocan como en
+cualquier otro sitio: la mano se apoya en ella (y se desliza) y, como ya se sostiene, el otro brazo baja casi a
+su pose normal y deja de corregir (`narrowTouchRelax`); los pies siguen en línea.
+
+Una ruta de `moveTo` va por un camino angosto solo si el destino está en él o no puede rodearlo (un tablón hasta un
+pedestal, el único muro entre dos plataformas): cuesta mucho más que el suelo abierto. Sube a él y baja solo por
+sus extremos, nunca de lado (tampoco a una viga baja que podría pisar desde el costado), en línea con él: si llega
+en ángulo, la ruta pasa antes por un punto delante del extremo. De camino frena hasta `narrowMaxSpeed`, apunta a
+un punto más cercano de la ruta y se corrige de lado hacia su línea, así que entra recto y por el medio aunque
+acabe de dar la vuelta.
 
 ## Frames irregulares
 

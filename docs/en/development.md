@@ -155,11 +155,12 @@ matrices by 6 (2,148 → 351 per character). The resulting matrices are identica
 check it.
 
 Raycasts per character: 1 per frame (root probe, which also detects changes in the ground under the body)
-and ~14 at the start of each step (landing: heel and toes; arc height: 12 samples of the toes). Standing
+and ~14 at the start of each step (landing: heel and toes; arc height: 12 samples of the toes), plus 1 every
+0.25 s looking for narrow paths (every 1 s standing still; ~10 on a narrow path, see `NarrowPath`). Standing
 still, the check of whether the feet are settled (4 raycasts) is reused while the root matrix doesn't
 change and repeated every `IDLE_RECHECK_TIME` (0.25 s) to notice changes in the configuration or the
-terrain under the feet. `tests/raycasts.test.ts` sets the budget (standing ≤ 1.3/frame, walking ≤ 1.5,
-running ≤ 1.75).
+terrain under the feet. `tests/raycasts.test.ts` sets the budget (standing ≤ 1.3/frame, walking ≤ 1.55,
+running ≤ 1.82).
 
 What each query costs depends on the detector. `RaycastGroundDetector` uses Three's raycast, which tests
 every triangle (~2 ms each with 50,000: the ~14 at the start of a step make a ~25 ms frame).

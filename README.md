@@ -24,6 +24,8 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
 - **Stairs, detected from the geometry**: up and down, straight, curved or spiral, with or without risers; one
   step per tread with the whole foot on it, for any size of step up to `maxStepUp` / `maxStepDown`; beyond
   that it stops ([guide](docs/en/guide.md#stairs)).
+- **Narrow paths, detected from the geometry**: on a beam or the top of a wall it balances, one foot in front
+  of the other along the middle, slower and with the arms out ([guide](docs/en/guide.md#narrow-paths)).
 - **Crouching, jumping and landing** with anticipation, push-off, tucked feet and cushioning.
 - **Gradual twist** of arms and legs if the rig has `twist` bones (optional): the wrist and ankle don't twist
   abruptly ([skeletons](docs/en/skeletons.md#twist-bones)).

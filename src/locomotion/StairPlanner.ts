@@ -3,6 +3,7 @@ import { Vector3 } from 'three';
 import type { FootExtent } from '../rig/measureFeet.ts';
 import type { FootGroundState } from '../terrain/FootPlacement.ts';
 import { createGroundHit, type GroundDetector, type GroundHit } from '../terrain/GroundDetector.ts';
+import { NARROW_DROP } from '../terrain/NarrowPath.ts';
 import { GroundProfile, treadHeight } from '../terrain/GroundProfile.ts';
 import type { LocomotionConfig } from './LocomotionConfig.ts';
 
@@ -69,6 +70,12 @@ const WALL_FORGET = 2;
 const LOOKED_SAME_COS = Math.cos((10 * Math.PI) / 180);
 /** That step further (× `stride`), and a little more: the stance foot advances more or less than the body. */
 const FAR_STRIDES = 1.25;
+/**
+ * Before braking at a remembered edge (or keeping a foot off it), it looks at the ground this far beyond it
+ * (× foot length) where it would cross it: if it can step there, the edge has a gap (a beam or a narrow wall
+ * leaves from it) and it goes on.
+ */
+const GAP_PROBE = 0.3;
 
 /**
  * Stairs and steps, detected from the geometry (nothing has to be marked):
@@ -249,9 +256,37 @@ export class StairPlanner {
     if (perpendicular < -this.heelBack) return Number.POSITIVE_INFINITY;
     const distance = perpendicular / c;
     // Dónde cruzaría el borde, a lo largo de él: lejos del punto encontrado, o pasada una esquina, ya no sigue.
-    return this.alongWall(position.x + forward.x * distance, position.z + forward.z * distance)
-      ? (perpendicular - clearance) / c
-      : Number.POSITIVE_INFINITY;
+    const x = position.x + forward.x * distance;
+    const z = position.z + forward.z * distance;
+    if (!this.alongWall(x, z)) return Number.POSITIVE_INFINITY;
+    // Por un hueco del borde (sale de él una viga o un muro angosto), tampoco.
+    if (this.gapAt(x, z, ground)) return Number.POSITIVE_INFINITY;
+    // El costado de un camino angosto (cae también al otro lado): va por él más cerca del borde que `clearance`;
+    // frena solo si se acerca al borde, no por ir junto a él.
+    const need = clearance > perpendicular && this.narrowAt(x, z, ground) ? Math.max(perpendicular, 0) / 2 : clearance;
+    return (perpendicular - need) / c;
+  }
+
+  /**
+   * The edge of `wall` at (`x`, `z`) is a side of a narrow path: `narrowWidth` before it, on this side, the ground
+   * drops too (NARROW_DROP). One raycast.
+   */
+  private narrowAt(x: number, z: number, ground: number): boolean {
+    const width = this.config.narrowWidth;
+    if (!(width > 0)) return false;
+    const n = this.wallNormal;
+    const back = (this.wall.x - x) * n.x + (this.wall.z - z) * n.z - width;
+    return this.heightAt(x + n.x * back, z + n.z * back, ground) < ground - NARROW_DROP * this.config.stepLength;
+  }
+
+  /**
+   * Just beyond the edge of `wall` where (`x`, `z`) crosses it (GAP_PROBE), the ground can be stepped from `ground`:
+   * the remembered edge has a gap there. One raycast.
+   */
+  private gapAt(x: number, z: number, ground: number): boolean {
+    const n = this.wallNormal;
+    const beyond = (this.wall.x - x) * n.x + (this.wall.z - z) * n.z + GAP_PROBE * this.footLength;
+    return this.passable(this.heightAt(x + n.x * beyond, z + n.z * beyond, ground) - ground);
   }
 
   /** Puts the remembered wall `k` in `wall` (and the rest of its fields); false if that slot is empty. */
@@ -509,8 +544,9 @@ export class StairPlanner {
     // Pasado el borde, también (caminando a lo largo de él, el perfil no lo cruza); mucho más allá, ya no es este
     // borde.
     if (distance >= need || distance < -need) return false;
-    // Junto a la pared que encontró (más lejos, o pasada una esquina, ya no sigue).
-    if (!this.alongWall(landing.x, landing.z)) return false;
+    // Junto a la pared que encontró (más lejos, o pasada una esquina, ya no sigue), y no por un hueco de ella.
+    // Ni en el costado de un camino angosto: allí los pies van por el medio (ver NarrowPath).
+    if (!this.alongWall(landing.x, landing.z) || this.gapAt(landing.x, landing.z, ground) || this.narrowAt(landing.x, landing.z, ground)) return false;
     out.copy(landing);
     out.x -= n.x * (need - distance);
     out.z -= n.z * (need - distance);

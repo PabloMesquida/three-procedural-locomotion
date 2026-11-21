@@ -126,6 +126,39 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   /** How fast it crouches or stands up (fraction of a full crouch per second). */
   crouchRate: number;
 
+  /**
+   * Narrow paths (a beam, the top of a wall, a rail): if the ground at the level of the body drops on both
+   * sides within less than this width, it walks balancing: one foot in front of the other along the middle of
+   * the path, slowly, with the arms out and looking down (m; 0 = never). Detected from the geometry.
+   */
+  narrowWidth: number;
+  /** Narrow path: lateral distance between the feet when walking (m; when standing, they don't overlap). */
+  narrowStepWidth: number;
+  /** Narrow path: maximum speed (m/s). */
+  narrowMaxSpeed: number;
+  /** Narrow path: arm angle away from the vertical (degrees; 90 = horizontal). */
+  narrowArmAbduction: number;
+  /** Narrow path: elbow bend (degrees). */
+  narrowElbowBend: number;
+  /** Narrow path: upper arm angle in front of the vertical (degrees). */
+  narrowArmForward: number;
+  /** Narrow path: forward/backward arm swing (degrees). */
+  narrowArmSwing: number;
+  /**
+   * Narrow path: balance corrections, raising one arm and lowering the other, slowly and irregularly (degrees,
+   * maximum).
+   */
+  narrowArmTilt: number;
+  /**
+   * Narrow path, with a hand resting on something (a railing, a wall; see touching surfaces): how far the other
+   * arm goes back to its normal pose, and stops correcting (0 = it stays out, 1 = all the way).
+   */
+  narrowTouchRelax: number;
+  /** Narrow path: how much the head looks down at the path (degrees). */
+  narrowGaze: number;
+  /** How fast it starts or stops balancing (fraction of the full change per second). */
+  narrowRate: number;
+
   /** Gravity (m/s²). */
   gravity: number;
   /** Jump: vertical speed at takeoff (m/s). */
@@ -285,6 +318,18 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   crouchArmForward: 15,
   crouchMaxSpeed: 0.8,
   crouchRate: 1.8,
+
+  narrowWidth: 0.3,
+  narrowStepWidth: 0.03,
+  narrowMaxSpeed: 0.6,
+  narrowArmAbduction: 50,
+  narrowElbowBend: 15,
+  narrowArmForward: 5,
+  narrowArmSwing: 3,
+  narrowArmTilt: 10,
+  narrowTouchRelax: 0.85,
+  narrowGaze: 20,
+  narrowRate: 2,
 
   gravity: 9.81,
   jumpSpeed: 3.2,

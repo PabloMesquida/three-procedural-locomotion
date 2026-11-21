@@ -12,6 +12,7 @@ import type { TwoBoneIKResult } from '../ik/TwoBoneIK.ts';
 import type { HumanRig, Side } from '../rig/HumanRig.ts';
 import { measureFeet } from '../rig/measureFeet.ts';
 import type { Colliders } from '../terrain/Colliders.ts';
+import { NARROW_DROP, NarrowPath } from '../terrain/NarrowPath.ts';
 import { defaultFootPlacementConfig, FootPlacement, type FootPlacementConfig } from '../terrain/FootPlacement.ts';
 import { createGroundHit, type GroundDetector } from '../terrain/GroundDetector.ts';
 import type { SurfaceDetector } from '../terrain/SurfaceDetector.ts';
@@ -249,6 +250,32 @@ const MAX_LANDING_LEAD = 30 * DEG;
  * directions).
  */
 const PIVOT_TURNING = 10 * DEG;
+/**
+ * Narrow paths (see NarrowPath): it measures the path this far ahead of the body (× stepLength), or where the
+ * body will be in NARROW_LOOKAHEAD s if that is further (going fast, it slows down before reaching the path), every
+ * NARROW_PROBE_INTERVAL s while moving and every NARROW_IDLE_INTERVAL s standing still; ground lower than the
+ * body's by NARROW_DROP (see NarrowPath) is a drop.
+ */
+const NARROW_AHEAD = 0.5;
+const NARROW_LOOKAHEAD = 0.5;
+const NARROW_PROBE_INTERVAL = 0.25;
+const NARROW_IDLE_INTERVAL = 1;
+/**
+ * Balancing, the foot in the air passes the planted ankle at least this far to its own side (× stepLength): with
+ * the feet in line, the swing goes slightly round the stance leg instead of through it.
+ */
+const NARROW_SWING_CLEARANCE = 0.1;
+/** Balancing and walking, how fast the body moves towards the middle of the path (1/s). */
+const NARROW_CENTERING = 2;
+/**
+ * Width of the foot (× its length from the back of the heel to the toe joint): standing on a narrow path, the feet
+ * are at least this far apart (they don't overlap).
+ */
+const FOOT_WIDTH = 0.5;
+/** Balancing, the fingers almost straight (see `fingerCurl`): open hands, as people do. */
+const NARROW_FINGER_CURL = 0.3;
+/** How often the balance corrections of the arms change (≈ times per second). */
+const NARROW_TILT_RATE = 0.6;
 const UP = new Vector3(0, 1, 0);
 /** Difference relative to the step length below which two measurements are considered equal. */
 const TIE_TOLERANCE = 1e-9;
@@ -301,6 +328,12 @@ export class LocomotionController {
   targetCrouch = 0;
   /** Agachado actual: sigue al deseado a velocidad limitada (config.crouchRate). */
   crouch = 0;
+  /** Narrow paths: what it found under and ahead of the body (see NarrowPath). */
+  readonly narrowPath: NarrowPath;
+  /** How much it is balancing on a narrow path (0–1): follows the path at `narrowRate`. */
+  balance = 0;
+  /** Tilt of the arms balancing (degrees, + = right arm up), from the last update. */
+  balanceTilt = 0;
 
   private readonly rig: HumanRig;
   private readonly detector: GroundDetector;
@@ -356,6 +389,8 @@ export class LocomotionController {
   private glance = 0;
   private levelAhead = 0;
   private glanceProbe = 0;
+  /** Time left until the next look at the path across (s; see NarrowPath). */
+  private narrowProbe = 0;
   /** How much it is going down stairs (0–1), following the slope (see STAIR_DOWN_FREQUENCY). */
   private stairDescent = 0;
   /** How fast the ground under the body rises (m/s, smoothed; − going down) and the root height last frame. */
@@ -455,6 +490,7 @@ export class LocomotionController {
       ? { front: Math.max(measured.left.front, measured.right.front), back: Math.max(measured.left.back, measured.right.back) }
       : (measured.left ?? measured.right);
     this.stairs = new StairPlanner(detector, config, (footLength('left') + footLength('right')) / 2, extent);
+    this.narrowPath = new NarrowPath(detector);
     this.body.groundLine = (position, ground) => this.stairs.groundHeight(position, ground);
   }
 
@@ -496,6 +532,7 @@ export class LocomotionController {
     this.torso.shift(offset);
     this.touch.shift(offset);
     this.stairs.shift(offset);
+    this.narrowPath.shift(offset);
     this.lastRootHeight += offset.y;
     for (const side of SIDES) {
       const foot = this.feet[side];
@@ -517,6 +554,7 @@ export class LocomotionController {
   /** Stops the character and rests both feet in their neutral position (keeps the desired crouch). */
   reset(): void {
     this.syncPlacementConfig();
+    this.planner.widthOverride = null;
     this.planner.syncStepWidth();
     this.crouch = Math.min(Math.max(this.targetCrouch, 0), 1);
     this.jumping.reset();
@@ -525,6 +563,11 @@ export class LocomotionController {
     this.settleCheck.valid = false;
     this.lastFootDt = 0;
     this.stairs.reset();
+    this.narrowPath.reset();
+    this.narrowProbe = 0;
+    this.balance = 0;
+    this.balanceTilt = 0;
+    this.planner.landingShift.set(0, 0, 0);
     this.stairLimit = Number.POSITIVE_INFINITY;
     this.stairLean = 0;
     this.stairSlope = 0;
@@ -656,6 +699,7 @@ export class LocomotionController {
     this.stairs.update(dt);
     this.updateStairDescent(dt);
     this.syncPlacementConfig();
+    this.updateNarrow(dt);
     this.planner.syncStepWidth();
 
     // 0. Agachado: el nivel actual sigue al deseado; agachado se va más despacio.
@@ -663,7 +707,13 @@ export class LocomotionController {
     const crouchStep = this.config.crouchRate * dt;
     this.crouch += Math.max(-crouchStep, Math.min(crouchStep, crouchTarget - this.crouch));
     const k = smoothstep(this.crouch);
-    this.body.speedLimit = Math.min(this.config.runSpeed + (this.config.crouchMaxSpeed - this.config.runSpeed) * k, this.stairSpeedLimit(dt));
+    const kb = smoothstep(this.balance);
+    this.body.speedLimit = Math.min(
+      this.config.runSpeed + (this.config.crouchMaxSpeed - this.config.runSpeed) * k,
+      this.config.runSpeed + (this.config.narrowMaxSpeed - this.config.runSpeed) * kb,
+      this.stairSpeedLimit(dt),
+    );
+    this.centerOnPath(dt, kb);
     this.backOffWall(dt);
     this.slideOffColliders();
 
@@ -871,7 +921,7 @@ export class LocomotionController {
       dt,
       extraLean: ((cfg.walkLean + (cfg.runLean - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean + this.stairLean,
       airborne: bodyState.airborne,
-      headOffset: { yaw: this.variationNow.headYaw, pitch: this.variationNow.headPitch + this.glance + DOWN_GAZE * Math.max(-this.stairSlope, 0) },
+      headOffset: { yaw: this.variationNow.headYaw, pitch: this.variationNow.headPitch + this.glance + DOWN_GAZE * Math.max(-this.stairSlope, 0) + kb * cfg.narrowGaze * DEG },
       headNod: 1 / (1 + STAIR_HEAD_STEADY * Math.abs(this.stairSlope)),
       running: this.gait.blend,
     });
@@ -896,6 +946,12 @@ export class LocomotionController {
     }
     this.lastRootHeight = rootHeight;
     this.touch.update(this.touchMotion(dt), this.surfaces);
+    // Haciendo equilibrio, con una mano apoyada en algo (una baranda, una pared) ya se sostiene: el otro brazo baja
+    // casi a la pose normal (narrowTouchRelax) y deja de corregir.
+    const steadied = Math.max(this.touch.weight('left'), this.touch.weight('right')) * c.narrowTouchRelax;
+    const kArms = kb * (1 - steadied);
+    const balancing = (normal: number, narrow: number): number => normal + (narrow - normal) * kArms;
+    this.balanceTilt = kArms * c.narrowArmTilt * this.noise.sample(20, this.noiseTime * NARROW_TILT_RATE);
     this.arms.update({
       forward: bodyState.forward,
       feetAhead: this.tmp.subVectors(feet.right.position, feet.left.position).dot(bodyState.forward),
@@ -905,12 +961,15 @@ export class LocomotionController {
       swingScale: { left: this.variationNow.armLeft, right: this.variationNow.armRight },
       touch: { left: this.touch.weight('left'), right: this.touch.weight('right') },
       shoulderTilt: this.torso.shoulderLineTilt,
+      // Haciendo equilibrio: brazos abiertos, casi sin balanceo, con correcciones lentas (uno sube y el otro baja).
       pose: {
-        armAbduction: relax(mix(c.armAbduction, c.runArmAbduction), c.idleArmAbduction),
-        elbowBend: relax(mix(c.elbowBend, c.runElbowBend), c.idleElbowBend) + k * c.crouchElbowBend,
-        armSwing: mix(walkSwing, c.runArmSwing),
-        elbowSwingBend: mix(c.elbowSwingBend, c.runElbowSwingBend),
-        armForward: relax(c.armForward, c.idleArmForward) + k * c.crouchArmForward + this.jumping.armForward() - mix(ARM_SWING_BACK * walkSwing, RUN_ARM_SWING_BACK * c.runArmSwing),
+        armAbduction: balancing(relax(mix(c.armAbduction, c.runArmAbduction), c.idleArmAbduction), c.narrowArmAbduction),
+        elbowBend: balancing(relax(mix(c.elbowBend, c.runElbowBend), c.idleElbowBend), c.narrowElbowBend) + k * c.crouchElbowBend,
+        armSwing: balancing(mix(walkSwing, c.runArmSwing), c.narrowArmSwing),
+        elbowSwingBend: balancing(mix(c.elbowSwingBend, c.runElbowSwingBend), 0),
+        armForward: balancing(relax(c.armForward, c.idleArmForward) - mix(ARM_SWING_BACK * walkSwing, RUN_ARM_SWING_BACK * c.runArmSwing), c.narrowArmForward) + k * c.crouchArmForward + this.jumping.armForward(),
+        abductionTilt: this.balanceTilt,
+        fingerCurl: balancing(c.fingerCurl, NARROW_FINGER_CURL),
       },
     });
 
@@ -1422,6 +1481,7 @@ export class LocomotionController {
     swing.detour.set(0, 0, 0);
     const other = this.feet[foot.side === 'left' ? 'right' : 'left'];
     if (other.phase === 'SWING') return;
+    this.narrowDetour(foot, other);
     const turn = Math.abs(wrapAngle(this.footYaw(foot.side, swing.endRotation) - this.footYaw(foot.side, swing.startRotation)));
     if (turn < DETOUR_MIN_TURN) return;
     // Centro del pie apoyado: entre el tobillo y la punta.
@@ -1451,7 +1511,101 @@ export class LocomotionController {
     const needed = Math.sqrt(Math.max(clearance * clearance - across * across, 0)) - along;
     if (needed <= 0) return;
     const amount = Math.min(needed / Math.sin(Math.PI * u) ** 2, MAX_DETOUR * this.config.stepLength);
+    if (amount > swing.detour.length()) swing.detour.set(nx * amount, 0, nz * amount);
+  }
+
+  /**
+   * Balancing on a narrow path, the feet go in line: the foot in the air would pass through the planted ankle.
+   * It curves to its own side at mid-swing just enough to pass NARROW_SWING_CLEARANCE × stepLength from it.
+   */
+  private narrowDetour(foot: FootTarget, other: FootTarget): void {
+    const kb = smoothstep(this.balance);
+    if (kb <= 0) return;
+    const swing = foot.swing;
+    const ankle = other.planted;
+    const ax = swing.end.x - swing.start.x;
+    const az = swing.end.z - swing.start.z;
+    const length2 = ax * ax + az * az;
+    if (length2 < 1e-8) return;
+    const u = clamp(((ankle.x - swing.start.x) * ax + (ankle.z - swing.start.z) * az) / length2, 0, 1);
+    if (u < 0.2 || u > 0.8) return;
+    const side = foot.side === 'left' ? -1 : 1;
+    const forward = this.body.state.forward;
+    const nx = -forward.z * side;
+    const nz = forward.x * side;
+    // Lo que la línea recta ya pasa hacia el lado de este pie.
+    const along = (swing.start.x + ax * u - ankle.x) * nx + (swing.start.z + az * u - ankle.z) * nz;
+    const needed = NARROW_SWING_CLEARANCE * this.config.stepLength - along;
+    if (needed <= 0) return;
+    const amount = kb * Math.min(needed / Math.sin(Math.PI * u) ** 2, MAX_DETOUR * this.config.stepLength);
     swing.detour.set(nx * amount, 0, nz * amount);
+  }
+
+  /**
+   * Narrow paths: looks at the path across (see NarrowPath), the balance follows it at `narrowRate`, and the
+   * feet come together: `narrowStepWidth` walking, and the width of the foot standing (they don't overlap).
+   */
+  private updateNarrow(dt: number): void {
+    const cfg = this.config;
+    const s = this.body.state;
+    if (!(cfg.narrowWidth > 0)) {
+      this.narrowPath.reset();
+    } else if (!s.airborne) {
+      this.narrowProbe -= dt;
+      // También con escalones cerca (subiendo a una viga desde el suelo, el escalón de su extremo): en una escalera
+      // ancha los lados están a la altura del medio y no cuentan como caída.
+      if (this.narrowProbe <= 0) {
+        const moving = this.gait.mode !== 'idle' || s.speed > IDLE_SPEED * cfg.walkSpeed;
+        this.narrowProbe = moving ? NARROW_PROBE_INTERVAL : NARROW_IDLE_INTERVAL;
+        const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
+        this.narrowPath.probe({
+          forward: s.forward,
+          point: this.tmp.copy(s.position).addScaledVector(s.forward, Math.max(NARROW_AHEAD * cfg.stepLength, NARROW_LOOKAHEAD * s.speed)),
+          ground,
+          width: cfg.narrowWidth,
+          drop: NARROW_DROP * cfg.stepLength,
+          rayHeight: cfg.groundProbeHeight,
+          // Con un escalón por delante (el extremo de una viga más alta que el suelo), al nivel de lo de delante.
+          levelAhead: this.stairs.active,
+        });
+      }
+    }
+    // Hasta pasar por donde acaba el camino (la sonda mira por delante del cuerpo).
+    const target = this.narrowPath.onPath(s.position, s.forward) ? 1 : 0;
+    const step = cfg.narrowRate * dt;
+    this.balance += clamp(target - this.balance, -step, step);
+    const kb = smoothstep(this.balance);
+    if (kb <= 0) {
+      this.planner.widthOverride = null;
+      return;
+    }
+    const natural = this.planner.naturalStepWidth();
+    const footWidth = FOOT_WIDTH * (this.stairs.toeFront + this.stairs.heelBack);
+    // Parando (los últimos pasos ya se planean así) y parado, los pies a su anchura; arrancando, se juntan.
+    const standing = 1 - smoothstep(Math.min(s.speed, this.body.targetSpeed) / (IDLE_ARMS_SPEED * cfg.walkSpeed));
+    const narrow = cfg.narrowStepWidth + Math.max(footWidth - cfg.narrowStepWidth, 0) * standing;
+    this.planner.widthOverride = natural + (narrow - natural) * kb;
+  }
+
+  /**
+   * Balancing: the steps land along the middle of the path (`landingShift` of the planner) and, while walking,
+   * the body moves towards it (NARROW_CENTERING).
+   */
+  private centerOnPath(dt: number, kb: number): void {
+    const shift = this.planner.landingShift;
+    const s = this.body.state;
+    if (kb <= 0 || !this.narrowPath.narrow || s.airborne) {
+      shift.set(0, 0, 0);
+      return;
+    }
+    // A lo ancho del camino (como se midió), no del cuerpo: girado, lo de delante en el camino parecía a un lado.
+    const right = this.narrowPath.across;
+    const half = this.config.narrowWidth / 2;
+    const offset = clamp(this.narrowPath.offset(s.position), -half, half);
+    shift.copy(right).multiplyScalar(offset * kb);
+    const moving = clamp(s.speed / this.config.narrowMaxSpeed, 0, 1);
+    const drift = offset * kb * moving * (1 - Math.exp(-NARROW_CENTERING * dt));
+    this.body.drift.addScaledVector(right, drift);
   }
 
   /**

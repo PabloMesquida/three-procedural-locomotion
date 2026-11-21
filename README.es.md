@@ -25,6 +25,8 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
 - **Escaleras, detectadas en la geometría**: sube y baja, rectas, en curva o de caracol, con o sin contrahuella;
   un paso por escalón con el pie entero en la huella, para cualquier medida hasta `maxStepUp` / `maxStepDown`;
   más allá se para ([guía](docs/es/guide.md#escaleras)).
+- **Caminos angostos, detectados en la geometría**: sobre una viga o lo alto de un muro hace equilibrio, un pie
+  delante del otro por el medio, más despacio y con los brazos abiertos ([guía](docs/es/guide.md#caminos-angostos)).
 - **Agacharse, saltar y aterrizar** con preparación, impulso, recogida de pies y amortiguación.
 - **Torsión gradual** de brazos y piernas si el rig tiene huesos `twist` (opcionales): la muñeca y el tobillo
   no se retuercen de golpe ([esqueletos](docs/es/skeletons.md#huesos-de-torsión)).

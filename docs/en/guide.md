@@ -99,7 +99,7 @@ foot pivots on the toes. How fast it turns is set by `turnSpeed` and `maxLateral
 Running is not a separate mode: `walkSpeed` (1.4 m/s) is the normal walking speed, but it keeps walking, at a
 brisk pace, up to `runStartSpeed` (1.7 m/s); above that the gait gradually turns into running (`runBlend`) over
 `runTransition` (complete at about 2.3 m/s; a person switches at about 2 m/s) and it can accelerate up to
-`runSpeed`. While crouching, speed is limited to `crouchMaxSpeed`.
+`runSpeed`. While crouching, speed is limited to `crouchMaxSpeed`, and on a narrow path to `narrowMaxSpeed`.
 
 ## State
 
@@ -111,6 +111,7 @@ brisk pace, up to `runStartSpeed` (1.7 m/s); above that the gait gradually turns
 | `gaitMode` | `'idle'` (still, feet on the ground) or `'walk'` (taking steps, walking or running). |
 | `runBlend` | 0 = walking, 1 = running. |
 | `crouch` | Current crouch (0–1). |
+| `balance` | How much it is balancing on a narrow path (0–1, see [Narrow paths](#narrow-paths)). |
 | `airborne`, `jumpPhase` | In the air; jump phase: `GROUNDED`, `TAKEOFF`, `AIRBORNE`, `LANDING`. |
 | `moveTarget` | Destination of the current `moveTo` (or `followPath`), or `null`. |
 | `movePath` | What is left of its route (points, a copy; the last one is `moveTarget`), or `null` if it goes in a straight line. |
@@ -422,6 +423,38 @@ about 10 more when the ground there is out of reach of a step, or about 35 the f
 50–90 per step instead (the profile of the ground ahead). When
 standing still, if the ground under the feet changes without the body moving (an object that appears, a
 `setConfig` change), it repositions itself within 0.25 s at most.
+
+### Narrow paths
+
+A beam, the top of a wall, a rail, a high curb: narrow paths are also detected from the geometry, with nothing to
+mark. While it moves (and every second standing still) the character looks at the ground across its direction of
+travel, a little ahead of the body (further the faster it goes, so that it slows down in time): if the ground at
+the level of the body drops (10 cm or more, scaled with the size) on both sides within less than `narrowWidth`
+(30 cm by default), the path is narrow and it walks balancing (`balance`, 0–1, changes over `1 / narrowRate` s):
+
+- one foot in front of the other along the middle of the path (`narrowStepWidth` between them); the foot in the
+  air goes slightly round the stance ankle instead of through it, and the body moves towards the middle if it was
+  off it;
+- slower (`narrowMaxSpeed`, 0.6 m/s);
+- with the arms out in an A (`narrowArmAbduction`, `narrowElbowBend`, `narrowArmForward`), almost without
+  swinging (`narrowArmSwing`) and with slow, irregular corrections, raising one and lowering the other
+  (`narrowArmTilt`); the shoulders rise a little with the arms. It looks down at the path (`narrowGaze`).
+
+Standing still on it, the feet stand side by side, as close as they can without overlapping. When the path widens
+or ends, it goes back to walking normally once it gets there. With `narrowWidth: 0` it never balances. A line
+painted on the ground isn't a path: it needs a drop on both sides. It costs one ground query every 0.25 s while
+moving (every second standing still) and, on a narrow path, about 10 each time (it measures both edges).
+
+With [touching surfaces](#touching-surfaces) on, a railing or a wall beside the path is touched as anywhere
+else: the hand rests on it (and slides along it) and, since it is holding on, the other arm comes down almost to
+its normal pose and stops correcting (`narrowTouchRelax`); the feet still go in line.
+
+A `moveTo` route goes along a narrow path only if the destination is on it or it can't go round it (a plank to a
+pedestal, the only wall between two platforms): it costs much more than open ground. It gets on and off it only
+at its ends, never across it (not even a low beam it could step onto from the side), in line with it: if it
+comes at an angle, the route first goes to a point before the end. On the way there it slows down to
+`narrowMaxSpeed`, heads for a closer point on the route and steps sideways towards its line, so it gets on
+straight and along the middle even if it had to turn round just before.
 
 ## Irregular frames
 
