@@ -345,6 +345,36 @@ describe('caminos angostos', () => {
         assert.ok(farthest < 0.095, `el cuerpo llegó a ${(farthest * 100).toFixed(1)} cm del eje (el borde, a 12,5)`);
       });
     }
+
+    // Antes, la ruta añadía el punto de aproximación al camino angosto (para llegar en línea con él) aunque ya estuviera
+    // en él: quedaba detrás, y se giraba, volvía medio metro y se giraba otra vez.
+    for (const [name, heading, z] of [['al pedestal', 0, -6.3], ['a la plataforma', Math.PI, 0]] as const) {
+      it(`desde el medio del muro, clic ${name}, que tiene delante (escala ${scale}): va directo`, () => {
+        const world = onWall(scale);
+        const { human } = world;
+        const dir = Math.sign(z - human.position.z);
+        let z0 = 0;
+        let h0 = 0;
+        let back = 0;
+        let turn = 0;
+        // Primero, de cara a ese lado (girar media vuelta en el muro lleva unos 3 s).
+        simulate(world, 12, [[0, (h) => { h.targetHeading = heading; }], [4, (h) => {
+          h.moveTo(new Vector3(4.75, 1.02, z));
+          z0 = h.position.z;
+          h0 = h.locomotion.body.state.heading;
+        }]], {
+          onFrame: (t) => {
+            if (t < 4) return;
+            back = Math.max(back, (human.position.z - z0) * -dir);
+            const d = Math.abs(human.locomotion.body.state.heading - h0) % (2 * Math.PI);
+            turn = Math.max(turn, Math.min(d, 2 * Math.PI - d));
+          },
+        });
+        assert.ok(back < 0.03, `retrocedió ${(back * 100).toFixed(0)} cm`);
+        assert.ok(turn < Math.PI / 6, `se giró ${((turn * 180) / Math.PI).toFixed(0)}°`);
+        assert.ok(Math.abs(human.position.z - z) < 0.2 && human.position.y > 1, `no llegó (z ${human.position.z.toFixed(2)})`);
+      });
+    }
   }
 
   it('moveTo traza la ruta por un camino angosto si no hay otra: al pedestal por el muro, y de vuelta', () => {

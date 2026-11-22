@@ -521,7 +521,9 @@ export class PathPlanner {
         this.cell(ei, ej, b.y);
         if (this.isNarrow(ei, ej)) entry = n / samples;
       }
-      if (entry < 0) continue;
+      // Ya en él (la ruta sale de una celda del camino): nada. El punto de antes quedaba detrás, y desde el medio de
+      // una viga, con el destino delante, se giraba, volvía unos pasos y se giraba otra vez.
+      if (entry < 0 || (k === 0 && entry === 0)) continue;
       const [di, dj] = ACROSS[this.cell(ei, ej, b.y).across!];
       // La entrada, en el medio del camino (no en el centro de su celda, que puede estar en su borde).
       const middle = this.narrowMiddle(this.x0 + ei * s, this.z0 + ej * s, ei, ej, new Vector3());
