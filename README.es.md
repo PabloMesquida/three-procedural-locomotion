@@ -39,7 +39,7 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
   siga al lado; o a mano con `touch(punto)` ([guía](docs/es/guide.md#tocar-superficies)).
 - **Cuerpo vivo**: contrarrotación de pelvis y hombros, reparto del peso, brazos y dedos como péndulos
   amortiguados, variación natural determinista por semilla (dos personajes nunca se mueven igual).
-- **Estilos y ajustes en dos niveles**: estilos `tired`, `sneaky`, `athletic`, `heavy`; once controles básicos (ritmo, zancada, braceo, intensidad…) que mueven varios parámetros a la vez; y los 116 parámetros uno a uno, ajustables en ejecución y validados.
+- **Estilos y ajustes en dos niveles**: estilos `tired`, `sneaky`, `athletic`, `heavy`; trece controles básicos (ritmo, zancada, braceo, intensidad…) que mueven varios parámetros a la vez; y los 135 parámetros uno a uno, ajustables en ejecución y validados.
 - **Caminar en el sitio**: `shiftOrigin` desplaza al personaje sin cambiar su movimiento (cinta de correr para ajustar viendo el efecto, u origen flotante en mundos grandes).
 - **Cualquier tamaño y proporción**: las longitudes se escalan con el largo de pierna del modelo (de un niño a un gigante) y también las velocidades y el ritmo de los pasos, como en una persona de ese tamaño. Probado con esqueletos de proporciones distintas (piernas, torso, caderas, brazos, pies).
 - **Rigs**: Mixamo y metarig de Rigify incluidos; cualquier otro con un mapping de huesos.

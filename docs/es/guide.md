@@ -165,7 +165,7 @@ parámetros y pásalo como `config` o con `setConfig`.
 
 ## Controles básicos
 
-Para cambiar cómo camina sin entrar en los 116 parámetros: once controles de alto nivel (`basicControls`), cada
+Para cambiar cómo camina sin entrar en los 135 parámetros: trece controles de alto nivel (`basicControls`), cada
 uno mueve a la vez varios parámetros. Son una capa sobre la configuración, como los estilos:
 `applyBasicControls(base, valores)` devuelve los parámetros resultantes para `setConfig`.
 

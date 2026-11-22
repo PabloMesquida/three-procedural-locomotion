@@ -38,8 +38,8 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
   hand while it stays alongside; or by hand with `touch(point)` ([guide](docs/en/guide.md#touching-surfaces)).
 - **A living body**: counter-rotation of pelvis and shoulders, weight shift, arms and fingers as damped
   pendulums, deterministic natural variation per seed (two characters never move the same way).
-- **Styles and tuning on two levels**: `tired`, `sneaky`, `athletic` and `heavy` presets; eleven basic controls
-  (tempo, stride, arm swing, intensity…) that move several parameters at once; and all 116 parameters one by
+- **Styles and tuning on two levels**: `tired`, `sneaky`, `athletic` and `heavy` presets; thirteen basic controls
+  (tempo, stride, arm swing, intensity…) that move several parameters at once; and all 135 parameters one by
   one, adjustable at runtime and validated.
 - **Walking in place**: `shiftOrigin` moves the character without changing its motion (a treadmill to tune
   while watching the effect, or a floating origin in large worlds).

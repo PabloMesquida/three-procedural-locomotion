@@ -165,7 +165,7 @@ parameters and pass it as `config` or with `setConfig`.
 
 ## Basic controls
 
-To change how it walks without going into the 116 parameters: eleven high-level controls (`basicControls`),
+To change how it walks without going into the 135 parameters: thirteen high-level controls (`basicControls`),
 each of which moves several parameters at once. They are a layer on top of the configuration, like the presets:
 `applyBasicControls(base, values)` returns the resulting parameters for `setConfig`.
 
