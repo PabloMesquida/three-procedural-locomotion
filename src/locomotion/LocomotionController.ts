@@ -1823,13 +1823,23 @@ export class LocomotionController {
    * (without raycasts) and with the whole sole: the back of the heel, the toe joint and the tips of the
    * toes (on a step, the toes hit the nosing and the heel the edge behind). The tips of the toes are taken
    * horizontally ahead of the toe joint: the toes bend, so with the heel raised they don't go down with the
-   * foot.
+   * foot. On a step that doesn't change level, only the ground that rises an edge or more above that level counts
+   * (something to step over in between): over the level itself the foot just takes off and lands.
    */
   private stairSwingExtra(foot: FootTarget, base: number): number {
     const roll = this.legs[foot.side].roll;
     const profile = this.stairs.profile;
     const n = CLEARANCE_SAMPLES;
     const walk = 1 - this.gait.blend;
+    // Sin cambiar de nivel (junto a un borde, o al llegar al final de una escalera), sobre el suelo de ese nivel no se
+    // pide holgura: el pie despega de él y se apoya en él. La muestra de justo antes de aterrizar, con el talón bajando
+    // a apoyarse y el arco casi en 0, pedía holgura dividida por 0,05: cada paso subía maxExtraStepHeight.
+    const edge = this.stairs.edgeHeight;
+    const swing = foot.swing;
+    const counts =
+      Math.abs(swing.landing.y - foot.planted.y) < edge
+        ? Math.max(swing.landing.y, foot.planted.y) - this.planner.placement(foot.side).ankleHeight + edge
+        : Number.NEGATIVE_INFINITY;
     const along = this.sampleAxis.subVectors(roll.toeLocal, roll.heelLocal);
     const toes = this.stairs.toeFront - along.length();
     along.normalize();
@@ -1843,7 +1853,7 @@ export class LocomotionController {
       let previousU = Number.NaN;
       let previousY = 0;
       for (let i = 1; i <= n; i++) {
-        evaluateSwing(foot.swing, i / n, base, this.samplePos, this.sampleRot, walk);
+        evaluateSwing(swing, i / n, base, this.samplePos, this.sampleRot, walk);
         const p = this.tmp.copy(points[k]).applyQuaternion(this.sampleRot).add(this.samplePos);
         let u = profile.along(p);
         if (k === 2) {
@@ -1854,8 +1864,9 @@ export class LocomotionController {
         }
         if (!Number.isNaN(previousU)) {
           // La muestra anterior debe librar el suelo entre ella y esta (ningún borde se cuela entre las dos).
-          const deficit = profile.maxHeight(previousU, u) + this.config.toeClearance - previousY;
-          if (deficit > 0) extra = Math.max(extra, deficit / Math.max(swingArc((i - 1) / n, walk), 0.05));
+          const ground = profile.maxHeight(previousU, u);
+          const deficit = ground + this.config.toeClearance - previousY;
+          if (deficit > 0 && ground >= counts) extra = Math.max(extra, deficit / Math.max(swingArc((i - 1) / n, walk), 0.05));
         }
         previousU = u;
         previousY = p.y;

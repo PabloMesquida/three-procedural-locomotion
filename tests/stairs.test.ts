@@ -641,4 +641,43 @@ describe('escaleras', () => {
       assert.ok(tip.z > -START, `la punta del pie ${side} pasó el borde (z ${tip.z.toFixed(2)})`);
     }
   });
+
+  // Antes, los últimos pasos antes de pararse en el borde subían 31–35 cm (maxExtraStepHeight): sin cambiar de nivel,
+  // la muestra de justo antes de apoyar pedía holgura sobre el mismo suelo en que se apoyaba, con el arco casi en 0.
+  for (const scale of [0.896, 1]) {
+    it(`caminando hacia el borde de un pedestal de 1,02 m (escala ${scale}): pasos de altura normal hasta pararse`, () => {
+      const world = createWorld({
+        modelScale: scale,
+        buildTerrain: (terrain) => {
+          const mesh = new Mesh(new BoxGeometry(1.4, 1.02, 1.4), new MeshBasicMaterial());
+          mesh.position.set(4.75, 0.51, -6.3);
+          terrain.add(mesh);
+        },
+      });
+      const { human } = world;
+      world.model.position.set(4.7, 1.02, -5.8);
+      world.model.updateMatrixWorld(true);
+      human.reset();
+      const loco = human.locomotion;
+      let highest = 0;
+      let steps = 0;
+      let prev = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+      simulate(world, 5, [[0, (h) => { h.targetSpeed = 0.6; }]], {
+        onFrame: () => {
+          for (const side of SIDES) {
+            const f = loco.feet[side];
+            if (prev[side] !== 'SWING' && f.phase === 'SWING') {
+              highest = Math.max(highest, f.swing.height);
+              steps++;
+            }
+          }
+          prev = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+        },
+      });
+      assert.ok(steps >= 2, `solo dio ${steps} pasos`);
+      assert.ok(highest < 0.1, `un paso subió ${(highest * 100).toFixed(0)} cm`);
+      assert.ok(human.position.y > 1, 'se cayó del pedestal');
+      assert.equal(human.gaitMode, 'idle');
+    });
+  }
 });
