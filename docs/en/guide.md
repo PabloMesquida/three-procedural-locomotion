@@ -440,10 +440,15 @@ the level of the body drops (10 cm or more, scaled with the size) on both sides 
   swinging (`narrowArmSwing`) and with slow, irregular corrections, raising one and lowering the other
   (`narrowArmTilt`); the shoulders rise a little with the arms. It looks down at the path (`narrowGaze`).
 
+Turned towards one of its sides, or turning round on the spot, it is still on the path: the feet land on it (the
+whole foot, if it fits) and, towards a side it can't step down from (more than `maxStepDown`, like the top of a
+wall), the body stops before the edge, over the path. Towards one it can step down from (a low beam over the
+ground), it steps off.
+
 Standing still on it, the feet stand side by side, as close as they can without overlapping. When the path widens
 or ends, it goes back to walking normally once it gets there. With `narrowWidth: 0` it never balances. A line
 painted on the ground isn't a path: it needs a drop on both sides. It costs one ground query every 0.25 s while
-moving (every second standing still) and, on a narrow path, about 10 each time (it measures both edges).
+moving (every second standing still) and, on a narrow path, about 20 each time (it measures both edges and the direction of the path).
 
 With [touching surfaces](#touching-surfaces) on, a railing or a wall beside the path is touched as anywhere
 else: the hand rests on it (and slides along it) and, since it is holding on, the other arm comes down almost to

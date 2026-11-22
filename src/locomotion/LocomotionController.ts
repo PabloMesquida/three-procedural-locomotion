@@ -276,12 +276,31 @@ const FOOT_WIDTH = 0.5;
 const NARROW_FINGER_CURL = 0.3;
 /** How often the balance corrections of the arms change (≈ times per second). */
 const NARROW_TILT_RATE = 0.6;
+/** On a narrow path, the body is turned off it beyond this angle (cosine; 15°): see probeDirection. */
+const NARROW_TURNED = Math.cos(Math.PI / 12);
+/**
+ * On a narrow path, the sides it can't step down from (looked for FOOT_WIDTH past the edge): going towards one (more
+ * than NARROW_ALONG off the path: sine, 15°), the body stops NARROW_SIDE_ROOM from its edge (× foot length), and closer
+ * to it, it goes back (see narrowRoom).
+ */
+const NARROW_ALONG = Math.sin((15 * Math.PI) / 180);
+const NARROW_SIDE_ROOM = 0.25;
+/**
+ * Stopped facing such a side, it doesn't start again with less room than this (× foot length): each measure of the
+ * path moves its middle a little, and with a few millimetres it took loose steps against the edge.
+ */
+const NARROW_RESTART = 0.1;
 /** Steps that land this close to `standTarget` (× stepLength) land there as planned. */
 const STAND_REACH = 0.5;
 /** …and no further ahead of it or behind it than this (× stepLength): on the path, not past it. */
 const STAND_OVERSHOOT = 0.06;
-/** Balancing, the feet are settled with this much less sideways error (fraction of idleStepThreshold). */
+/**
+ * Balancing, the feet are settled with this much less sideways error (fraction of idleStepThreshold), for the
+ * first NARROW_SETTLE_STEPS steps without moving: then as usual (the middle of the path, measured again and again,
+ * moves a little, and with the tighter limit it kept stepping on the spot).
+ */
 const NARROW_SETTLE = 0.6;
+const NARROW_SETTLE_STEPS = 4;
 const UP = new Vector3(0, 1, 0);
 /** Difference relative to the step length below which two measurements are considered equal. */
 const TIE_TOLERANCE = 1e-9;
@@ -403,6 +422,9 @@ export class LocomotionController {
   private glanceProbe = 0;
   /** Time left until the next look at the path across (s; see NarrowPath). */
   private narrowProbe = 0;
+  /** Steps in a row without moving (recolocating the feet); see NARROW_SETTLE_STEPS. */
+  private stillSteps = 0;
+  private readonly narrowAlong = new Vector3();
   /** How much it is going down stairs (0–1), following the slope (see STAIR_DOWN_FREQUENCY). */
   private stairDescent = 0;
   /** How fast the ground under the body rises (m/s, smoothed; − going down) and the root height last frame. */
@@ -427,6 +449,7 @@ export class LocomotionController {
   private readonly legs: Record<Side, LegRuntime>;
   private readonly qRoot = new Quaternion();
   private readonly tmp = new Vector3();
+  private readonly footAxis = new Vector3();
   private readonly pole = new Vector3();
   private readonly displacement = new Vector3();
   private readonly sampleHit = createGroundHit();
@@ -578,6 +601,7 @@ export class LocomotionController {
     this.narrowPath.reset();
     this.standTarget.x = Number.NaN;
     this.narrowProbe = 0;
+    this.stillSteps = 0;
     this.balance = 0;
     this.balanceTilt = 0;
     this.planner.landingShift.set(0, 0, 0);
@@ -709,6 +733,8 @@ export class LocomotionController {
   update(dt: number): void {
     const { feet, rig } = this;
     this.updateVariation(dt);
+    // Sobre un camino angosto, a su nivel: el suelo es el suyo (ver StairPlanner.level).
+    this.stairs.level = this.onNarrowPath();
     this.stairs.update(dt);
     this.updateStairDescent(dt);
     this.syncPlacementConfig();
@@ -767,6 +793,9 @@ export class LocomotionController {
           this.pivotApplied[event.side] = 0;
           this.landed[event.side] = true;
           foot.steps++;
+          // Sin moverse ni girar: girando en el sitio aún no está recolocando los pies.
+          const still = this.speed < IDLE_SPEED * this.config.walkSpeed && !this.body.isTurning();
+          this.stillSteps = still ? this.stillSteps + 1 : 0;
           // Apoyo según la mayor de la velocidad de ahora y la que habrá al despegar: acelerando a
           // través de la transición, un pie que aterriza caminando pero despegará corriendo no se queda
           // apoyado de más; frenando, tampoco uno colocado para la velocidad de ahora (en ambos casos la
@@ -1071,7 +1100,10 @@ export class LocomotionController {
     const clearance = stairs.toeFront + stairs.heelBack;
     // Desde el suelo bajo la raíz (en una escalera, la raíz va por una línea entre los escalones).
     const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
-    const ahead = Math.min(stairs.wallAhead(s.position, s.forward, clearance, ground), stairs.wallAhead(s.position, turning, clearance, ground));
+    // En un camino angosto, también sus costados que no se pueden bajar: girando hacia uno, aún no lo conocía como
+    // borde, iba hasta él y los pasos (por delante del cuerpo) caían fuera.
+    const side = Math.min(this.narrowRoom(s.forward), this.narrowRoom(turning));
+    const ahead = Math.min(stairs.wallAhead(s.position, s.forward, clearance, ground), stairs.wallAhead(s.position, turning, clearance, ground), side);
     if (Number.isFinite(ahead)) {
       // Con la mitad de la deceleración: la frenada tiene una rampa (speedEasing) y se pasaba.
       const room = Math.max(ahead, 0);
@@ -1161,8 +1193,10 @@ export class LocomotionController {
     const maxAngle = (c.idleTurnThreshold * Math.PI) / 180;
     const forward = this.body.state.forward;
     const maxStagger = IDLE_STAGGER * c.stepLength;
-    // Haciendo equilibrio, los pies se recolocan con menos desvío de lado: en un camino angosto, 2 cm sobran.
-    const maxAcross = c.idleStepThreshold * (1 - NARROW_SETTLE * smoothstep(this.balance));
+    // Haciendo equilibrio, los pies se recolocan con menos desvío de lado: en un camino angosto, 2 cm sobran. Solo los
+    // primeros pasos sin moverse (ver NARROW_SETTLE_STEPS).
+    const tight = this.stillSteps < NARROW_SETTLE_STEPS ? NARROW_SETTLE * smoothstep(this.balance) : 0;
+    const maxAcross = c.idleStepThreshold * (1 - tight);
     const onPath = this.onNarrowPath();
     let along = 0;
     for (const side of SIDES) {
@@ -1171,6 +1205,7 @@ export class LocomotionController {
       let onTread = false;
       const e = this.planner.settleError(this.feet[side], this.settleOffset, (target, rotation) => {
         if (!onPath) onTread = this.planStairLanding(side, this.feet[side].planted, 0, target, rotation, false);
+        else this.keepOnPath(target, 0);
       });
       const ahead = this.settleOffset.dot(forward);
       const across = Math.sqrt(Math.max(e.distance * e.distance - ahead * ahead, 0));
@@ -1305,7 +1340,13 @@ export class LocomotionController {
         this.tmp.copy(swing.landing).addScaledVector(f, -past);
         this.planner.placeLanding(foot.side, this.tmp, footYaw, swing.landing, swing.landingRotation);
       }
-    } else if (!this.onNarrowPath()) this.planStairLanding(foot.side, swing.start, footYaw, swing.landing, swing.landingRotation);
+    } else if (this.onNarrowPath()) {
+      // Sobre él, con el pie entero dentro: girando hacia un costado, el paso (por delante del cuerpo) caía fuera, en el
+      // aire. Bajando de él por un costado (una viga baja), como un escalón: al suelo de al lado.
+      const on = this.keepOnPath(swing.landing, footYaw);
+      if (on === 'moved') this.planner.placeLanding(foot.side, swing.landing, footYaw, swing.landing, swing.landingRotation);
+      else if (on === 'off') this.planStairLanding(foot.side, swing.start, footYaw, swing.landing, swing.landingRotation);
+    } else this.planStairLanding(foot.side, swing.start, footYaw, swing.landing, swing.landingRotation);
     // Subiendo o bajando un escalón, el pie apoya plano (en el mocap de escaleras, ±3°), y bajando, avanza
     // antes de bajar (ver evaluateSwing).
     const level = this.stairs.active ? swing.landing.y - foot.planted.y : 0;
@@ -1325,11 +1366,92 @@ export class LocomotionController {
     strikeRoll(this.legs[foot.side].roll, swing.end, swing.endRotation, swing.heelStrike);
   }
 
+  /**
+   * Direction the narrow path is looked at across: the one of travel or, on a narrow path with the body turned more
+   * than NARROW_TURNED off it, the path itself (towards the side the body faces). Turning on the spot on it, across
+   * the body was along the path: it stopped seeing it and, still on it, stopped balancing; walking at an angle to it,
+   * the point ahead was off it and it took it for its end. Going along it, the direction of travel (its measure of the
+   * path doesn't feed back on itself).
+   */
+  private probeDirection(): Vector3 {
+    const f = this.body.state.forward;
+    if (!this.narrowPath.narrow) return f;
+    const a = this.narrowPath.across;
+    const along = this.narrowAlong.set(a.z, 0, -a.x);
+    if (along.dot(f) < 0) along.negate();
+    return along.dot(f) > NARROW_TURNED ? f : along;
+  }
+
   /** Balancing on a narrow path, with the body already at its level (not stepping onto it). */
   private onNarrowPath(): boolean {
     const s = this.body.state;
     if (this.balance < 0.5 || !this.narrowPath.narrow || !Number.isFinite(s.groundHeight)) return false;
     return Math.abs(s.groundHeight - this.narrowPath.center.y) < (NARROW_DROP / 2) * this.config.stepLength;
+  }
+
+  /** On side `side` of the narrow path (+1 towards `across`, −1 against it), it can't step down (see NarrowPath). */
+  private narrowDropsAway(side: number): boolean {
+    const foot = this.stairs.toeFront + this.stairs.heelBack;
+    return this.narrowPath.dropsAway(side, this.config.maxStepDown, FOOT_WIDTH * foot, this.config.groundProbeHeight);
+  }
+
+  /** Farthest the body goes from the middle of the narrow path towards a side it can't step down from (m). */
+  private narrowLine(): number {
+    const foot = this.stairs.toeFront + this.stairs.heelBack;
+    return Math.max(this.narrowPath.width / 2 - NARROW_SIDE_ROOM * foot, 0);
+  }
+
+  /**
+   * On a narrow path, how far the body can go in `direction` (horizontal, unit) before it is further than
+   * `narrowLine` from the middle, towards a side it can't step down from; Infinity going along the path (within
+   * NARROW_ALONG), towards a side it can step down from (off a low beam, to the ground beside it) or off the path.
+   */
+  private narrowRoom(direction: Vector3): number {
+    if (!this.onNarrowPath()) return Number.POSITIVE_INFINITY;
+    const path = this.narrowPath;
+    const c = direction.x * path.across.x + direction.z * path.across.z;
+    if (Math.abs(c) < NARROW_ALONG) return Number.POSITIVE_INFINITY;
+    const side = Math.sign(c);
+    if (!this.narrowDropsAway(side)) return Number.POSITIVE_INFINITY;
+    const s = this.body.state;
+    const room = this.narrowLine() + side * path.offset(s.position);
+    const foot = this.stairs.toeFront + this.stairs.heelBack;
+    if (s.speed < IDLE_SPEED * this.config.walkSpeed && room < NARROW_RESTART * foot) return 0;
+    return room / Math.abs(c);
+  }
+
+  /**
+   * On a narrow path: moves `target` (where a foot lands, turned `yaw` from the body) across the path so that the
+   * whole foot is on it, from the back of the heel to the toe joint; if it doesn't fit (turned across a beam), centred
+   * on it. Never closer to the middle than half its width sideways: standing, the two feet together don't overlap
+   * (on a path narrower than them, they stick out). Not towards a side it can step down from: stepping off a low beam
+   * sideways, held on it, the foot was left behind and then took a very long step. Returns 'on' (it was on it),
+   * 'moved' or 'off' (off it towards a side it can step down from; as it was).
+   */
+  private keepOnPath(target: Vector3, yaw: number): 'on' | 'moved' | 'off' {
+    const path = this.narrowPath;
+    const a = path.across;
+    const f = this.footAxis.copy(this.body.state.forward).applyAxisAngle(UP, yaw);
+    // El pie, a lo ancho del camino: su largo (del talón a la articulación de los dedos) y su ancho, proyectados.
+    const fa = f.x * a.x + f.z * a.z;
+    const sideways = (FOOT_WIDTH * (this.stairs.toeFront + this.stairs.heelBack) * Math.sqrt(Math.max(1 - fa * fa, 0))) / 2;
+    const back = -this.stairs.heelBack * fa;
+    const front = this.stairs.toeFront * fa;
+    const lo = Math.min(back, front) - sideways;
+    const hi = Math.max(back, front) + sideways;
+    // Dónde puede ir el tobillo, respecto del medio (hacia `across`).
+    const edge = path.width / 2;
+    let min = -edge - lo;
+    let max = edge - hi;
+    if (min > max) min = max = (min + max) / 2;
+    min = Math.min(min, -sideways);
+    max = Math.max(max, sideways);
+    const lateral = -path.offset(target);
+    const move = clamp(lateral, min, max) - lateral;
+    if (move === 0) return 'on';
+    if (!this.narrowDropsAway(-Math.sign(move))) return 'off';
+    target.addScaledVector(a, move);
+    return 'moved';
   }
 
   /**
@@ -1596,9 +1718,10 @@ export class LocomotionController {
         const moving = this.gait.mode !== 'idle' || s.speed > IDLE_SPEED * cfg.walkSpeed;
         this.narrowProbe = moving ? NARROW_PROBE_INTERVAL : NARROW_IDLE_INTERVAL;
         const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
+        const along = this.probeDirection();
         this.narrowPath.probe({
-          forward: s.forward,
-          point: this.tmp.copy(s.position).addScaledVector(s.forward, Math.max(NARROW_AHEAD * cfg.stepLength, NARROW_LOOKAHEAD * s.speed)),
+          forward: along,
+          point: this.tmp.copy(s.position).addScaledVector(along, Math.max(NARROW_AHEAD * cfg.stepLength, NARROW_LOOKAHEAD * s.speed)),
           ground,
           width: cfg.narrowWidth,
           drop: NARROW_DROP * cfg.stepLength,
@@ -1609,7 +1732,7 @@ export class LocomotionController {
       }
     }
     // Hasta pasar por donde acaba el camino (la sonda mira por delante del cuerpo).
-    const target = this.narrowPath.onPath(s.position, s.forward) ? 1 : 0;
+    const target = this.narrowPath.onPath(s.position, this.probeDirection()) ? 1 : 0;
     const step = cfg.narrowRate * dt;
     this.balance += clamp(target - this.balance, -step, step);
     const kb = smoothstep(this.balance);
@@ -1644,6 +1767,18 @@ export class LocomotionController {
     const moving = clamp(s.speed / this.config.narrowMaxSpeed, 0, 1);
     const drift = offset * kb * moving * (1 - Math.exp(-NARROW_CENTERING * dt));
     this.body.drift.addScaledVector(right, drift);
+    // Hacia un costado que no se puede bajar, el cuerpo no pasa de narrowLine (el freno, ver narrowRoom, se pasaba:
+    // la frenada tiene una rampa y el sitio es de centímetros), y más allá (llegó girando, o el camino se midió de
+    // nuevo), vuelve, también parado o girando en el sitio: con el cuerpo sobre el vacío, las piernas iban en diagonal.
+    if (!this.onNarrowPath()) return;
+    const now = -this.narrowPath.offset(s.position);
+    const next = now + this.body.drift.dot(right) + s.velocity.dot(right) * dt;
+    const side = Math.sign(next);
+    const line = this.narrowLine();
+    if (Math.abs(next) <= line || !this.narrowDropsAway(side)) return;
+    const away = Math.abs(now);
+    const limit = away > line ? away - (away - line) * (1 - Math.exp(-NARROW_CENTERING * dt)) : line;
+    if (Math.abs(next) > limit) this.body.drift.addScaledVector(right, -side * (Math.abs(next) - limit));
   }
 
   /**
@@ -1656,7 +1791,10 @@ export class LocomotionController {
    */
   private swingHeight(foot: FootTarget): number {
     const base = this.gait.mix(this.config.stepHeight, this.config.runStepHeight);
-    if (this.stairs.active) return base + Math.min(this.stairSwingExtra(foot, base), this.config.maxExtraStepHeight);
+    // Haciendo equilibrio y sin cambiar de altura, como en terreno normal: mirando hacia el costado de un camino angosto,
+    // la escalera veía en él un escalón y cada paso subía la rodilla al máximo (maxExtraStepHeight).
+    const level = (this.balance > 0.5 || this.narrowPath.narrow) && Math.abs(foot.swing.landing.y - foot.planted.y) < this.stairs.edgeHeight;
+    if (this.stairs.active && !level) return base + Math.min(this.stairSwingExtra(foot, base), this.config.maxExtraStepHeight);
     const roll = this.legs[foot.side].roll;
     const n = CLEARANCE_SAMPLES;
     const toeY: number[] = [];

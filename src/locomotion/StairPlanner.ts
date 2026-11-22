@@ -76,6 +76,13 @@ const FAR_STRIDES = 1.25;
  * leaves from it) and it goes on.
  */
 const GAP_PROBE = 0.3;
+/**
+ * On a narrow path, going almost along it (cosine with the normal of its side below this: within 15° of the path) it
+ * doesn't brake for its sides; going towards one, it stops this far from its edge (× foot length): the feet, together
+ * under the body, stay on it.
+ */
+const NARROW_ALONG_COS = Math.sin((15 * Math.PI) / 180);
+const NARROW_EDGE_ROOM = 0.25;
 
 /**
  * Stairs and steps, detected from the geometry (nothing has to be marked):
@@ -98,6 +105,12 @@ export class StairPlanner {
   active = false;
   /** How much the root follows the line over the treads (0–1). */
   blend = 0;
+  /**
+   * The ground under the body is level whatever the profile says: the root leaves the line over the treads (`blend`
+   * goes to 0). Balancing on a low narrow path, turned on it, the profile across it saw its sides as steps and the root
+   * went down the line between the path and the ground beside it (with the knees bent, 20 cm lower).
+   */
+  level = false;
   /** Depth of the treads of the stairs (m; 0 = no flight of stairs, a single step or none). */
   run = 0;
   /**
@@ -178,7 +191,7 @@ export class StairPlanner {
 
   update(dt: number): void {
     const step = dt / BLEND_TIME;
-    this.blend = Math.min(Math.max(this.blend + (this.active ? step : -step), 0), 1);
+    this.blend = Math.min(Math.max(this.blend + (this.active && !this.level ? step : -step), 0), 1);
   }
 
   /** Moves the stored world positions (see `LocomotionController.shift`). */
@@ -239,6 +252,8 @@ export class StairPlanner {
       const perpendicular = (this.wall.x - position.x) * n.x + (this.wall.z - position.z) * n.z;
       if (perpendicular >= clearance || perpendicular < -this.heelBack || !this.alongWall(position.x, position.z)) continue;
       if (this.passable(this.wallBeyond - ground)) continue;
+      // Ni del costado de un camino angosto: lo apartaba hacia el otro borde, y volvía a querer andar.
+      if (this.narrowAt(position.x + n.x * perpendicular, position.z + n.z * perpendicular, ground)) continue;
       out.x -= n.x * (clearance - perpendicular);
       out.z -= n.z * (clearance - perpendicular);
     }
@@ -261,10 +276,14 @@ export class StairPlanner {
     if (!this.alongWall(x, z)) return Number.POSITIVE_INFINITY;
     // Por un hueco del borde (sale de él una viga o un muro angosto), tampoco.
     if (this.gapAt(x, z, ground)) return Number.POSITIVE_INFINITY;
-    // El costado de un camino angosto (cae también al otro lado): va por él más cerca del borde que `clearance`;
-    // frena solo si se acerca al borde, no por ir junto a él.
-    const need = clearance > perpendicular && this.narrowAt(x, z, ground) ? Math.max(perpendicular, 0) / 2 : clearance;
-    return (perpendicular - need) / c;
+    // El costado de un camino angosto (cae también al otro lado): va por él más cerca del borde que `clearance`. Casi
+    // a lo largo de él (NARROW_ALONG_COS), no frena; yendo hacia él, se para a NARROW_EDGE_ROOM del borde (y se queda
+    // parado: antes se acercaba sin llegar a parar y daba pasos en el sitio contra el borde).
+    if (clearance > perpendicular && this.narrowAt(x, z, ground)) {
+      if (c < NARROW_ALONG_COS) return Number.POSITIVE_INFINITY;
+      return (perpendicular - Math.min(clearance, NARROW_EDGE_ROOM * this.footLength)) / c;
+    }
+    return (perpendicular - clearance) / c;
   }
 
   /**

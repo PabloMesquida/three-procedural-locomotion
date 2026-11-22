@@ -174,6 +174,20 @@ describe('caminos angostos', () => {
     assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001);
   });
 
+  // Antes, en una viga baja (se baja de un paso a los lados), girando en ella la escalera veía en sus costados escalones
+  // y la raíz bajaba por la línea entre la viga y el suelo: hasta 22 cm más abajo, con las rodillas dobladas.
+  it('en una viga baja, después de girar en ella, la raíz sigue a su altura', () => {
+    const low = 0.3;
+    const world = worldOn((terrain) => block(terrain, BEAM_WIDTH, low, 10, 0, -4), low);
+    const { human } = world;
+    let lowest = Number.POSITIVE_INFINITY;
+    simulate(world, 10, [[0, (h) => { h.targetHeading = Math.PI; }], [3, (h) => { h.targetHeading = 0; }], [6, (h) => { h.targetSpeed = 0.6; }]], {
+      onFrame: () => { lowest = Math.min(lowest, human.position.y); },
+    });
+    assert.ok(human.position.z < -1.5, 'no avanzó por la viga');
+    assert.ok(lowest > low - 0.01, `la raíz bajó a ${lowest.toFixed(3)} m (la viga, a ${low})`);
+  });
+
   it('en suelo ancho, junto a un borde o con narrowWidth 0, no hace equilibrio', () => {
     // Suelo plano.
     const flat = createWorld();
@@ -221,6 +235,116 @@ describe('caminos angostos', () => {
       assert.ok(human.position.distanceTo(pedestal) < 0.15, `no llegó: ${human.position.toArray().map((v) => v.toFixed(2))}`);
       assert.ok(longest < 0.2, `se paró ${longest.toFixed(2)} s por el camino`);
     });
+  }
+
+  /** Plataforma, muro de 25 cm y pedestal a 1,02 m; el personaje (escala `scale`) de pie en el medio del muro. */
+  const onWall = (scale: number): World => {
+    const world = createWorld({
+      modelScale: scale,
+      buildTerrain: (terrain) => {
+        block(terrain, 3.5, 1.02, 6, 4.75, 1);
+        block(terrain, 0.25, 1.02, 3.6, 4.75, -3.8);
+        block(terrain, 1.4, 1.02, 1.4, 4.75, -6.3);
+      },
+    });
+    world.model.position.set(4.75, 1.02, -3.2);
+    world.model.updateMatrixWorld(true);
+    world.human.reset();
+    return world;
+  };
+
+  // Antes, girando sobre el muro (mirando a su costado) dejaba de verlo como camino angosto: sin equilibrio, la escalera
+  // veía en él un escalón y cada paso subía la rodilla al máximo (31–35 cm); y frente al borde no llegaba a pararse y
+  // daba pasos en el sitio hasta caerse.
+  for (const scale of [0.896, 1]) {
+    it(`sobre el muro, media vuelta en el sitio (escala ${scale}): pasos normales y sin dejar el equilibrio`, () => {
+      const world = onWall(scale);
+      const { human } = world;
+      const loco = human.locomotion;
+      let highest = 0;
+      let minBalance = 1;
+      let fell = false;
+      let prev = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+      simulate(world, 8, [[0, (h) => { h.targetHeading = Math.PI; }], [3, (h) => { h.targetSpeed = 0.6; }]], {
+        onFrame: (t) => {
+          const p = human.position;
+          if (p.y < 0.9) fell = true;
+          if (p.z < -2.3 && p.z > -5.3 && t > 1) minBalance = Math.min(minBalance, human.balance);
+          for (const side of SIDES) {
+            const f = loco.feet[side];
+            if (prev[side] !== 'SWING' && f.phase === 'SWING' && p.z < -2.3) highest = Math.max(highest, f.swing.height);
+          }
+          prev = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+        },
+      });
+      assert.ok(!fell, 'se cayó del muro');
+      assert.ok(highest < 0.1, `un paso subió ${(highest * 100).toFixed(0)} cm`);
+      assert.ok(minBalance > 0.9, `dejó el equilibrio (${minBalance.toFixed(2)}) sobre el muro`);
+      assert.ok(human.position.z > -1, 'no volvió a la plataforma');
+    });
+
+    for (const degrees of [30, 90]) {
+      it(`sobre el muro, caminando con el rumbo ${degrees}° hacia el costado (escala ${scale}): se para en el borde y no se cae`, () => {
+        const world = onWall(scale);
+        const { human } = world;
+        const loco = human.locomotion;
+        let fell = false;
+        let late = 0;
+        let highest = 0;
+        let prev = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+        simulate(world, 9, [[0, (h) => { h.targetSpeed = 0.6; }], [1.5, (h) => { h.targetHeading = (degrees * Math.PI) / 180; }]], {
+          onFrame: (t) => {
+            if (human.position.y < 0.9) fell = true;
+            for (const side of SIDES) {
+              const f = loco.feet[side];
+              if (prev[side] !== 'SWING' && f.phase === 'SWING') {
+                highest = Math.max(highest, f.swing.height);
+                if (t > 6) late++;
+              }
+            }
+            prev = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+          },
+        });
+        assert.ok(!fell, 'se cayó del muro');
+        assert.equal(late, 0, `siguió dando ${late} pasos contra el borde`);
+        assert.ok(highest < 0.1, `un paso subió ${(highest * 100).toFixed(0)} cm`);
+        for (const side of SIDES) assert.ok(loco.feet[side].planted.y > 0.9, `el pie ${side} quedó fuera del muro`);
+      });
+    }
+
+    // Antes, girando sobre el muro mientras caminaba, los pasos (por delante del cuerpo, que miraba al costado) caían
+    // fuera de él, en el aire, y el cuerpo llegaba al borde: lo frenaba solo el borde, como de una tarima.
+    for (const [name, a, b] of [['−90° y de vuelta a lo largo', -90, 0], ['90° y media vuelta', 90, 180], ['30° y −30°', 30, -30]] as const) {
+      it(`sobre el muro, girando ${name} mientras camina (escala ${scale}): los pies en él y el cuerpo lejos del borde`, () => {
+        const world = onWall(scale);
+        const { human } = world;
+        const loco = human.locomotion;
+        const deg = Math.PI / 180;
+        let fell = false;
+        let farthest = 0;
+        const off: string[] = [];
+        let prev = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+        simulate(world, 11, [[0, (h) => { h.targetSpeed = 0.6; }], [1.5, (h) => { h.targetHeading = a * deg; }], [5, (h) => { h.targetHeading = b * deg; }], [9, (h) => { h.targetSpeed = 0; }]], {
+          onFrame: (t) => {
+            const p = human.position;
+            if (p.y < 0.9) fell = true;
+            // Sobre el muro (sin sus extremos, junto a la plataforma y al pedestal).
+            if (p.z < -2.1 && p.z > -5.5) farthest = Math.max(farthest, Math.abs(p.x - 4.75));
+            for (const side of SIDES) {
+              const f = loco.feet[side];
+              if (prev[side] === 'SWING' && f.phase !== 'SWING') {
+                const q = f.planted;
+                if (q.z < -2.05 && q.z > -5.55 && Math.abs(q.x - 4.75) > 0.125) off.push(`${t.toFixed(1)} s, ${side}: ${((Math.abs(q.x - 4.75) - 0.125) * 100).toFixed(1)} cm`);
+              }
+            }
+            prev = { left: loco.feet.left.phase, right: loco.feet.right.phase };
+          },
+        });
+        assert.ok(!fell, 'se cayó del muro');
+        assert.deepEqual(off, [], 'pasos fuera del muro');
+        assert.ok(farthest < 0.095, `el cuerpo llegó a ${(farthest * 100).toFixed(1)} cm del eje (el borde, a 12,5)`);
+      });
+    }
   }
 
   it('moveTo traza la ruta por un camino angosto si no hay otra: al pedestal por el muro, y de vuelta', () => {

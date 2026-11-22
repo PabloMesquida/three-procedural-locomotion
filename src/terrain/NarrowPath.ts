@@ -8,15 +8,16 @@ const UP = new Vector3(0, 1, 0);
  * path between such drops, narrower than `narrowWidth`, is narrow.
  */
 export const NARROW_DROP = 0.125;
-/** Bisection steps to find each edge (with `narrowWidth` 0.3 m, to ≈ 1 cm). */
-const EDGE_STEPS = 4;
+/** Bisection steps to find each edge (with `narrowWidth` 0.3 m, to ≈ 0.5 cm). */
+const EDGE_STEPS = 5;
 /**
- * The direction of the path: it finds the same edge again this far behind the probe (m), towards the body, and
- * the path runs along the line between both. It is used only if it is more than ALONG_SLANT (cosine) off the travel:
- * walking along the path, the direction of travel is more precise than two edges a step apart.
+ * The direction of the path: it finds the same edge again this far behind the probe (m), towards the body (with one
+ * more bisection step: it starts from the whole width), and the path runs along the line between both (to ≈ 1°). Less
+ * than ALONG_SLANT (cosine) off the travel, it is the travel: walking straight along it, without the noise of the
+ * measure. With more (it was 10°), turning on the path the error stayed: the next probes look along it.
  */
 const ALONG_PROBE = 0.25;
-const ALONG_SLANT = Math.cos((10 * Math.PI) / 180);
+const ALONG_SLANT = Math.cos((3 * Math.PI) / 180);
 
 /** Where and how it looks for the edges of the path (see NarrowPath.probe). */
 export interface NarrowProbe {
@@ -76,6 +77,8 @@ export class NarrowPath {
   private readonly base = new Vector3();
   /** Side the next probe looks at first (+1 right, −1 left). */
   private side = 1;
+  /** `dropsAway` of each side (−1, +1 of `across`) since the path was last measured: 1 yes, 0 no, NaN not looked. */
+  private readonly away = [Number.NaN, Number.NaN];
 
   constructor(detector: GroundDetector) {
     this.detector = detector;
@@ -87,6 +90,7 @@ export class NarrowPath {
     this.width = Number.POSITIVE_INFINITY;
     this.end.x = Number.NaN;
     this.side = 1;
+    this.away[0] = this.away[1] = Number.NaN;
   }
 
   /** Moves the stored world positions (see `LocomotionController.shift`). */
@@ -113,7 +117,7 @@ export class NarrowPath {
       return this.dropAt(probe, right, x);
     };
     this.base.copy(probe.point);
-    const s = this.side;
+    let s = this.side;
     this.side = -s;
     const half = probe.width / 2;
     this.level = probe.ground;
@@ -123,13 +127,19 @@ export class NarrowPath {
       origin.y = probe.ground + probe.rayHeight;
       if (this.detector.castDown(origin, 2 * probe.rayHeight, this.hit)) this.level = this.hit.point.y;
     }
-    // Around the line of travel or, on a narrow path, around its centre (the body may go off it a little).
-    const c = this.narrow ? this.offset(probe.point) / Math.max(right.dot(this.across), 0.5) : 0;
+    // Around the line of travel or, on a narrow path, around its centre (the body may go off it a little). Looking
+    // along it the other way (turning round on it), `right` is against `across`: the centre, on the other side.
+    const d = right.dot(this.across);
+    const c = this.narrow ? this.offset(probe.point) / (d < 0 ? Math.min(d, -0.5) : Math.max(d, 0.5)) : 0;
     if (!drops(c + s * half)) {
       // Ground at half the width on this side: if the path were narrow, the other side would drop before half
-      // the width (the next probe looks there first).
-      if (this.narrow) this.setWide(probe.point);
-      return rays;
+      // the width (the next probe looks there first). On a narrow path, unless the other side drops: its centre,
+      // measured further back, may be a little off, and on a path almost as wide as `width` the ray fell on its edge.
+      if (!this.narrow || !drops(c - s * half)) {
+        if (this.narrow) this.setWide(probe.point);
+        return rays;
+      }
+      s = -s;
     }
     // Without ground in the middle (the end of the path ahead, a gap), it can't tell: as it was.
     if (drops(c)) return rays;
@@ -147,7 +157,25 @@ export class NarrowPath {
     this.end.x = Number.NaN;
     // Medido en un corte oblicuo, el ancho de verdad es menor.
     this.width = Math.abs(edge - other) * Math.abs(right.dot(this.across));
+    this.away[0] = this.away[1] = Number.NaN;
     return rays;
+  }
+
+  /**
+   * On side `side` of the path (+1 towards `across`, −1 against it), `beyond` m past its edge, the ground is more
+   * than `maxDown` below the path, or missing: it can't step down there. One raycast per side each time the path is
+   * measured (`rayHeight`: from how high above the path).
+   */
+  dropsAway(side: number, maxDown: number, beyond: number, rayHeight: number): boolean {
+    const k = side > 0 ? 1 : 0;
+    if (Number.isNaN(this.away[k])) {
+      const reach = (side > 0 ? 1 : -1) * (this.width / 2 + beyond);
+      const origin = this.origin.copy(this.center).addScaledVector(this.across, reach);
+      origin.y = this.center.y + rayHeight;
+      const hit = this.detector.castDown(origin, rayHeight + maxDown, this.hit);
+      this.away[k] = !hit || this.hit.point.y < this.center.y - maxDown ? 1 : 0;
+    }
+    return this.away[k] === 1;
   }
 
   /**
@@ -170,7 +198,7 @@ export class NarrowPath {
       this.base.copy(probe.point);
       return rays;
     }
-    const behind = this.edge(middle, outside, drops);
+    const behind = this.edge(middle, outside, drops, EDGE_STEPS + 1);
     this.base.copy(probe.point);
     // El borde va de (−ALONG_PROBE, behind) a (0, edge) en (adelante, derecha).
     const ahead = ALONG_PROBE;
@@ -198,8 +226,8 @@ export class NarrowPath {
   }
 
   /** Edge between `inside` (ground) and `outside` (drop), lateral offsets (m), by bisection. */
-  private edge(inside: number, outside: number, drops: (x: number) => boolean): number {
-    for (let i = 0; i < EDGE_STEPS; i++) {
+  private edge(inside: number, outside: number, drops: (x: number) => boolean, steps = EDGE_STEPS): number {
+    for (let i = 0; i < steps; i++) {
       const mid = (inside + outside) / 2;
       if (drops(mid)) outside = mid;
       else inside = mid;

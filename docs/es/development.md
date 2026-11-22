@@ -150,7 +150,7 @@ referencias exactas lo comprueban.
 
 Raycasts por personaje: 1 por frame (sonda de la raíz, que además detecta cambios del suelo bajo el cuerpo) y
 ~14 al empezar cada paso (aterrizaje: talón y punta; altura del arco: 12 muestras de la punta), más 1 cada 0,25 s
-buscando caminos angostos (cada 1 s parado; ~10 en un camino angosto, ver `NarrowPath`). Parado, la
+buscando caminos angostos (cada 1 s parado; ~20 en un camino angosto, ver `NarrowPath`). Parado, la
 comprobación de si los pies están recolocados (4 raycasts) se reutiliza mientras la matriz de la raíz no cambie
 y se repite cada `IDLE_RECHECK_TIME` (0,25 s) para notar cambios de configuración o del terreno bajo los pies.
 `tests/raycasts.test.ts` fija el presupuesto (parado ≤ 1,3/frame, caminando ≤ 1,55, corriendo ≤ 1,82).

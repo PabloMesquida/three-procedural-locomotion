@@ -446,10 +446,15 @@ defecto), el camino es angosto y camina haciendo equilibrio (`balance`, 0–1, c
   balanceo (`narrowArmSwing`) y con correcciones lentas e irregulares, subiendo uno y bajando el otro
   (`narrowArmTilt`); los hombros suben un poco con los brazos. Mira hacia abajo, al camino (`narrowGaze`).
 
+Girado hacia uno de sus costados, o dando la vuelta en el sitio, sigue en el camino: los pies se apoyan en él (el
+pie entero, si cabe) y, hacia un costado que no puede bajar (más de `maxStepDown`, como lo alto de un muro), el
+cuerpo se para antes del borde, sobre el camino. Hacia uno que sí puede bajar (una viga baja sobre el suelo), baja
+de él.
+
 Parado sobre él, los pies quedan uno al lado del otro, lo más juntos que pueden sin superponerse. Cuando el camino
 se ensancha o se acaba, vuelve a caminar normal al llegar ahí. Con `narrowWidth: 0` nunca hace equilibrio. Una
 línea pintada en el suelo no es un camino: hace falta un desnivel a los dos lados. Cuesta una consulta al suelo
-cada 0,25 s en marcha (cada segundo parado) y, en un camino angosto, unas 10 cada vez (mide los dos bordes).
+cada 0,25 s en marcha (cada segundo parado) y, en un camino angosto, unas 20 cada vez (mide los dos bordes y la dirección del camino).
 
 Con [tocar superficies](#tocar-superficies) activado, una baranda o una pared junto al camino se tocan como en
 cualquier otro sitio: la mano se apoya en ella (y se desliza) y, como ya se sostiene, el otro brazo baja casi a
