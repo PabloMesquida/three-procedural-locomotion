@@ -10,8 +10,10 @@ import { worldPosition, worldQuaternion } from '../core/pose.ts';
 import { LegIK } from '../ik/LegIK.ts';
 import type { TwoBoneIKResult } from '../ik/TwoBoneIK.ts';
 import type { HumanRig, Side } from '../rig/HumanRig.ts';
+import { backBands, measureBack } from '../rig/measureBack.ts';
 import { measureFeet } from '../rig/measureFeet.ts';
 import type { Colliders } from '../terrain/Colliders.ts';
+import { Ledge, LEDGE_WALL } from '../terrain/Ledge.ts';
 import { NARROW_DROP, NarrowPath } from '../terrain/NarrowPath.ts';
 import { defaultFootPlacementConfig, FootPlacement, type FootPlacementConfig } from '../terrain/FootPlacement.ts';
 import { createGroundHit, type GroundDetector } from '../terrain/GroundDetector.ts';
@@ -301,6 +303,51 @@ const STAND_OVERSHOOT = 0.06;
  */
 const NARROW_SETTLE = 0.6;
 const NARROW_SETTLE_STEPS = 4;
+/**
+ * Along a ledge: fewest steps per second (short, quick steps), fraction of the cycle with each foot on the ground (long
+ * double support: the weight goes from one foot to the other slowly), how much more the body goes over the stance
+ * foot (× lateralShift), the swing height (× stepHeight) and how much the foot rolls (heel strike and lift, × theirs):
+ * it barely lifts the feet.
+ */
+const LEDGE_STEP_FREQUENCY = 2.2;
+const LEDGE_DUTY = 0.72;
+const LEDGE_LATERAL_SHIFT = 1.8;
+const LEDGE_STEP_HEIGHT = 0.6;
+const LEDGE_ROLL = 0.15;
+/**
+ * It looks for the wall behind the body up to this far (× stepLength), behind the hips and this far to each side
+ * (× stepLength; the back is ~30 cm wide: it sees a bump in the wall before the hips get to it, and keeps off it until
+ * the whole back has passed it), and moves the body towards the distance at which its back touches it this fast (1/s).
+ */
+const LEDGE_WALL_REACH = 0.8;
+const BACK_HALF_WIDTH = 0.18;
+const LEDGE_CENTERING = 8;
+/**
+ * Against an irregular wall, how much the trunk leans (back or forward) to keep both the hips and the shoulder
+ * blades on it (rad, at most), and how fast it follows the wall (s).
+ */
+const LEDGE_MAX_LEAN = 10 * DEG;
+const LEDGE_LEAN_TIME = 0.2;
+/** …and how far the hips go back to touch a wall that the chest touches first (× stepLength, at most). */
+const LEDGE_MAX_HIP_BACK = 0.12;
+/**
+ * Asked to go in a direction less than this (cosine; 70°) along the ledge (into the wall or towards the drop), it
+ * doesn't move.
+ */
+const LEDGE_MIN_ALONG = Math.cos((70 * Math.PI) / 180);
+/** If the ledge turns more than this (cosine; 20°), the body turns with it; less, it keeps facing the same way. */
+const LEDGE_REFACE = Math.cos((20 * Math.PI) / 180);
+/** Along a ledge, the head looks this much down (rad), and the fingers are open (see `fingerCurl`). */
+const LEDGE_GAZE_DOWN = 8 * DEG;
+const LEDGE_FINGER_CURL = 0.45;
+/** The ankle at least this far from the wall, from the back of the heel, and from the edge, from the toes (m). */
+const LEDGE_FOOT_MARGIN = 0.01;
+/**
+ * Without the mesh, how far the back sticks out behind the hips bone: at the hips and at the chest (× height of the
+ * hips; 13 and 12 cm in an adult: standing against a wall, the buttocks and the shoulder blades touch it).
+ */
+const BACK_HIPS = 0.14;
+const BACK_CHEST = 0.13;
 const UP = new Vector3(0, 1, 0);
 /** Difference relative to the step length below which two measurements are considered equal. */
 const TIE_TOLERANCE = 1e-9;
@@ -365,6 +412,10 @@ export class LocomotionController {
   balance = 0;
   /** Tilt of the arms balancing (degrees, + = right arm up), from the last update. */
   balanceTilt = 0;
+  /** Ledges: what it found ahead of and beside the body (see Ledge). */
+  readonly ledgePath: Ledge;
+  /** How much it is going along a ledge with its back to the wall (0–1): follows the ledge at `ledgeRate`. */
+  ledgeBlend = 0;
 
   private readonly rig: HumanRig;
   private readonly detector: GroundDetector;
@@ -425,6 +476,27 @@ export class LocomotionController {
   /** Steps in a row without moving (recolocating the feet); see NARROW_SETTLE_STEPS. */
   private stillSteps = 0;
   private readonly narrowAlong = new Vector3();
+  /** Time left until the next look across for a ledge (s), and which way it looks standing still (see updateLedge). */
+  private ledgeProbe = 0;
+  private ledgeIdleAcross = false;
+  /** Along a ledge: where the body faces (away from the wall; world, unit), and whether it is set. */
+  private readonly ledgeFacing = new Vector3();
+  private ledgeFaced = false;
+  /** Bands of the back (height above the ground, m) and how far it sticks out behind the root there (m). */
+  private readonly backBand: { hips: [number, number]; chest: [number, number] };
+  private readonly backDepth: { hips: number; chest: number };
+  /**
+   * Where the wall is behind the hips (m along `ledgeFacing`, world; −Infinity = none within reach) in each band (hips,
+   * chest), behind them and to each side (BACK_HALF_WIDTH): 6 samples, one measured each frame (`wallSample`, the next).
+   */
+  private readonly wallSamples: number[] = new Array<number>(6).fill(Number.NEGATIVE_INFINITY);
+  private wallSample = 0;
+  /** Along an irregular wall: lean of the trunk (rad, + forward) and how far the hips go back (m). */
+  private ledgeLean = 0;
+  private ledgeHipBack = 0;
+  private readonly ledgeRays = { count: 0 };
+  private readonly ledgeAlong = new Vector3();
+  private readonly wanted = new Vector3();
   /** How much it is going down stairs (0–1), following the slope (see STAIR_DOWN_FREQUENCY). */
   private stairDescent = 0;
   /** How fast the ground under the body rises (m/s, smoothed; − going down) and the root height last frame. */
@@ -526,6 +598,10 @@ export class LocomotionController {
       : (measured.left ?? measured.right);
     this.stairs = new StairPlanner(detector, config, (footLength('left') + footLength('right')) / 2, extent);
     this.narrowPath = new NarrowPath(detector);
+    this.ledgePath = new Ledge(detector);
+    this.backBand = backBands(rig);
+    const hipsHeight = this.backBand.hips[1] / 1.1;
+    this.backDepth = measureBack(rig, forward) ?? { hips: BACK_HIPS * hipsHeight, chest: BACK_CHEST * hipsHeight };
     this.body.groundLine = (position, ground) => this.stairs.groundHeight(position, ground);
   }
 
@@ -568,6 +644,7 @@ export class LocomotionController {
     this.touch.shift(offset);
     this.stairs.shift(offset);
     this.narrowPath.shift(offset);
+    this.ledgePath.shift(offset);
     this.lastRootHeight += offset.y;
     for (const side of SIDES) {
       const foot = this.feet[side];
@@ -604,6 +681,13 @@ export class LocomotionController {
     this.stillSteps = 0;
     this.balance = 0;
     this.balanceTilt = 0;
+    this.ledgePath.reset();
+    this.ledgeBlend = 0;
+    this.ledgeProbe = 0;
+    this.ledgeFaced = false;
+    this.ledgeLean = 0;
+    this.ledgeHipBack = 0;
+    this.wallSamples.fill(Number.NEGATIVE_INFINITY);
     this.planner.landingShift.set(0, 0, 0);
     this.stairLimit = Number.POSITIVE_INFINITY;
     this.stairLean = 0;
@@ -668,7 +752,7 @@ export class LocomotionController {
     // que aterriza con el cuerpo ya pasado (estaba en el aire cuando empezó el giro) no salta de golpe.
     if (dt !== undefined) {
       const twist = wrapAngle(this.bodyYaw() + this.restFootYaw[side] - this.footYaw(side, rotation));
-      const turning = this.body.state.angularVelocity;
+      const turning = this.body.state.turnRate;
       // Pivotando para dar la vuelta (más giro por paso, ver MoveToController), la cadera admite más
       // torsión antes de que el pie gire en el suelo, como en una persona.
       const pivoting = clamp((this.gait.turnPerStepScale - 1) / 2, 0, 1);
@@ -739,6 +823,7 @@ export class LocomotionController {
     this.updateStairDescent(dt);
     this.syncPlacementConfig();
     this.updateNarrow(dt);
+    const ledgeStop = this.updateLedge(dt);
     this.planner.syncStepWidth();
 
     // 0. Agachado: el nivel actual sigue al deseado; agachado se va más despacio.
@@ -747,13 +832,18 @@ export class LocomotionController {
     this.crouch += Math.max(-crouchStep, Math.min(crouchStep, crouchTarget - this.crouch));
     const k = smoothstep(this.crouch);
     const kb = smoothstep(this.balance);
+    const kl = smoothstep(this.ledgeBlend);
     this.body.speedLimit = Math.min(
       this.config.runSpeed + (this.config.crouchMaxSpeed - this.config.runSpeed) * k,
       this.config.runSpeed + (this.config.narrowMaxSpeed - this.config.runSpeed) * kb,
+      this.config.runSpeed + (this.config.ledgeMaxSpeed - this.config.runSpeed) * kl,
+      ledgeStop ? 0 : Number.POSITIVE_INFINITY,
       this.stairSpeedLimit(dt),
     );
     this.centerOnPath(dt, kb);
-    this.backOffWall(dt);
+    this.keepBackToWall(dt, kl);
+    // De espaldas a la pared, el cuerpo ya está a la distancia de ella que toca la espalda (no se aparta).
+    if (kl <= 0) this.backOffWall(dt);
     this.slideOffColliders();
 
     // 1–2. Cuerpo: velocidad y avance de la raíz sobre el suelo. Las caderas vuelven a su pose de
@@ -784,7 +874,7 @@ export class LocomotionController {
     } else {
       // 3. Gait: modo, fase y eventos de despegue/aterrizaje.
       this.updateGaitMode(dt);
-      const angularSpeed = Math.abs(this.body.state.angularVelocity);
+      const angularSpeed = Math.abs(this.body.state.turnRate);
       for (const event of this.gait.update(dt, this.speed, angularSpeed)) {
         const foot = feet[event.side];
         if (event.type === 'touchdown') {
@@ -803,8 +893,10 @@ export class LocomotionController {
           this.body.predict(this.gait.stanceDuration(this.speed, angularSpeed), this.midStanceDisplacement, this.midStanceVelocity);
           const fastest = Math.max(this.speed, this.midStanceVelocity.length());
           const duty = this.gait.dutyFor(this.gait.runFactor(fastest));
-          // Bajando una escalera, el pie de atrás despega antes (menos tiempo apoyado).
-          this.gait.duty[event.side] = duty + (Math.min(STAIR_DOWN_DUTY, duty) - duty) * this.stairDescent;
+          // Bajando una escalera, el pie de atrás despega antes (menos tiempo apoyado). De espaldas a la pared, más tiempo
+          // con los dos pies apoyados: el peso pasa de uno a otro despacio.
+          const stairDuty = duty + (Math.min(STAIR_DOWN_DUTY, duty) - duty) * this.stairDescent;
+          this.gait.duty[event.side] = stairDuty + (Math.max(LEDGE_DUTY, stairDuty) - stairDuty) * smoothstep(this.ledgeBlend);
         } else {
           this.beginSwing(foot, dt);
         }
@@ -878,7 +970,8 @@ export class LocomotionController {
     //    limitan la altura hasta que se preparan para aterrizar.
     const bodyState = this.body.state;
     const cfg = this.config;
-    this.hipShift.copy(bodyState.shift).addScaledVector(bodyState.forward, -k * cfg.crouchHipBack);
+    // De espaldas a una pared irregular, las caderas hacia atrás si el pecho la toca antes (ver keepBackToWall).
+    this.hipShift.copy(bodyState.shift).addScaledVector(bodyState.forward, -k * cfg.crouchHipBack - this.ledgeHipBack);
     const maxReach = WALK_MAX_REACH + (RUN_MAX_REACH - WALK_MAX_REACH) * this.gait.blend;
     for (const side of SIDES) {
       const reachAnkle = this.reachAnkles[side].copy(feet[side].position);
@@ -908,8 +1001,9 @@ export class LocomotionController {
       limitRounding: this.gait.blend,
       dt,
       obliquity: inAir ? 0 : this.pelvisObliquity(),
-      rotation: this.gait.mode === 'idle' ? undefined : this.pelvisRotation(),
-      tilt: inAir ? 0 : this.pelvisTiltWave(),
+      // De espaldas a la pared, la pelvis no gira ni se balancea hacia delante (va de lado).
+      rotation: this.gait.mode === 'idle' ? undefined : this.pelvisRotation() * (1 - kl),
+      tilt: inAir ? 0 : this.pelvisTiltWave() * (1 - kl),
       landings: inAir
         ? undefined
         : {
@@ -935,7 +1029,7 @@ export class LocomotionController {
     }
     // 8. Torso: contrarrotación, compensación, inclinación y cabeza estable.
     //    En escaleras, algo más inclinado (más subiendo que bajando).
-    const slope = Math.min(Math.max(this.stairs.slope(bodyState.position, bodyState.forward), -1), 1);
+    const slope = Math.min(Math.max(this.stairs.slope(bodyState.position, bodyState.travel), -1), 1);
     const stairLean = (slope > 0 ? STAIR_LEAN_UP * slope : -STAIR_LEAN_DOWN * slope) * DEG;
     this.stairLean += (stairLean - this.stairLean) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
     this.stairSlope += (slope - this.stairSlope) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
@@ -945,7 +1039,7 @@ export class LocomotionController {
     if (!walking) this.levelAhead = 0;
     else if (this.glanceProbe <= 0) {
       this.glanceProbe = GLANCE_INTERVAL;
-      const probe = this.tmp.copy(bodyState.position).addScaledVector(bodyState.forward, GLANCE_AHEAD * cfg.stepLength);
+      const probe = this.tmp.copy(bodyState.position).addScaledVector(bodyState.travel, GLANCE_AHEAD * cfg.stepLength);
       probe.y = bodyState.groundHeight + cfg.groundProbeHeight;
       this.levelAhead = this.detector.castDown(probe, cfg.groundProbeHeight + cfg.groundProbeDepth, this.sampleHit)
         ? this.sampleHit.point.y - bodyState.groundHeight
@@ -953,17 +1047,20 @@ export class LocomotionController {
     }
     const glance = walking && Math.abs(this.levelAhead) > GLANCE_STEP * cfg.maxStepUp && Math.abs(this.stairSlope) < 0.25 ? GLANCE : 0;
     this.glance += (glance - this.glance) * (1 - Math.exp(-dt / GLANCE_TIME));
+    // De espaldas a la pared: el tronco no se inclina hacia delante (salvo para seguir una pared irregular, ledgeLean) y la
+    // cabeza mira un poco hacia donde va y hacia abajo.
+    const gaze = -Math.sign(bodyState.facingOffset) * kl * cfg.ledgeGaze * DEG;
     this.torso.update({
       forward: bodyState.forward,
       pelvis: this.pelvis.angles,
-      acceleration: bodyState.acceleration,
-      turnRemaining: wrapAngle(this.body.targetHeading - bodyState.heading),
+      acceleration: bodyState.acceleration * (1 - kl),
+      turnRemaining: this.body.turnRemaining(),
       speed: bodyState.speed,
       angularVelocity: bodyState.angularVelocity,
       dt,
-      extraLean: ((cfg.walkLean + (cfg.runLean - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean + this.stairLean,
+      extraLean: (((cfg.walkLean + (cfg.runLean - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean + this.stairLean) * (1 - kl) + this.ledgeLean,
       airborne: bodyState.airborne,
-      headOffset: { yaw: this.variationNow.headYaw, pitch: this.variationNow.headPitch + this.glance + DOWN_GAZE * Math.max(-this.stairSlope, 0) + kb * cfg.narrowGaze * DEG },
+      headOffset: { yaw: this.variationNow.headYaw + gaze, pitch: this.variationNow.headPitch + this.glance + DOWN_GAZE * Math.max(-this.stairSlope, 0) + kb * cfg.narrowGaze * DEG + kl * LEDGE_GAZE_DOWN },
       headNod: 1 / (1 + STAIR_HEAD_STEADY * Math.abs(this.stairSlope)),
       running: this.gait.blend,
     });
@@ -992,7 +1089,12 @@ export class LocomotionController {
     // casi a la pose normal (narrowTouchRelax) y deja de corregir.
     const steadied = Math.max(this.touch.weight('left'), this.touch.weight('right')) * c.narrowTouchRelax;
     const kArms = kb * (1 - steadied);
-    const balancing = (normal: number, narrow: number): number => normal + (narrow - normal) * kArms;
+    // De espaldas a la pared: los brazos cuelgan junto al cuerpo, algo abiertos y hacia atrás (las manos en la pared), sin
+    // balanceo.
+    const balancing = (normal: number, narrow: number, ledge: number): number => {
+      const value = normal + (narrow - normal) * kArms;
+      return value + (ledge - value) * kl;
+    };
     this.balanceTilt = kArms * c.narrowArmTilt * this.noise.sample(20, this.noiseTime * NARROW_TILT_RATE);
     this.arms.update({
       forward: bodyState.forward,
@@ -1005,13 +1107,13 @@ export class LocomotionController {
       shoulderTilt: this.torso.shoulderLineTilt,
       // Haciendo equilibrio: brazos abiertos, casi sin balanceo, con correcciones lentas (uno sube y el otro baja).
       pose: {
-        armAbduction: balancing(relax(mix(c.armAbduction, c.runArmAbduction), c.idleArmAbduction), c.narrowArmAbduction),
-        elbowBend: balancing(relax(mix(c.elbowBend, c.runElbowBend), c.idleElbowBend), c.narrowElbowBend) + k * c.crouchElbowBend,
-        armSwing: balancing(mix(walkSwing, c.runArmSwing), c.narrowArmSwing),
-        elbowSwingBend: balancing(mix(c.elbowSwingBend, c.runElbowSwingBend), 0),
-        armForward: balancing(relax(c.armForward, c.idleArmForward) - mix(ARM_SWING_BACK * walkSwing, RUN_ARM_SWING_BACK * c.runArmSwing), c.narrowArmForward) + k * c.crouchArmForward + this.jumping.armForward(),
+        armAbduction: balancing(relax(mix(c.armAbduction, c.runArmAbduction), c.idleArmAbduction), c.narrowArmAbduction, c.ledgeArmAbduction),
+        elbowBend: balancing(relax(mix(c.elbowBend, c.runElbowBend), c.idleElbowBend), c.narrowElbowBend, c.ledgeElbowBend) + k * c.crouchElbowBend,
+        armSwing: balancing(mix(walkSwing, c.runArmSwing), c.narrowArmSwing, 0),
+        elbowSwingBend: balancing(mix(c.elbowSwingBend, c.runElbowSwingBend), 0, 0),
+        armForward: balancing(relax(c.armForward, c.idleArmForward) - mix(ARM_SWING_BACK * walkSwing, RUN_ARM_SWING_BACK * c.runArmSwing), c.narrowArmForward, c.ledgeArmForward) + k * c.crouchArmForward + this.jumping.armForward(),
         abductionTilt: this.balanceTilt,
-        fingerCurl: balancing(c.fingerCurl, NARROW_FINGER_CURL),
+        fingerCurl: balancing(c.fingerCurl, NARROW_FINGER_CURL, LEDGE_FINGER_CURL),
       },
     });
 
@@ -1055,7 +1157,7 @@ export class LocomotionController {
     const d = colliders.distance(s.position.x, s.position.z, ground + this.config.maxStepUp, ground + this.bodyHeight, away);
     if (d >= room) return;
     this.body.drift.addScaledVector(away, room - d);
-    const into = -(s.forward.x * away.x + s.forward.z * away.z);
+    const into = -(s.travel.x * away.x + s.travel.z * away.z);
     if (into > 0) this.body.speedLimit = Math.min(this.body.speedLimit, this.config.walkSpeed * (1 - into));
   }
 
@@ -1093,7 +1195,7 @@ export class LocomotionController {
     // Hacia donde va y hacia donde está girando: girando hacia la pared muy cerca de ella, cuando la tenía de
     // frente ya no le daba para frenar.
     const s = this.body.state;
-    const turning = this.turnDirection.copy(s.forward).applyAxisAngle(UP, this.body.targetHeading - s.heading);
+    const turning = this.turnDirection.copy(s.travel).applyAxisAngle(UP, this.body.headingTarget - s.heading);
     // Se para con los pies delante de la contrahuella: las puntas, a un talón de ella. Medido perpendicular al
     // borde: llegando en diagonal, la raíz quedaba más cerca de él de lo que pueden apoyar los pies, que se
     // quedaban atrás (el cuerpo, inclinado sobre el borde) y se recolocaban sin parar.
@@ -1102,8 +1204,8 @@ export class LocomotionController {
     const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
     // En un camino angosto, también sus costados que no se pueden bajar: girando hacia uno, aún no lo conocía como
     // borde, iba hasta él y los pasos (por delante del cuerpo) caían fuera.
-    const side = Math.min(this.narrowRoom(s.forward), this.narrowRoom(turning));
-    const ahead = Math.min(stairs.wallAhead(s.position, s.forward, clearance, ground), stairs.wallAhead(s.position, turning, clearance, ground), side);
+    const side = Math.min(this.narrowRoom(s.travel), this.narrowRoom(turning));
+    const ahead = Math.min(stairs.wallAhead(s.position, s.travel, clearance, ground), stairs.wallAhead(s.position, turning, clearance, ground), side);
     if (Number.isFinite(ahead)) {
       // Con la mitad de la deceleración: la frenada tiene una rampa (speedEasing) y se pasaba.
       const room = Math.max(ahead, 0);
@@ -1118,7 +1220,7 @@ export class LocomotionController {
    */
   private updateStairDescent(dt: number): void {
     const s = this.body.state;
-    const target = Math.min(Math.max(-this.stairs.slope(s.position, s.forward) / STAIR_DOWN_SLOPE, 0), 1);
+    const target = Math.min(Math.max(-this.stairs.slope(s.position, s.travel) / STAIR_DOWN_SLOPE, 0), 1);
     this.stairDescent += (target - this.stairDescent) * (1 - Math.exp(-dt / STAIR_LEAN_TIME));
     this.gait.minFrequency = STAIR_DOWN_FREQUENCY * this.stairDescent;
   }
@@ -1149,10 +1251,11 @@ export class LocomotionController {
       forward: state.forward,
       velocity: state.velocity,
       climb: this.climb,
-      allowed: !state.airborne && this.jumping.phase === 'GROUNDED' && this.gait.blend < TOUCH_MAX_RUN_BLEND,
+      // De espaldas a la pared de una cornisa, no: las manos ya van en ella.
+      allowed: !state.airborne && this.jumping.phase === 'GROUNDED' && this.gait.blend < TOUCH_MAX_RUN_BLEND && this.ledgeBlend <= 0,
       still: this.gait.mode === 'idle',
       position: state.position,
-      turnRate: state.angularVelocity,
+      turnRate: state.turnRate,
       predict: this.predictTravel,
     };
   }
@@ -1204,7 +1307,9 @@ export class LocomotionController {
       // no es donde está, se recoloca aunque esté poco adelantado: estaría pisando un borde.
       let onTread = false;
       const e = this.planner.settleError(this.feet[side], this.settleOffset, (target, rotation) => {
-        if (!onPath) onTread = this.planStairLanding(side, this.feet[side].planted, 0, target, rotation, false);
+        if (this.onLedge()) {
+          if (this.keepOnLedge(target)) this.planner.placeLanding(side, target, 0, target, rotation);
+        } else if (!onPath) onTread = this.planStairLanding(side, this.feet[side].planted, 0, target, rotation, false);
         else this.keepOnPath(target, 0);
       });
       const ahead = this.settleOffset.dot(forward);
@@ -1267,7 +1372,7 @@ export class LocomotionController {
     swing.start.copy(foot.position);
     swing.startRotation.copy(foot.rotation);
 
-    const angularSpeed = Math.abs(this.body.state.angularVelocity);
+    const angularSpeed = Math.abs(this.body.state.turnRate);
     const swingTime = this.gait.swingDuration(this.speed, angularSpeed, this.gait.duty[foot.side]);
     // El despegue ocurrió entre el frame anterior y este: ya pasó parte del swing.
     const sinceLiftoff = this.gait.swingProgress(foot.side) * swingTime;
@@ -1332,7 +1437,7 @@ export class LocomotionController {
     if (standing) {
       // A no más de STAND_OVERSHOOT de él, por delante o por detrás: el paso adelantado caía al otro lado del camino,
       // y el de atrás, recolocándose, antes de su borde.
-      const f = this.body.state.forward;
+      const f = this.body.state.travel;
       const ahead = (swing.landing.x - stand.x) * f.x + (swing.landing.z - stand.z) * f.z;
       const limit = STAND_OVERSHOOT * this.config.stepLength;
       const past = ahead - clamp(ahead, -limit, limit);
@@ -1340,6 +1445,9 @@ export class LocomotionController {
         this.tmp.copy(swing.landing).addScaledVector(f, -past);
         this.planner.placeLanding(foot.side, this.tmp, footYaw, swing.landing, swing.landingRotation);
       }
+    } else if (this.onLedge()) {
+      // De espaldas a la pared de una cornisa: el pie entero en ella (la escalera vería un escalón en el borde).
+      if (this.keepOnLedge(swing.landing)) this.planner.placeLanding(foot.side, swing.landing, footYaw, swing.landing, swing.landingRotation);
     } else if (this.onNarrowPath()) {
       // Sobre él, con el pie entero dentro: girando hacia un costado, el paso (por delante del cuerpo) caía fuera, en el
       // aire. Bajando de él por un costado (una viga baja), como un escalón: al suelo de al lado.
@@ -1374,7 +1482,7 @@ export class LocomotionController {
    * path doesn't feed back on itself).
    */
   private probeDirection(): Vector3 {
-    const f = this.body.state.forward;
+    const f = this.body.state.travel;
     if (!this.narrowPath.narrow) return f;
     const a = this.narrowPath.across;
     const along = this.narrowAlong.set(a.z, 0, -a.x);
@@ -1512,7 +1620,7 @@ export class LocomotionController {
     if (Math.abs(curvature) * MAX_STAIR_TURN_RADIUS * step < 1) return null;
     const radius = Math.max(1 / Math.abs(curvature), MIN_STAIR_TURN_RADIUS * step) * Math.sign(curvature);
     // A la izquierda (giro positivo) o a la derecha del avance.
-    return out.set(s.position.x + s.forward.z * radius, 0, s.position.z - s.forward.x * radius);
+    return out.set(s.position.x + s.travel.z * radius, 0, s.position.z - s.travel.x * radius);
   }
 
   /**
@@ -1532,7 +1640,7 @@ export class LocomotionController {
     swing.previousEnd.copy(swing.end);
     swing.previousEndRotation.copy(swing.endRotation);
     const wasGoingUp = swing.end.y > swing.start.y;
-    const angularSpeed = Math.abs(this.body.state.angularVelocity);
+    const angularSpeed = Math.abs(this.body.state.turnRate);
     const swingTime = this.gait.swingDuration(this.speed, angularSpeed, this.gait.duty[foot.side]);
     this.planSwingLanding(foot, (1 - swing.t) * swingTime, angularSpeed);
     intent.replanned = true;
@@ -1782,6 +1890,161 @@ export class LocomotionController {
   }
 
   /**
+   * Ledges: looks across for one (see Ledge) and `ledgeBlend` follows it at `ledgeRate`. Along it, the body faces
+   * away from the wall (always the same way, unless the ledge turns more than LEDGE_REFACE) and goes sideways, the
+   * way it is asked along the ledge (`headingOverride`, `facingTarget`); short, quick steps with the feet coming
+   * together. Returns true if it has to stop: it is asked to go into the wall or towards the drop, or the other way
+   * along the ledge (it turns its direction of travel round once stopped, without turning the body).
+   */
+  private updateLedge(dt: number): boolean {
+    const cfg = this.config;
+    const body = this.body;
+    const s = body.state;
+    if (!(cfg.ledgeWidth > 0) || this.balance > 0) {
+      this.ledgePath.reset();
+    } else if (!s.airborne) {
+      this.ledgeProbe -= dt;
+      if (this.ledgeProbe <= 0) {
+        const moving = this.gait.mode !== 'idle' || s.speed > IDLE_SPEED * cfg.walkSpeed;
+        this.ledgeProbe = moving ? NARROW_PROBE_INTERVAL : NARROW_IDLE_INTERVAL;
+        const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
+        // Parado fuera de una cornisa, mira alternando a lo largo y a lo ancho del cuerpo: puede estar ya de espaldas a
+        // la pared.
+        let along = s.travel;
+        if (!moving && !this.ledgePath.ledge) {
+          this.ledgeIdleAcross = !this.ledgeIdleAcross;
+          if (this.ledgeIdleAcross) along = this.ledgeAlong.set(s.forward.z, 0, -s.forward.x);
+        }
+        const ahead = moving ? Math.max(NARROW_AHEAD * cfg.stepLength, NARROW_LOOKAHEAD * s.speed) : 0;
+        this.ledgePath.probe({
+          forward: along,
+          point: this.tmp.copy(s.position).addScaledVector(along, ahead),
+          ground,
+          width: cfg.ledgeWidth,
+          drop: cfg.maxStepDown,
+          wall: Math.min(LEDGE_WALL * cfg.stepLength, cfg.groundProbeHeight),
+          rayHeight: cfg.groundProbeHeight,
+        });
+      }
+    }
+    const on = this.ledgePath.onLedge(s.position, s.travel);
+    const step = cfg.ledgeRate * dt;
+    this.ledgeBlend += clamp((on ? 1 : 0) - this.ledgeBlend, -step, step);
+    const kl = smoothstep(this.ledgeBlend);
+    if (kl > 0) {
+      // Pasos cortos y rápidos; los pies se juntan (ledgeStepWidth) y se separan lo que avanza en un ciclo.
+      this.gait.minFrequency = Math.max(this.gait.minFrequency, LEDGE_STEP_FREQUENCY * kl);
+      const natural = this.planner.widthOverride ?? this.planner.naturalStepWidth();
+      const speed = Math.min(s.speed, cfg.ledgeMaxSpeed);
+      const open = cfg.ledgeStepWidth + (speed > 0 ? speed / this.gait.cycleFrequency(speed) / 2 : 0);
+      this.planner.widthOverride = natural + (open - natural) * kl;
+    }
+    body.shiftScale = 1 + (LEDGE_LATERAL_SHIFT - 1) * kl;
+    if (!on) {
+      body.headingOverride = Number.NaN;
+      body.facingTarget = 0;
+      if (s.facingOffset === 0) this.ledgeFaced = false;
+      return false;
+    }
+
+    // De espaldas a la pared: mirando siempre hacia el mismo lado mientras la cornisa no gire.
+    const out = this.ledgePath.out;
+    if (!this.ledgeFaced || this.ledgeFacing.dot(out) < LEDGE_REFACE) {
+      this.ledgeFacing.copy(out);
+      this.wallSamples.fill(Number.NEGATIVE_INFINITY);
+      this.ledgeFaced = true;
+    }
+    const facing = this.ledgeFacing;
+    // A lo largo de la cornisa, a la izquierda de donde mira; el sentido, el pedido (targetHeading).
+    const along = this.ledgeAlong.set(facing.z, 0, -facing.x);
+    const wanted = this.wanted.copy(s.travel).applyAxisAngle(UP, body.targetHeading - s.heading);
+    const asked = wanted.dot(along);
+    const going = s.travel.dot(along);
+    const want = Math.abs(asked) < LEDGE_MIN_ALONG ? 0 : Math.sign(asked);
+    let stop = want === 0;
+    let sign = want !== 0 ? want : Math.sign(going) || 1;
+    // Al otro lado de la cornisa: frena y, ya parado, da la vuelta a su dirección de avance (no al cuerpo).
+    if (want !== 0 && Math.abs(going) > 0.7 && Math.sign(going) !== want) {
+      if (s.speed > IDLE_SPEED * cfg.walkSpeed) {
+        stop = true;
+        sign = Math.sign(going);
+      } else {
+        body.reverseTravel();
+      }
+    }
+    if (sign < 0) along.negate();
+    body.headingOverride = s.heading + signedAngle(s.travel, along);
+    body.facingTarget = signedAngle(along, facing);
+    return stop && this.ledgeBlend > 0.5;
+  }
+
+  /** Going along a ledge with its back to the wall, with the body already turned (not still turning onto it). */
+  private onLedge(): boolean {
+    return this.ledgeBlend > 0.5 && this.ledgeFaced;
+  }
+
+  /**
+   * Along a ledge, the back against the wall: it measures how far the wall is behind the hips (the bone, as they were
+   * in the last frame, without `ledgeHipBack`) at the height of the hips and at that of the chest (one band each
+   * frame; see Ledge.wallDistance) and moves the body towards the distance at which the back touches it where the
+   * wall sticks out most (`backDepth`, measured on the mesh). Against an irregular wall the trunk leans back (or the
+   * hips go back and it leans forward) to touch it at both heights.
+   */
+  private keepBackToWall(dt: number, kl: number): void {
+    const s = this.body.state;
+    const follow = 1 - Math.exp(-dt / LEDGE_LEAN_TIME);
+    let lean = 0;
+    let hipBack = 0;
+    if (kl > 0 && this.ledgeFaced && !s.airborne) {
+      const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
+      const out = this.ledgeFacing;
+      const k = this.wallSample;
+      this.wallSample = (k + 1) % 6;
+      const [lo, hi] = this.backBand[k < 3 ? 'hips' : 'chest'];
+      const reach = LEDGE_WALL_REACH * this.config.stepLength;
+      const at = worldPosition(this.rig.hips, this.wanted).addScaledVector(s.forward, this.ledgeHipBack);
+      // Las muestras, como posición de la pared a lo largo de `out` (no como distancia a las caderas, que se mueven
+      // entre una medida y la siguiente).
+      const base = at.x * out.x + at.z * out.z;
+      at.x += out.z * ((k % 3) - 1) * BACK_HALF_WIDTH * this.config.stepLength;
+      at.z -= out.x * ((k % 3) - 1) * BACK_HALF_WIDTH * this.config.stepLength;
+      const w = this.wallSamples;
+      w[k] = base - this.ledgePath.wallDistance(at, out, ground + lo, ground + hi, reach, base - w[k], this.ledgeRays);
+      const hips = base - Math.max(w[0], w[1], w[2]) - this.backDepth.hips;
+      const chest = base - Math.max(w[3], w[4], w[5]) - this.backDepth.chest;
+      const move = Math.min(hips, chest);
+      if (Number.isFinite(move)) {
+        // Hacia la pared (o apartándose, si la espalda la atraviesa), poco a poco.
+        this.body.drift.addScaledVector(out, -move * kl * (1 - Math.exp(-LEDGE_CENTERING * dt)));
+        const rise = (this.backBand.chest[0] + this.backBand.chest[1] - this.backBand.hips[0] - this.backBand.hips[1]) / 2;
+        const chestGap = Number.isFinite(chest) ? chest - move : 0;
+        hipBack = Number.isFinite(hips) ? Math.min(hips - move, LEDGE_MAX_HIP_BACK * this.config.stepLength) : 0;
+        lean = clamp(Math.atan2(hipBack - chestGap, rise), -LEDGE_MAX_LEAN, LEDGE_MAX_LEAN);
+      }
+    } else {
+      this.wallSamples.fill(Number.NEGATIVE_INFINITY);
+    }
+    this.ledgeLean += (lean * kl - this.ledgeLean) * follow;
+    this.ledgeHipBack += (hipBack * kl - this.ledgeHipBack) * follow;
+  }
+
+  /**
+   * Along a ledge: moves `target` (where a foot lands) across the ledge so that the whole foot, pointing away from
+   * the wall, is on it: the back of the heel off the wall and the toes before the edge, as far as it fits (if not, off
+   * the wall). Returns true if it moved it.
+   */
+  private keepOnLedge(target: Vector3): boolean {
+    const path = this.ledgePath;
+    const d = path.fromWall(target);
+    const min = this.stairs.heelBack + LEDGE_FOOT_MARGIN;
+    const max = Math.max(path.width - this.stairs.toeFront - LEDGE_FOOT_MARGIN, min);
+    const kept = clamp(d, min, max);
+    if (kept === d) return false;
+    target.addScaledVector(path.out, kept - d);
+    return true;
+  }
+
+  /**
    * Height of the arc for this step: `stepHeight`, increased if at any moment the toes would be closer than
    * `toeClearance` to the terrain.
    *
@@ -1790,7 +2053,7 @@ export class LocomotionController {
    * profile of the arc (`swingArc`), each sample's deficit is divided by that factor.
    */
   private swingHeight(foot: FootTarget): number {
-    const base = this.gait.mix(this.config.stepHeight, this.config.runStepHeight);
+    const base = this.gait.mix(this.config.stepHeight, this.config.runStepHeight) * (1 - (1 - LEDGE_STEP_HEIGHT) * smoothstep(this.ledgeBlend));
     // Haciendo equilibrio y sin cambiar de altura, como en terreno normal: mirando hacia el costado de un camino angosto,
     // la escalera veía en él un escalón y cada paso subía la rodilla al máximo (maxExtraStepHeight).
     const level = (this.balance > 0.5 || this.narrowPath.narrow) && Math.abs(foot.swing.landing.y - foot.planted.y) < this.stairs.edgeHeight;
@@ -1991,11 +2254,16 @@ export class LocomotionController {
   }
 
   private get heelLift(): number {
-    return (this.gait.mix(this.config.heelLiftAngle, this.config.runHeelLiftAngle) * Math.PI) / 180;
+    return ((this.gait.mix(this.config.heelLiftAngle, this.config.runHeelLiftAngle) * Math.PI) / 180) * this.ledgeRoll;
   }
 
   private get heelStrike(): number {
-    return (this.gait.mix(this.config.heelStrikeAngle, this.config.runHeelStrikeAngle) * Math.PI) / 180;
+    return ((this.gait.mix(this.config.heelStrikeAngle, this.config.runHeelStrikeAngle) * Math.PI) / 180) * this.ledgeRoll;
+  }
+
+  /** How much the foot rolls (heel strike, heel lift): along a ledge, barely (LEDGE_ROLL). */
+  private get ledgeRoll(): number {
+    return 1 - (1 - LEDGE_ROLL) * smoothstep(this.ledgeBlend);
   }
 
   /**
@@ -2047,6 +2315,8 @@ export class LocomotionController {
       // Bajando una escalera, la rodilla de apoyo va doblada todo el apoyo.
       bend += (Math.max(bend, STAIR_DOWN_KNEE) - bend) * this.stairDescent;
     }
+    // De espaldas a la pared, con las rodillas algo dobladas (también parado).
+    bend += cfg.ledgeKneeBend * smoothstep(this.ledgeBlend);
     return (bend * Math.PI) / 180;
   }
 
@@ -2143,6 +2413,11 @@ function strikeRoll(roll: FootRoll, position: Vector3, rotation: Quaternion, ang
 /** The `x` (0–1) at which `smoothstep(x)` is `y`. */
 function inverseSmoothstep(y: number): number {
   return 0.5 - Math.sin(Math.asin(1 - 2 * Math.min(Math.max(y, 0), 1)) / 3);
+}
+
+/** Angle (rad, about +Y; positive = to the left) from the horizontal direction `a` to `b`. */
+function signedAngle(a: Vector3, b: Vector3): number {
+  return Math.atan2(a.z * b.x - a.x * b.z, a.x * b.x + a.z * b.z);
 }
 
 function clamp(x: number, min: number, max: number): number {

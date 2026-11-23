@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-135 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+144 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -96,6 +96,20 @@ opcionales y se validan (nombre, número finito y rango).
 | `narrowTouchRelax` | 0.85 | Camino angosto, con una mano apoyada en algo (una baranda, una pared; ver tocar superficies): cuánto vuelve el otro brazo a su pose normal y deja de corregir (0 = sigue abierto, 1 = del todo). |
 | `narrowGaze` | 20 | Camino angosto: cuánto mira la cabeza hacia abajo, al camino (grados). |
 | `narrowRate` | 2 | Rapidez con la que empieza o deja de hacer equilibrio (fracción del cambio completo por segundo). |
+
+## Cornisas
+
+| Parámetro | Por defecto | Descripción |
+|---|---|---|
+| `ledgeWidth` ↔ | 0.45 | Cornisas (en un acantilado, el saliente de un edificio): si el suelo a la altura del cuerpo tiene una pared a un lado y al otro una caída más honda que `maxStepDown` en menos de este ancho, la recorre de lado con la espalda pegada a la pared: abre un pie, pasa el peso a él y acerca el otro (m; 0 = nunca). Se detecta por la geometría. |
+| `ledgeStepWidth` ↔ | 0.15 | Cornisa: distancia entre los tobillos al juntar los pies (m; parado, la misma). |
+| `ledgeMaxSpeed` | 0.35 | Cornisa: velocidad máxima (m/s). |
+| `ledgeKneeBend` | 15 | Cornisa: flexión extra de las rodillas (grados). |
+| `ledgeArmAbduction` | 14 | Cornisa: separación del brazo respecto a la vertical (grados). |
+| `ledgeArmForward` | -12 | Cornisa: ángulo del brazo por delante de la vertical (grados; negativo = por detrás, hacia la pared). |
+| `ledgeElbowBend` | 12 | Cornisa: flexión del codo (grados). |
+| `ledgeGaze` | 30 | Cornisa: cuánto gira la cabeza hacia donde va (grados). |
+| `ledgeRate` | 1.5 | Rapidez con la que se pone de espaldas a la pared o vuelve a caminar de frente (fracción del cambio completo por segundo). |
 
 ## Salto
 

@@ -208,6 +208,42 @@
       "en": "How fast it starts or stops balancing (fraction of the full change per second).",
       "es": "Rapidez con la que empieza o deja de hacer equilibrio (fracción del cambio completo por segundo)."
     },
+    "ledgeWidth": {
+      "en": "Ledges (a cornice on a cliff, the ledge of a building): if the ground at the level of the body has a wall on one side and a drop deeper than `maxStepDown` on the other within less than this width, it goes along it sideways with its back against the wall: it opens one foot, takes the weight onto it and brings the other one up to it (m; 0 = never). Detected from the geometry.",
+      "es": "Cornisas (en un acantilado, el saliente de un edificio): si el suelo a la altura del cuerpo tiene una pared a un lado y al otro una caída más honda que `maxStepDown` en menos de este ancho, la recorre de lado con la espalda pegada a la pared: abre un pie, pasa el peso a él y acerca el otro (m; 0 = nunca). Se detecta por la geometría."
+    },
+    "ledgeStepWidth": {
+      "en": "Ledge: distance between the ankles when it brings the feet together (m; standing, the same).",
+      "es": "Cornisa: distancia entre los tobillos al juntar los pies (m; parado, la misma)."
+    },
+    "ledgeMaxSpeed": {
+      "en": "Ledge: maximum speed (m/s).",
+      "es": "Cornisa: velocidad máxima (m/s)."
+    },
+    "ledgeKneeBend": {
+      "en": "Ledge: extra bend of the knees (degrees).",
+      "es": "Cornisa: flexión extra de las rodillas (grados)."
+    },
+    "ledgeArmAbduction": {
+      "en": "Ledge: arm angle away from the vertical (degrees).",
+      "es": "Cornisa: separación del brazo respecto a la vertical (grados)."
+    },
+    "ledgeArmForward": {
+      "en": "Ledge: upper arm angle in front of the vertical (degrees; negative = behind, towards the wall).",
+      "es": "Cornisa: ángulo del brazo por delante de la vertical (grados; negativo = por detrás, hacia la pared)."
+    },
+    "ledgeElbowBend": {
+      "en": "Ledge: elbow bend (degrees).",
+      "es": "Cornisa: flexión del codo (grados)."
+    },
+    "ledgeGaze": {
+      "en": "Ledge: how much the head turns towards where it is going (degrees).",
+      "es": "Cornisa: cuánto gira la cabeza hacia donde va (grados)."
+    },
+    "ledgeRate": {
+      "en": "How fast it turns its back to the wall or turns back to walk (fraction of the full change per second).",
+      "es": "Rapidez con la que se pone de espaldas a la pared o vuelve a caminar de frente (fracción del cambio completo por segundo)."
+    },
     "gravity": {
       "en": "Gravity (m/s²).",
       "es": "Gravedad (m/s²)."

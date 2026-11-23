@@ -159,6 +159,30 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   /** How fast it starts or stops balancing (fraction of the full change per second). */
   narrowRate: number;
 
+  /**
+   * Ledges (a cornice on a cliff, the ledge of a building): if the ground at the level of the body has a wall on
+   * one side and a drop deeper than `maxStepDown` on the other within less than this width, it goes along it
+   * sideways with its back against the wall: it opens one foot, takes the weight onto it and brings the other one
+   * up to it (m; 0 = never). Detected from the geometry.
+   */
+  ledgeWidth: number;
+  /** Ledge: distance between the ankles when it brings the feet together (m; standing, the same). */
+  ledgeStepWidth: number;
+  /** Ledge: maximum speed (m/s). */
+  ledgeMaxSpeed: number;
+  /** Ledge: extra bend of the knees (degrees). */
+  ledgeKneeBend: number;
+  /** Ledge: arm angle away from the vertical (degrees). */
+  ledgeArmAbduction: number;
+  /** Ledge: upper arm angle in front of the vertical (degrees; negative = behind, towards the wall). */
+  ledgeArmForward: number;
+  /** Ledge: elbow bend (degrees). */
+  ledgeElbowBend: number;
+  /** Ledge: how much the head turns towards where it is going (degrees). */
+  ledgeGaze: number;
+  /** How fast it turns its back to the wall or turns back to walk (fraction of the full change per second). */
+  ledgeRate: number;
+
   /** Gravity (m/s²). */
   gravity: number;
   /** Jump: vertical speed at takeoff (m/s). */
@@ -330,6 +354,16 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   narrowTouchRelax: 0.85,
   narrowGaze: 20,
   narrowRate: 2,
+
+  ledgeWidth: 0.45,
+  ledgeStepWidth: 0.15,
+  ledgeMaxSpeed: 0.35,
+  ledgeKneeBend: 15,
+  ledgeArmAbduction: 14,
+  ledgeArmForward: -12,
+  ledgeElbowBend: 12,
+  ledgeGaze: 30,
+  ledgeRate: 1.5,
 
   gravity: 9.81,
   jumpSpeed: 3.2,

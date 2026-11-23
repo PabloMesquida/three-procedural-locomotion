@@ -18,12 +18,24 @@ export interface BodyState {
   speed: number;
   /** Acceleration in the direction of travel (m/s², smoothed). */
   acceleration: number;
-  /** Horizontal direction of travel (unit). */
+  /**
+   * Horizontal direction the body faces (unit): the orientation of the root. It is the direction of travel,
+   * except while it goes sideways (`facingOffset`, along a ledge with its back to the wall).
+   */
   forward: Vector3;
-  /** Current heading relative to the initial orientation (rad, positive = turning left). */
+  /** Horizontal direction of travel (unit): `forward` turned back by `facingOffset`. */
+  travel: Vector3;
+  /** Current heading of travel relative to the initial orientation (rad, positive = turning left). */
   heading: number;
-  /** Velocidad angular (rad/s). */
+  /** Turn rate of the heading of travel (rad/s). */
   angularVelocity: number;
+  /**
+   * How far the body faces from its direction of travel (rad, positive = left): 0 walking; ±π/2 going sideways
+   * along a ledge. The root is turned `heading + facingOffset`.
+   */
+  facingOffset: number;
+  /** Turn rate of the root (rad/s): that of the heading plus that of `facingOffset`. */
+  turnRate: number;
   /** There is ground under the root. */
   grounded: boolean;
   /** Height of the ground under the root (m, world). */
@@ -102,6 +114,18 @@ export class BodyController {
   groundLine: ((position: Vector3, ground: number) => number) | null = null;
   /** Turn rate (rad/s) at the end of the last prediction (`predict`). */
   predictedAngularVelocity = 0;
+  /**
+   * Desired `facingOffset` (rad): the body turns towards it at `turnSpeed`, without changing its direction of
+   * travel (set by LocomotionController along a ledge; 0 = facing where it goes).
+   */
+  facingTarget = 0;
+  /**
+   * Heading of travel to follow instead of `targetHeading` (rad; NaN = `targetHeading`): along a ledge, the
+   * direction of the ledge (set by LocomotionController).
+   */
+  headingOverride = Number.NaN;
+  /** Multiplier of `lateralShift` (1 = the configuration's; more along a ledge: the weight goes to each foot). */
+  shiftScale = 1;
   readonly state: BodyState;
 
   private readonly root: Object3D;
@@ -121,6 +145,8 @@ export class BodyController {
   /** Current lateral shift (m) and its velocity (m/s), along the lateral axis. */
   private shiftAmount = 0;
   private shiftVelocity = 0;
+  /** Turn rate of `facingOffset` (rad/s). */
+  private facingRate = 0;
   /**
    * Current rate of change of the speed (m/s²): with `speedEasing` the acceleration grows and shrinks
    * gradually.
@@ -163,8 +189,11 @@ export class BodyController {
       speed: 0,
       acceleration: 0,
       forward: new Vector3(),
+      travel: new Vector3(),
       heading: 0,
       angularVelocity: 0,
+      facingOffset: 0,
+      turnRate: 0,
       grounded: true,
       groundHeight: 0,
       airborne: false,
@@ -186,6 +215,12 @@ export class BodyController {
     this.speedRate = 0;
     this.state.heading = 0;
     this.state.angularVelocity = 0;
+    this.state.facingOffset = 0;
+    this.state.turnRate = 0;
+    this.facingRate = 0;
+    this.facingTarget = 0;
+    this.headingOverride = Number.NaN;
+    this.shiftScale = 1;
     this.state.airborne = false;
     this.state.verticalVelocity = 0;
     this.state.landingSpeed = 0;
@@ -221,6 +256,8 @@ export class BodyController {
     if (this.state.airborne) return;
     this.state.airborne = true;
     this.state.angularVelocity = 0;
+    this.facingRate = 0;
+    this.state.turnRate = 0;
     // Parte de este frame ya transcurrió en el aire: la raíz ya subió algo.
     const g = this.config.gravity;
     this.state.verticalVelocity = verticalVelocity - g * elapsed;
@@ -248,10 +285,14 @@ export class BodyController {
       return;
     }
 
-    // Giro
+    // Giro: el del rumbo y, aparte, el de hacia dónde mira respecto a él.
     const turn = this.nextTurn(this.state.heading, this.state.angularVelocity, dt, this.state.speed);
     this.state.heading = turn.heading;
     this.state.angularVelocity = turn.angularVelocity;
+    const facing = this.nextFacing(this.state.facingOffset, this.facingRate, dt);
+    this.state.facingOffset = facing.offset;
+    this.facingRate = facing.rate;
+    this.state.turnRate = turn.angularVelocity + facing.rate;
     this.applyHeading();
 
     // Velocidad lineal
@@ -336,7 +377,7 @@ export class BodyController {
     }
 
     this.lateral.crossVectors(UP, s.forward).normalize();
-    const target = this.tmp.subVectors(s.supportCenter, s.position).dot(this.lateral) * this.config.lateralShift;
+    const target = this.tmp.subVectors(s.supportCenter, s.position).dot(this.lateral) * this.config.lateralShift * this.shiftScale;
 
     const w = this.config.lateralShiftResponse;
     const accel = w * w * (target - this.shiftAmount) - 2 * w * this.shiftVelocity;
@@ -345,15 +386,43 @@ export class BodyController {
     s.shift.copy(this.lateral).multiplyScalar(this.shiftAmount);
   }
 
-  /** Is it turning, or does it still have turning to do? */
+  /** Is it turning, or does it still have turning to do? (Its heading or where it faces.) */
   isTurning(): boolean {
-    return Math.abs(wrapAngle(this.targetHeading - this.state.heading)) > 0.01 || Math.abs(this.state.angularVelocity) > 0.01;
+    return (
+      Math.abs(wrapAngle(this.headingTarget - this.state.heading)) > 0.01 ||
+      Math.abs(this.state.angularVelocity) > 0.01 ||
+      Math.abs(this.facingTarget - this.state.facingOffset) > 0.01 ||
+      Math.abs(this.facingRate) > 0.01
+    );
+  }
+
+  /** Heading of travel it turns towards: `headingOverride`, or else `targetHeading`. */
+  get headingTarget(): number {
+    return Number.isNaN(this.headingOverride) ? this.targetHeading : this.headingOverride;
+  }
+
+  /** Turn the root still has to make (rad, positive = left): that of the heading and that of `facingOffset`. */
+  turnRemaining(): number {
+    return wrapAngle(this.headingTarget - this.state.heading) + (this.facingTarget - this.state.facingOffset);
+  }
+
+  /**
+   * Turns the direction of travel round (half a turn) without turning the body: going sideways, it then goes the
+   * other way. Only stopped (it doesn't change the velocity).
+   */
+  reverseTravel(): void {
+    const s = this.state;
+    s.heading += Math.PI;
+    s.facingOffset = wrapAngle(s.facingOffset - Math.PI);
+    this.facingTarget = wrapAngle(this.facingTarget - Math.PI);
+    if (!Number.isNaN(this.headingOverride)) this.headingOverride = wrapAngle(this.headingOverride + Math.PI);
+    s.travel.negate();
   }
 
   /**
    * Predicts the motion of the body over `duration` seconds, taking into account acceleration, braking and
-   * turning: displacement (it can be a curve), final velocity and how much it will have turned (rad).
-   * Returns the turn.
+   * turning: displacement (it can be a curve), final velocity and how much the body will have turned (rad;
+   * its heading and where it faces, `facingOffset`). Returns the turn.
    */
   predict(duration: number, outDisplacement: Vector3, outVelocity: Vector3): number {
     const substeps = 10;
@@ -362,10 +431,13 @@ export class BodyController {
     let rate = this.speedRate;
     let heading = this.state.heading;
     let angularVelocity = this.state.angularVelocity;
+    let offset = this.state.facingOffset;
+    let facingRate = this.facingRate;
     outDisplacement.set(0, 0, 0);
     for (let i = 0; i < substeps; i++) {
       const next = this.nextSpeed(speed, rate, h, this.cappedTargetSpeed(heading));
       const turn = this.nextTurn(heading, angularVelocity, h, speed);
+      const facing = this.nextFacing(offset, facingRate, h);
       const midHeading = (heading + turn.heading) / 2;
       this.dirAt(midHeading - this.state.heading, this.tmp);
       outDisplacement.addScaledVector(this.tmp, ((speed + next.speed) / 2) * h);
@@ -373,16 +445,34 @@ export class BodyController {
       rate = next.rate;
       heading = turn.heading;
       angularVelocity = turn.angularVelocity;
+      offset = facing.offset;
+      facingRate = facing.rate;
     }
     const yaw = heading - this.state.heading;
     this.dirAt(yaw, outVelocity).multiplyScalar(speed);
-    this.predictedAngularVelocity = angularVelocity;
-    return yaw;
+    this.predictedAngularVelocity = angularVelocity + facingRate;
+    return yaw + offset - this.state.facingOffset;
   }
 
   /** Direction of travel after turning `yaw` rad relative to the current one. */
   private dirAt(yaw: number, out: Vector3): Vector3 {
-    return out.copy(this.state.forward).applyAxisAngle(UP, yaw);
+    return out.copy(this.state.travel).applyAxisAngle(UP, yaw);
+  }
+
+  /**
+   * One integration step of `facingOffset` towards `facingTarget`: like the turn (`turnSpeed`,
+   * `turnAcceleration`), without the limit of the lateral acceleration (the direction of travel doesn't change).
+   */
+  private nextFacing(offset: number, rate: number, dt: number): { offset: number; rate: number } {
+    const error = this.facingTarget - offset;
+    if (error === 0 && rate === 0) return { offset, rate };
+    const maxSpeed = (this.config.turnSpeed * this.turnRateScale * Math.PI) / 180;
+    const maxAccel = (this.config.turnAcceleration * this.turnRateScale * Math.PI) / 180;
+    const desired = Math.sign(error) * Math.min(maxSpeed, Math.sqrt(2 * maxAccel * Math.abs(error)), 6 * Math.abs(error));
+    const w = moveTowards(rate, desired, maxAccel * dt);
+    // Al llegar, en él (sin quedarse a una milésima girando sin parar).
+    if (Math.abs(error) < 1e-4 && Math.abs(w) < 1e-3) return { offset: this.facingTarget, rate: 0 };
+    return { offset: offset + w * dt, rate: w };
   }
 
   /**
@@ -394,7 +484,7 @@ export class BodyController {
   private nextTurn(heading: number, angularVelocity: number, dt: number, speed: number): { heading: number; angularVelocity: number } {
     const maxSpeed = Math.min((this.config.turnSpeed * this.turnRateScale * Math.PI) / 180, this.config.maxLateralAcceleration / speed);
     const maxAccel = (this.config.turnAcceleration * this.turnRateScale * Math.PI) / 180;
-    const error = wrapAngle(this.targetHeading - heading);
+    const error = wrapAngle(this.headingTarget - heading);
     const desired = Math.sign(error) * Math.min(maxSpeed, Math.sqrt(2 * maxAccel * Math.abs(error)), 6 * Math.abs(error));
     const w = moveTowards(angularVelocity, desired, maxAccel * dt);
     return { heading: heading + w * dt, angularVelocity: w };
@@ -406,7 +496,7 @@ export class BodyController {
    */
   private applyHeading(): void {
     this.root.updateWorldMatrix(true, false);
-    const worldQuat = this.q.copy(this.baseRotation).premultiply(this.qHeading.setFromAxisAngle(UP, this.state.heading));
+    const worldQuat = this.q.copy(this.baseRotation).premultiply(this.qHeading.setFromAxisAngle(UP, this.state.heading + this.state.facingOffset));
     if (this.root.parent) this.root.quaternion.copy(this.root.parent.getWorldQuaternion(this.qParent).invert().multiply(worldQuat));
     else this.root.quaternion.copy(worldQuat);
     this.root.updateWorldMatrix(false, false);
@@ -465,7 +555,7 @@ export class BodyController {
    */
   private cappedTargetSpeed(heading = this.state.heading): number {
     const capped = Math.min(Math.max(this.targetSpeed, 0), this.config.runSpeed, this.speedLimit);
-    return capped * this.turnSpeedFactor(wrapAngle(this.targetHeading - heading));
+    return capped * this.turnSpeedFactor(wrapAngle(this.headingTarget - heading));
   }
 
   /**
@@ -502,7 +592,9 @@ export class BodyController {
     const s = this.state;
     this.root.getWorldQuaternion(this.q);
     s.forward.copy(this.forwardLocal).applyQuaternion(this.q).setY(0).normalize();
-    s.velocity.copy(s.forward).multiplyScalar(s.speed);
+    s.travel.copy(s.forward);
+    if (s.facingOffset !== 0) s.travel.applyAxisAngle(UP, -s.facingOffset);
+    s.velocity.copy(s.travel).multiplyScalar(s.speed);
     this.root.getWorldPosition(s.position);
   }
 

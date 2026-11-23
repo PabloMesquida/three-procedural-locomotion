@@ -290,7 +290,7 @@ export class MoveToController {
     const b = this.path[k];
     const length = Math.hypot(b.x - a.x, b.z - a.z);
     if (length < 1e-6) return 1;
-    const f = this.controller.body.state.forward;
+    const f = this.controller.body.state.travel;
     return ((b.x - a.x) * f.x + (b.z - a.z) * f.z) / length;
   }
 
@@ -528,7 +528,8 @@ export class MoveToController {
     const state = this.controller.body.state;
     this.toTarget.subVectors(point, state.position).setY(0);
     if (this.toTarget.lengthSq() < 1e-8) return this.controller.targetHeading;
-    const f = state.forward;
+    // Respecto a la dirección de avance (de espaldas a la pared de una cornisa, el cuerpo mira hacia otro lado).
+    const f = state.travel;
     const sin = this.cross.crossVectors(f, this.toTarget).dot(UP);
     const cos = f.dot(this.toTarget);
     return state.heading + Math.atan2(sin, cos);

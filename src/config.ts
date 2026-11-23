@@ -22,7 +22,7 @@ export const REFERENCE_LEG_LENGTH = 0.8789660528788095;
  */
 export const LENGTH_PARAMS = [
   'stepLength', 'stepWidth', 'stepHeight', 'ankleBack', 'runStepLength', 'runStepHeight',
-  'runCrouch', 'runBounce', 'crouchDepth', 'crouchHipBack', 'narrowWidth', 'narrowStepWidth',
+  'runCrouch', 'runBounce', 'crouchDepth', 'crouchHipBack', 'narrowWidth', 'narrowStepWidth', 'ledgeWidth', 'ledgeStepWidth',
   'jumpCrouch', 'jumpTuck', 'maxLandingDip', 'idleStepThreshold',
   'toeClearance', 'maxExtraStepHeight', 'maxStepUp', 'maxStepDown', 'groundProbeHeight', 'groundProbeDepth',
   'footProbeHeight', 'footProbeDepth', 'footProbeTolerance', 'kneePoleDistance', 'shoulderForward',
@@ -36,7 +36,7 @@ export const LENGTH_PARAMS = [
  * clock runs slower or faster: see ProceduralHuman.
  */
 export const SPEED_PARAMS = [
-  'walkSpeed', 'runSpeed', 'runStartSpeed', 'runTransition', 'crouchMaxSpeed', 'narrowMaxSpeed', 'jumpSpeed',
+  'walkSpeed', 'runSpeed', 'runStartSpeed', 'runTransition', 'crouchMaxSpeed', 'narrowMaxSpeed', 'ledgeMaxSpeed', 'jumpSpeed',
 ] as const satisfies readonly (keyof ProceduralHumanConfig)[];
 export const ACCELERATION_PARAMS = [
   'acceleration', 'deceleration', 'gravity', 'maxLateralAcceleration',
@@ -69,7 +69,7 @@ const POSITIVE: readonly Key[] = [
   'walkSpeed', 'runSpeed', 'runStartSpeed', 'acceleration', 'deceleration',
   'stepFrequency', 'minStepFrequency', 'runStepFrequency', 'stepLength', 'runStepLength',
   'turnSpeed', 'turnAcceleration', 'maxTurnPerStep', 'maxLateralAcceleration',
-  'crouchMaxSpeed', 'crouchRate', 'narrowMaxSpeed', 'narrowRate',
+  'crouchMaxSpeed', 'crouchRate', 'narrowMaxSpeed', 'narrowRate', 'ledgeMaxSpeed', 'ledgeRate',
   'gravity', 'jumpSpeed', 'jumpCrouch', 'landingTime',
   'touchReachTime', 'touchReleaseTime',
   'armSwingFrequency', 'armSwingDamping', 'trunkFrequency', 'trunkDamping', 'forearmFrequency', 'handFrequency', 'fingerFrequency', 'pelvisFrequency', 'pelvisDamping',
@@ -112,7 +112,7 @@ export function validateConfig(input: ProceduralHumanConfigInput, base: Procedur
   if (num('narrowTouchRelax') < 0 || num('narrowTouchRelax') > 1) problems.push(`"narrowTouchRelax" must be between 0 and 1 (got ${num('narrowTouchRelax')})`);
   if (num('fingerCurl') < 0) problems.push(`"fingerCurl" must be ≥ 0 (got ${num('fingerCurl')})`);
   if (!(num('touchMaxReach') > 0 && num('touchMaxReach') <= 1)) problems.push(`"touchMaxReach" must be in (0, 1] (got ${num('touchMaxReach')})`);
-  for (const key of ['narrowWidth', 'narrowStepWidth', 'narrowArmTilt'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
+  for (const key of ['narrowWidth', 'narrowStepWidth', 'narrowArmTilt', 'ledgeWidth', 'ledgeStepWidth'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
   for (const key of ['touchHoldTime', 'touchCooldown', 'touchCurveRadius'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
   if (num('speedEasing') < 0) problems.push(`"speedEasing" must be ≥ 0 (got ${num('speedEasing')})`);
   if (merged.stepWidth !== null && num('stepWidth') < 0) problems.push(`"stepWidth" must be ≥ 0 or null (got ${num('stepWidth')})`);

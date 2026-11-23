@@ -477,6 +477,15 @@ export class ProceduralHuman {
     return this.locomotion.balance;
   }
 
+  /**
+   * How much it is going along a ledge with its back to the wall (0–1; see `ledgeWidth`): it goes sideways, facing
+   * away from the wall, bringing one foot up to the other. It detects the ledge on its own. Along it, `heading` is
+   * where it goes; the body faces `facingOffset` rad from there (see `locomotion.body.state`).
+   */
+  get ledge(): number {
+    return this.locomotion.ledgeBlend;
+  }
+
   /** idle (still, feet on the ground) or walk (taking steps, walking or running). */
   get gaitMode(): GaitMode {
     return this.locomotion.gait.mode;

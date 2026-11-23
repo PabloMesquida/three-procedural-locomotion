@@ -65,7 +65,8 @@ src/          LIBRARY (the only thing published, together with dist/ and docs/)
   ik/         TwoBoneIK (analytic solver), LegIK (leg of the rig)
   terrain/    GroundDetector (interface + raycast), StaticGroundDetector (indexed static ground),
               SurfaceDetector, FootPlacement, Colliders (obstacles that aren't ground),
-              GroundProfile (the ground along the travel, for stairs), NarrowPath (narrow paths)
+              GroundProfile (the ground along the travel, for stairs), NarrowPath (narrow paths),
+              Ledge (ledges)
   locomotion/ LocomotionConfig, GaitController, FootstepPlanner, FootTarget, FootRoll,
               StairPlanner (stairs and steps), JumpController, LocomotionController (coordinates everything)
   body/       BodyController, PelvisController, TorsoController, ArmController, TouchController,
@@ -157,11 +158,12 @@ check it.
 
 Raycasts per character: 1 per frame (root probe, which also detects changes in the ground under the body)
 and ~14 at the start of each step (landing: heel and toes; arc height: 12 samples of the toes), plus 1 every
-0.25 s looking for narrow paths (every 1 s standing still; ~20 on a narrow path, see `NarrowPath`). Standing
+0.25 s looking for narrow paths and 1 more looking for ledges (every 1 s standing still; ~20 on a narrow path or
+when it finds a ledge, see `NarrowPath` and `Ledge`, and 5–9 per frame along a ledge). Standing
 still, the check of whether the feet are settled (4 raycasts) is reused while the root matrix doesn't
 change and repeated every `IDLE_RECHECK_TIME` (0.25 s) to notice changes in the configuration or the
-terrain under the feet. `tests/raycasts.test.ts` sets the budget (standing ≤ 1.3/frame, walking ≤ 1.55,
-running ≤ 1.82).
+terrain under the feet. `tests/raycasts.test.ts` sets the budget (standing ≤ 1.3/frame, walking ≤ 1.62,
+running ≤ 1.89).
 
 What each query costs depends on the detector. `RaycastGroundDetector` uses Three's raycast, which tests
 every triangle (~2 ms each with 50,000: the ~14 at the start of a step make a ~25 ms frame).

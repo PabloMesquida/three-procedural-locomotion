@@ -26,6 +26,9 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
   that it stops ([guide](docs/en/guide.md#stairs)).
 - **Narrow paths, detected from the geometry**: on a beam or the top of a wall it balances, one foot in front
   of the other along the middle, slower and with the arms out ([guide](docs/en/guide.md#narrow-paths)).
+- **Ledges, detected from the geometry**: along a ledge with a wall on one side and a drop on the other it goes
+  sideways with its back against the wall, even an irregular one, opening one foot and bringing the other up to it
+  ([guide](docs/en/guide.md#ledges)).
 - **Crouching, jumping and landing** with anticipation, push-off, tucked feet and cushioning.
 - **Gradual twist** of arms and legs if the rig has `twist` bones (optional): the wrist and ankle don't twist
   abruptly ([skeletons](docs/en/skeletons.md#twist-bones)).
@@ -39,7 +42,7 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
 - **A living body**: counter-rotation of pelvis and shoulders, weight shift, arms and fingers as damped
   pendulums, deterministic natural variation per seed (two characters never move the same way).
 - **Styles and tuning on two levels**: `tired`, `sneaky`, `athletic` and `heavy` presets; thirteen basic controls
-  (tempo, stride, arm swing, intensity…) that move several parameters at once; and all 135 parameters one by
+  (tempo, stride, arm swing, intensity…) that move several parameters at once; and all 144 parameters one by
   one, adjustable at runtime and validated.
 - **Walking in place**: `shiftOrigin` moves the character without changing its motion (a treadmill to tune
   while watching the effect, or a floating origin in large worlds).

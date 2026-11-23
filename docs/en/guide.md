@@ -99,7 +99,8 @@ foot pivots on the toes. How fast it turns is set by `turnSpeed` and `maxLateral
 Running is not a separate mode: `walkSpeed` (1.4 m/s) is the normal walking speed, but it keeps walking, at a
 brisk pace, up to `runStartSpeed` (1.7 m/s); above that the gait gradually turns into running (`runBlend`) over
 `runTransition` (complete at about 2.3 m/s; a person switches at about 2 m/s) and it can accelerate up to
-`runSpeed`. While crouching, speed is limited to `crouchMaxSpeed`, and on a narrow path to `narrowMaxSpeed`.
+`runSpeed`. While crouching, speed is limited to `crouchMaxSpeed`, on a narrow path to `narrowMaxSpeed` and along a
+ledge to `ledgeMaxSpeed`.
 
 ## State
 
@@ -112,6 +113,7 @@ brisk pace, up to `runStartSpeed` (1.7 m/s); above that the gait gradually turns
 | `runBlend` | 0 = walking, 1 = running. |
 | `crouch` | Current crouch (0–1). |
 | `balance` | How much it is balancing on a narrow path (0–1, see [Narrow paths](#narrow-paths)). |
+| `ledge` | How much it is going along a ledge with its back to the wall (0–1, see [Ledges](#ledges)). |
 | `airborne`, `jumpPhase` | In the air; jump phase: `GROUNDED`, `TAKEOFF`, `AIRBORNE`, `LANDING`. |
 | `moveTarget` | Destination of the current `moveTo` (or `followPath`), or `null`. |
 | `movePath` | What is left of its route (points, a copy; the last one is `moveTarget`), or `null` if it goes in a straight line. |
@@ -165,7 +167,7 @@ parameters and pass it as `config` or with `setConfig`.
 
 ## Basic controls
 
-To change how it walks without going into the 135 parameters: thirteen high-level controls (`basicControls`),
+To change how it walks without going into the 144 parameters: thirteen high-level controls (`basicControls`),
 each of which moves several parameters at once. They are a layer on top of the configuration, like the presets:
 `applyBasicControls(base, values)` returns the resulting parameters for `setConfig`.
 
@@ -462,6 +464,40 @@ destination itself; or at its end, if that way is shorter. On a higher one (the 
 its end, in line with it: if it comes at an angle, the route first goes to a point before the end. On the way there it slows down to
 `narrowMaxSpeed`, heads for a closer point on the route and steps sideways towards its line, so it gets on
 straight and along the middle even if it had to turn round just before.
+
+### Ledges
+
+A cornice on a cliff, the ledge of a building: with a wall on one side and a drop it can't step down (deeper than
+`maxStepDown`) on the other, narrower than `ledgeWidth` (45 cm by default), the character goes along it sideways
+with its back to the wall, as a person does. It is detected from the geometry too, with the same kind of probe as
+narrow paths: the wall is ground at least 1.1 m (scaled with the size) higher than the ledge; a lower one (a parapet)
+doesn't count. `ledge` (0–1) says how much it is doing it, and changes over `1 / ledgeRate` s.
+
+- When it gets to the ledge it turns its back to the wall without changing its direction of travel, and keeps facing
+  the same way all along it (it only turns with the ledge if this bends more than 20°). When the ledge widens or
+  ends, it turns back to face where it goes and walks on.
+- It goes sideways: it opens the foot on the side it is going towards, takes the weight onto it and brings the other
+  one up to it, without crossing them (`ledgeStepWidth` between the ankles with the feet together; they open about
+  as much as it advances in a step), with short, quick steps that barely leave the ground, a long double support and
+  the knees a little bent (`ledgeKneeBend`). Slowly: `ledgeMaxSpeed` (0.35 m/s).
+- The back stays against the wall, also an irregular one: it measures how far the wall is at the height of the hips
+  and of the shoulder blades, across the width of the back, and keeps the body where the back touches what sticks out
+  most; if the wall sticks out more at one height than at the other, the trunk leans back (or the hips go back) up to
+  10° to touch it at both. How far the back sticks out behind the hips is measured on the model's mesh (without
+  meshes, the usual proportions).
+- The arms hang by its sides, a little open and back, with the hands against the wall (`ledgeArmAbduction`,
+  `ledgeArmForward`, `ledgeElbowBend`), and the head looks a little down and towards where it goes (`ledgeGaze`).
+  It doesn't touch surfaces with the hands meanwhile.
+
+It is controlled as usual: the direction of `targetHeading` (or of `moveTo`) along the ledge sets which way it
+goes. Asked to go the other way, it stops and goes back without turning round; asked towards the wall or the drop
+(more than 70° off the ledge), it stays still. Along it, `heading` and `velocity` are where it goes, and the body
+faces `locomotion.body.state.facingOffset` rad (±90°) from there. A `moveTo` route can go along a ledge, close to
+the wall: each metre of it counts as two of open ground (it is slower), so it takes it unless going round is less than
+about twice as long.
+
+With `ledgeWidth: 0` it never does it. It costs one ground query every 0.25 s while moving (every second standing
+still), as narrow paths do, about 20 when it finds a ledge, and 5–9 per frame along it (the wall behind the back).
 
 ## Irregular frames
 

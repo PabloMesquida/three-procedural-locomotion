@@ -99,7 +99,8 @@ marcan `turnSpeed` y `maxLateralAcceleration`.
 Correr no es un modo aparte: `walkSpeed` (1,4 m/s) es la velocidad normal de caminar, pero se sigue caminando, a
 paso vivo, hasta `runStartSpeed` (1,7 m/s); por encima la marcha pasa gradualmente a carrera (`runBlend`) en
 `runTransition` (completa hacia 2,3 m/s; una persona cambia hacia los 2 m/s) y se puede acelerar hasta `runSpeed`.
-Agachado la velocidad se limita a `crouchMaxSpeed`, y en un camino angosto a `narrowMaxSpeed`.
+Agachado la velocidad se limita a `crouchMaxSpeed`, en un camino angosto a `narrowMaxSpeed` y en una cornisa a
+`ledgeMaxSpeed`.
 
 ## Estado
 
@@ -112,6 +113,7 @@ Agachado la velocidad se limita a `crouchMaxSpeed`, y en un camino angosto a `na
 | `runBlend` | 0 = caminar, 1 = correr. |
 | `crouch` | Agachado actual (0–1). |
 | `balance` | Cuánto hace equilibrio en un camino angosto (0–1, ver [Caminos angostos](#caminos-angostos)). |
+| `ledge` | Cuánto va por una cornisa de espaldas a la pared (0–1, ver [Cornisas](#cornisas)). |
 | `airborne`, `jumpPhase` | En el aire; fase del salto: `GROUNDED`, `TAKEOFF`, `AIRBORNE`, `LANDING`. |
 | `moveTarget` | Destino del `moveTo` (o `followPath`) en curso, o `null`. |
 | `movePath` | Lo que queda de su ruta (puntos, una copia; el último es `moveTarget`), o `null` si va en línea recta. |
@@ -165,7 +167,7 @@ parámetros y pásalo como `config` o con `setConfig`.
 
 ## Controles básicos
 
-Para cambiar cómo camina sin entrar en los 135 parámetros: trece controles de alto nivel (`basicControls`), cada
+Para cambiar cómo camina sin entrar en los 144 parámetros: trece controles de alto nivel (`basicControls`), cada
 uno mueve a la vez varios parámetros. Son una capa sobre la configuración, como los estilos:
 `applyBasicControls(base, valores)` devuelve los parámetros resultantes para `setConfig`.
 
@@ -469,6 +471,40 @@ solo por su extremo, en línea con él: si llega en ángulo, la ruta pasa antes 
 camino frena hasta `narrowMaxSpeed`, apunta a
 un punto más cercano de la ruta y se corrige de lado hacia su línea, así que entra recto y por el medio aunque
 acabe de dar la vuelta.
+
+### Cornisas
+
+Una cornisa en un acantilado, el saliente de un edificio: con una pared a un lado y al otro una caída que no puede
+bajar (más honda que `maxStepDown`), más estrecha que `ledgeWidth` (45 cm por defecto), el personaje la recorre de
+lado con la espalda pegada a la pared, como una persona. También se detecta en la geometría, con una sonda como la de
+los caminos angostos: la pared es suelo al menos 1,1 m (escalado con el tamaño) más alto que la cornisa; una más baja
+(un pretil) no cuenta. `ledge` (0–1) dice cuánto lo está haciendo, y cambia en `1 / ledgeRate` s.
+
+- Al llegar a la cornisa se pone de espaldas a la pared sin cambiar su dirección de avance, y mira siempre hacia el
+  mismo lado a lo largo de ella (solo gira con la cornisa si esta tuerce más de 20°). Cuando la cornisa se ensancha o
+  se acaba, vuelve a girarse hacia donde va y sigue caminando.
+- Va de lado: abre el pie del lado hacia el que va, pasa el peso a él y acerca el otro, sin cruzarlos
+  (`ledgeStepWidth` entre los tobillos con los pies juntos; se separan más o menos lo que avanza en un paso), con
+  pasos cortos y rápidos que apenas despegan del suelo, un doble apoyo largo y las rodillas algo dobladas
+  (`ledgeKneeBend`). Despacio: `ledgeMaxSpeed` (0,35 m/s).
+- La espalda sigue en la pared, también si es irregular: mide a qué distancia está la pared a la altura de la cadera y
+  de los omóplatos, a lo ancho de la espalda, y mantiene el cuerpo donde la espalda toca lo que más sobresale; si la
+  pared sobresale más a una altura que a la otra, el tronco se inclina hacia atrás (o la cadera va hacia atrás) hasta
+  10° para tocarla en las dos. Lo que sobresale la espalda detrás de la cadera se mide en la malla del modelo (sin
+  malla, las proporciones habituales).
+- Los brazos cuelgan a los costados, algo abiertos y hacia atrás, con las manos en la pared (`ledgeArmAbduction`,
+  `ledgeArmForward`, `ledgeElbowBend`), y la cabeza mira un poco hacia abajo y hacia donde va (`ledgeGaze`).
+  Mientras, no toca superficies con las manos.
+
+Se controla como siempre: el sentido de `targetHeading` (o de `moveTo`) a lo largo de la cornisa dice hacia dónde
+va. Si se le pide ir hacia el otro lado, se para y vuelve sin darse la vuelta; hacia la pared o hacia el vacío (a más
+de 70° de la cornisa), se queda quieto. En ella, `heading` y `velocity` son hacia donde va, y el cuerpo mira
+`locomotion.body.state.facingOffset` rad (±90°) desde ahí. Una ruta de `moveTo` puede ir por una cornisa, cerca de la
+pared: cada metro cuenta como dos de suelo abierto (va más despacio), así que la toma salvo que rodearla mida menos
+del doble.
+
+Con `ledgeWidth: 0` no lo hace nunca. Cuesta una consulta al suelo cada 0,25 s en marcha (cada segundo parado), como
+los caminos angostos, unas 20 al encontrar una cornisa, y 5–9 por frame en ella (la pared detrás de la espalda).
 
 ## Frames irregulares
 

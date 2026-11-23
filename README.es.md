@@ -27,6 +27,9 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
   más allá se para ([guía](docs/es/guide.md#escaleras)).
 - **Caminos angostos, detectados en la geometría**: sobre una viga o lo alto de un muro hace equilibrio, un pie
   delante del otro por el medio, más despacio y con los brazos abiertos ([guía](docs/es/guide.md#caminos-angostos)).
+- **Cornisas, detectadas en la geometría**: en una cornisa con una pared a un lado y un vacío al otro avanza de lado
+  con la espalda pegada a la pared, aunque sea irregular, abriendo un pie y acercando el otro
+  ([guía](docs/es/guide.md#cornisas)).
 - **Agacharse, saltar y aterrizar** con preparación, impulso, recogida de pies y amortiguación.
 - **Torsión gradual** de brazos y piernas si el rig tiene huesos `twist` (opcionales): la muñeca y el tobillo
   no se retuercen de golpe ([esqueletos](docs/es/skeletons.md#huesos-de-torsión)).
@@ -39,7 +42,7 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
   siga al lado; o a mano con `touch(punto)` ([guía](docs/es/guide.md#tocar-superficies)).
 - **Cuerpo vivo**: contrarrotación de pelvis y hombros, reparto del peso, brazos y dedos como péndulos
   amortiguados, variación natural determinista por semilla (dos personajes nunca se mueven igual).
-- **Estilos y ajustes en dos niveles**: estilos `tired`, `sneaky`, `athletic`, `heavy`; trece controles básicos (ritmo, zancada, braceo, intensidad…) que mueven varios parámetros a la vez; y los 135 parámetros uno a uno, ajustables en ejecución y validados.
+- **Estilos y ajustes en dos niveles**: estilos `tired`, `sneaky`, `athletic`, `heavy`; trece controles básicos (ritmo, zancada, braceo, intensidad…) que mueven varios parámetros a la vez; y los 144 parámetros uno a uno, ajustables en ejecución y validados.
 - **Caminar en el sitio**: `shiftOrigin` desplaza al personaje sin cambiar su movimiento (cinta de correr para ajustar viendo el efecto, u origen flotante en mundos grandes).
 - **Cualquier tamaño y proporción**: las longitudes se escalan con el largo de pierna del modelo (de un niño a un gigante) y también las velocidades y el ritmo de los pasos, como en una persona de ese tamaño. Probado con esqueletos de proporciones distintas (piernas, torso, caderas, brazos, pies).
 - **Rigs**: Mixamo y metarig de Rigify incluidos; cualquier otro con un mapping de huesos.

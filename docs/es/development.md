@@ -64,7 +64,8 @@ src/          LIBRERÍA (lo único que se publica, junto con dist/ y docs/)
   ik/         TwoBoneIK (solver analítico), LegIK (pierna del rig)
   terrain/    GroundDetector (interfaz + raycast), StaticGroundDetector (suelo estático indexado),
               SurfaceDetector, FootPlacement, Colliders (obstáculos que no son suelo),
-              GroundProfile (el suelo a lo largo del avance, para escaleras), NarrowPath (caminos angostos)
+              GroundProfile (el suelo a lo largo del avance, para escaleras), NarrowPath (caminos angostos),
+              Ledge (cornisas)
   locomotion/ LocomotionConfig, GaitController, FootstepPlanner, FootTarget, FootRoll,
               StairPlanner (escaleras y escalones), JumpController, LocomotionController (lo coordina todo)
   body/       BodyController, PelvisController, TorsoController, ArmController, TouchController,
@@ -151,10 +152,11 @@ referencias exactas lo comprueban.
 
 Raycasts por personaje: 1 por frame (sonda de la raíz, que además detecta cambios del suelo bajo el cuerpo) y
 ~14 al empezar cada paso (aterrizaje: talón y punta; altura del arco: 12 muestras de la punta), más 1 cada 0,25 s
-buscando caminos angostos (cada 1 s parado; ~20 en un camino angosto, ver `NarrowPath`). Parado, la
+buscando caminos angostos y otro buscando cornisas (cada 1 s parado; ~20 en un camino angosto o al encontrar una
+cornisa, ver `NarrowPath` y `Ledge`, y 5–9 por frame en una cornisa). Parado, la
 comprobación de si los pies están recolocados (4 raycasts) se reutiliza mientras la matriz de la raíz no cambie
 y se repite cada `IDLE_RECHECK_TIME` (0,25 s) para notar cambios de configuración o del terreno bajo los pies.
-`tests/raycasts.test.ts` fija el presupuesto (parado ≤ 1,3/frame, caminando ≤ 1,55, corriendo ≤ 1,82).
+`tests/raycasts.test.ts` fija el presupuesto (parado ≤ 1,3/frame, caminando ≤ 1,62, corriendo ≤ 1,89).
 
 Lo que cuesta cada consulta depende del detector. `RaycastGroundDetector` usa el raycast de Three, que prueba
 todos los triángulos (~2 ms cada uno con 50.000: los ~14 del inicio de un paso dan un frame de ~25 ms).

@@ -4,6 +4,7 @@ import type { LocomotionConfig } from '../locomotion/LocomotionConfig.ts';
 import type { Colliders } from '../terrain/Colliders.ts';
 import { createGroundHit, type GroundDetector, type GroundHit } from '../terrain/GroundDetector.ts';
 import { NARROW_DROP } from '../terrain/NarrowPath.ts';
+import { LEDGE_WALL } from '../terrain/Ledge.ts';
 
 /** Side of the cells of the grid it searches on (× stepLength; 15 cm with the default one). */
 const CELL = 0.19;
@@ -18,6 +19,12 @@ const BERTH_COST = 4;
  * cost of the edge: it goes along it only if going round is much longer.
  */
 const NARROW_COST = 6;
+/**
+ * Along a ledge (or getting on or off it) each cell costs this much more than on open ground, instead of the cost of
+ * the edge and NARROW_COST: with its back to the wall it is safe, only slower. It goes round it only if that is less
+ * than about twice as long as going along it.
+ */
+const LEDGE_COST = 1;
 /**
  * If the destination can't be reached, it goes to the reachable point closest to it, counting as this much more
  * (per metre) what that point is below it: a click on the side of a step or a platform (a point halfway up a
@@ -72,6 +79,11 @@ const NARROW_ALIGNED_COS = Math.cos(Math.PI / 6);
  * is shorter than getting on it at an end.
  */
 const SIDE_APPROACH = 0.6;
+/**
+ * Along a ledge, the route goes this far from its wall (× stepLength; 16 cm with the default one): about where the
+ * root goes with the back against it.
+ */
+const LEDGE_LINE = 0.2;
 /** Bisection steps to find each edge of a narrow path (to ≈ 1 cm with cells of 15 cm). */
 const NARROW_EDGE_STEPS = 4;
 
@@ -92,8 +104,18 @@ interface Cell {
   narrow?: boolean;
   /** On a narrow path: the direction across it (index in ACROSS). */
   across?: number;
+  /**
+   * On a ledge (see `ledgeWidth`): an edge, but with a wall on one side and a drop on the other close enough; it is
+   * walked on, sideways with the back to the wall. undefined: not known yet.
+   */
+  ledge?: boolean;
+  /** On a ledge: the direction across it (index in ACROSS) and which way along it the wall is (±1). */
+  ledgeAcross?: number;
+  ledgeWall?: number;
   /** Within reach of a narrow path (to get on and off it), though close to an edge. undefined: not known yet. */
   nearNarrow?: boolean;
+  /** What `nearNarrow` found within reach is a ledge (not a narrow path). */
+  nearLedge?: boolean;
   /** Room: distance to the nearest edge cell, up to `BERTH`, or to a collider (m). NaN: not known yet. */
   clearance: number;
   /** Distance to the nearest collider (m; negative inside). NaN: not known yet. */
@@ -319,6 +341,8 @@ export class PathPlanner {
       // Al borde no, salvo por un camino angosto (o para subir a él o bajar), y entonces cuesta más.
       const tight = ((room < hard && !nearGoal) || this.isEdge(ni, nj)) && !nearStart;
       if (tight && !this.onNarrow(ni, nj, hard)) return Number.NaN;
+      // Por una cornisa (o subiendo y bajando de ella), de espaldas a la pared: más despacio, pero sin riesgo.
+      if (this.isLedge(ni, nj) || (tight && !this.isNarrow(ni, nj) && this.cell(ni, nj, 0).nearLedge)) return step * s * (1 + LEDGE_COST);
       const crowd = room >= this.berth ? 0 : BERTH_COST * (1 - Math.max(room - hard, 0) / (this.berth - hard));
       // Ir a lo largo de un camino angosto cuesta más; cruzarlo por encima (uno bajo), no.
       const along = (tight || this.isNarrow(ni, nj)) && !(this.isNarrow(ni, nj) && this.acrossNarrow(ni, nj, ni - i, nj - j));
@@ -338,7 +362,7 @@ export class PathPlanner {
         const i = ti + di;
         const j = tj + dj;
         const c = this.cell(i, j, target.y);
-        if (!Number.isFinite(c.height) || (this.isEdge(i, j) && !this.isNarrow(i, j)) || this.apart(i, j) < hard) continue;
+        if (!Number.isFinite(c.height) || (this.isEdge(i, j) && !this.isNarrow(i, j) && !this.isLedge(i, j)) || this.apart(i, j) < hard) continue;
         const d = away(i, j, c.height);
         if (d < goalAway) {
           goalAway = d;
@@ -438,7 +462,48 @@ export class PathPlanner {
     this.markNarrow(start, out, narrow);
     this.approachNarrow(start, out, narrow);
     this.centerNarrow(out, narrow);
+    this.alongWall(out);
     return true;
+  }
+
+  /**
+   * The points of the route on a ledge, to LEDGE_LINE from its wall: the body goes along it with its back to the
+   * wall, and the cells can be right at the edge of the drop (getting on it there, the body would be over the drop).
+   */
+  private alongWall(points: Vector3[]): void {
+    const config = this.config();
+    if (!(config.ledgeWidth > 0)) return;
+    const s = this.size;
+    const wallHeight = Math.min(LEDGE_WALL * config.stepLength, config.groundProbeHeight);
+    for (const p of points) {
+      const i = Math.round((p.x - this.x0) / s);
+      const j = Math.round((p.z - this.z0) / s);
+      this.cell(i, j, p.y);
+      if (!this.isLedge(i, j)) continue;
+      const c = this.cell(i, j, 0);
+      const [di, dj] = ACROSS[c.ledgeAcross!];
+      const length = Math.hypot(di, dj) * c.ledgeWall!;
+      const ax = di / length;
+      const az = dj / length;
+      // Desde p, a `t` m hacia la pared: ya es la pared (o se empieza dentro de ella).
+      const wallAt = (t: number): boolean => {
+        this.origin.set(p.x + ax * t, c.height + config.groundProbeHeight, p.z + az * t);
+        this.raycasts++;
+        if (!this.detector.castDown(this.origin, config.groundProbeHeight, this.hit)) return false;
+        return this.hit.distance < 0 || this.hit.point.y >= c.height + wallHeight;
+      };
+      let inside = 0;
+      let outside = config.ledgeWidth + s;
+      if (!wallAt(outside)) continue;
+      for (let k = 0; k < NARROW_EDGE_STEPS + 1; k++) {
+        const mid = (inside + outside) / 2;
+        if (wallAt(mid)) outside = mid;
+        else inside = mid;
+      }
+      const move = (inside + outside) / 2 - LEDGE_LINE * config.stepLength;
+      p.x += ax * move;
+      p.z += az * move;
+    }
   }
 
   /**
@@ -679,12 +744,12 @@ export class PathPlanner {
   }
 
   /**
-   * Cell (i, j) is on a narrow path, or close enough to one (`hard` m and a cell) to get on or off it, without
-   * being an edge itself.
+   * Cell (i, j) is on a narrow path or a ledge, or close enough to one (`hard` m and a cell) to get on or off it,
+   * without being an edge itself.
    */
   private onNarrow(i: number, j: number, hard: number): boolean {
-    if (!(this.config().narrowWidth > 0)) return false;
-    if (this.isEdge(i, j)) return this.isNarrow(i, j);
+    if (!(this.config().narrowWidth > 0) && !(this.config().ledgeWidth > 0)) return false;
+    if (this.isEdge(i, j)) return this.isNarrow(i, j) || this.isLedge(i, j);
     const c = this.cell(i, j, 0);
     if (c.nearNarrow !== undefined) return c.nearNarrow;
     const reach = hard + this.size;
@@ -695,7 +760,9 @@ export class PathPlanner {
         if (Math.hypot(di, dj) * this.size > reach) continue;
         // A la misma altura: el camino, no el suelo de abajo junto a él.
         const n = this.cell(i + di, j + dj, c.height);
-        near = this.canStep(c, n) && this.canStep(n, c) && Math.abs(n.height - c.height) < this.narrowDrop() && this.isNarrow(i + di, j + dj);
+        if (!this.canStep(c, n) || !this.canStep(n, c) || !(Math.abs(n.height - c.height) < this.narrowDrop())) continue;
+        if (this.isNarrow(i + di, j + dj)) near = true;
+        else if (this.isLedge(i + di, j + dj)) near = c.nearLedge = true;
       }
     }
     c.nearNarrow = near;
@@ -762,6 +829,56 @@ export class PathPlanner {
     }
     c.narrow = narrow;
     return narrow;
+  }
+
+  /**
+   * Cell (i, j) is on a ledge: across it (along X, Z or a diagonal), a drop it can't step down (or no ground) on one
+   * side and a wall (ground at least `wallHeight` higher) on the other, within `ledgeWidth`.
+   */
+  private isLedge(i: number, j: number): boolean {
+    const config = this.config();
+    const width = config.ledgeWidth;
+    if (!(width > 0)) return false;
+    const c = this.cell(i, j, 0);
+    if (c.ledge !== undefined) return c.ledge;
+    let ledge = false;
+    if (Number.isFinite(c.height)) {
+      for (const [di, dj] of ACROSS) {
+        const length = Math.hypot(di, dj) * this.size;
+        const most = Math.floor(width / length) + 2;
+        for (const sign of [1, -1]) {
+          const drop = this.boundAt(i, j, c, sign * di, sign * dj, most);
+          if (drop.kind !== 'drop') continue;
+          const wall = this.boundAt(i, j, c, -sign * di, -sign * dj, most);
+          if (wall.kind === 'wall' && (drop.k + wall.k - 2) * length < width) {
+            ledge = true;
+            c.ledgeAcross = ACROSS.findIndex(([x, z]) => x === di && z === dj);
+            c.ledgeWall = -sign;
+            break;
+          }
+        }
+        if (ledge) break;
+      }
+    }
+    c.ledge = ledge;
+    return ledge;
+  }
+
+  /**
+   * Going from cell `c` (i, j) in steps of (di, dj): after how many it finds a drop it can't step down (or no
+   * ground) or a wall (ground LEDGE_WALL × stepLength higher, as LocomotionController sees it), within `most`; 'none'
+   * if neither (or a step it can climb first).
+   */
+  private boundAt(i: number, j: number, c: Cell, di: number, dj: number, most: number): { k: number; kind: 'drop' | 'wall' | 'none' } {
+    const config = this.config();
+    const wall = Math.min(LEDGE_WALL * config.stepLength, config.groundProbeHeight);
+    for (let k = 1; k <= most; k++) {
+      const n = this.cell(i + k * di, j + k * dj, c.height);
+      if (!(n.height >= c.height - config.maxStepDown)) return { k, kind: 'drop' };
+      if (n.height >= c.height + wall) return { k, kind: 'wall' };
+      if (Math.abs(n.height - c.height) >= this.narrowDrop()) return { k, kind: 'none' };
+    }
+    return { k: 0, kind: 'none' };
   }
 
   /**

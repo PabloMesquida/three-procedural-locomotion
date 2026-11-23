@@ -38,9 +38,9 @@ describe('raycasts', () => {
   // Presupuesto (regresión de rendimiento): 1 por frame es la sonda de la raíz; caminando y
   // corriendo se suman los del inicio de cada paso. Parado, la comprobación de si los pies
   // están recolocados (4 raycasts) se hacía cada frame: ahora solo si se mueve la raíz o cada 0,25 s.
-  // La sonda de caminos angostos suma 1 cada 0,25 s en marcha (cada 1 s parado): ≈ +0,07 por frame.
-  it('por frame: parado ≤ 1,3, caminando ≤ 1,55, corriendo ≤ 1,82', () => {
-    const budget = { parado: [0, 1.3], caminando: [1, 1.55], corriendo: [3, 1.82] } as const;
+  // La sonda de caminos angostos suma 1 cada 0,25 s en marcha (cada 1 s parado): ≈ +0,07 por frame; la de cornisas, otro tanto.
+  it('por frame: parado ≤ 1,3, caminando ≤ 1,62, corriendo ≤ 1,89', () => {
+    const budget = { parado: [0, 1.3], caminando: [1, 1.62], corriendo: [3, 1.89] } as const;
     for (const [mode, [speed, max]] of Object.entries(budget)) {
       const world = createWorld();
       const perFrame = raycastsPerFrame(world, () => { world.human.targetSpeed = speed; });
