@@ -13,6 +13,24 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
 
 ## Features
 
+<table>
+<tr>
+<td align="center" width="33%"><a href="docs/en/guide.md#control"><img src="media/walk.png" width="250" alt="Skeleton walking, mid-stride"></a><br><sub>Walking</sub></td>
+<td align="center" width="33%"><a href="docs/en/guide.md#control"><img src="media/run.png" width="250" alt="Skeleton running, in the flight phase"></a><br><sub>Running</sub></td>
+<td align="center" width="33%"><a href="docs/en/guide.md#stairs"><img src="media/stairs.png" width="250" alt="Skeleton going up stairs, reaching for the railing"></a><br><sub>Stairs</sub></td>
+</tr>
+<tr>
+<td align="center" width="33%"><a href="docs/en/guide.md#ground"><img src="media/rocks.png" width="250" alt="Skeleton walking over rocks, each foot at its own height"></a><br><sub>Uneven ground</sub></td>
+<td align="center" width="33%"><a href="docs/en/guide.md#narrow-paths"><img src="media/narrow.png" width="250" alt="Skeleton balancing on a beam, arms out"></a><br><sub>Narrow paths</sub></td>
+<td align="center" width="33%"><a href="docs/en/guide.md#ledges"><img src="media/ledge.png" width="250" alt="Skeleton going sideways along a ledge with its back to a rocky wall"></a><br><sub>Ledges</sub></td>
+</tr>
+<tr>
+<td align="center" width="33%"><a href="docs/en/guide.md#control"><img src="media/crouch.png" width="250" alt="Skeleton walking crouched"></a><br><sub>Crouching</sub></td>
+<td align="center" width="33%"><a href="docs/en/guide.md#control"><img src="media/jump.png" width="250" alt="Skeleton in the air at the top of a jump, feet tucked"></a><br><sub>Jumping</sub></td>
+<td align="center" width="33%"><a href="docs/en/guide.md#touching-surfaces"><img src="media/touch.png" width="250" alt="Skeleton walking along a wall with its hand on it"></a><br><sub>Touching surfaces</sub></td>
+</tr>
+</table>
+
 - **Gait measured against real people**: cadence, stride, foot roll (heel → toe), foot path during the swing,
   knees and arms tuned with CMU motion capture ([naturalness](docs/en/naturalness.md)); a test checks it.
 - **Walking and running without separate modes**: it walks up to ~1.7 m/s and above that (`runStartSpeed`)

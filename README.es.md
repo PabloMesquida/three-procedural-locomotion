@@ -13,6 +13,24 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
 
 ## Qué hace
 
+<table>
+<tr>
+<td align="center" width="33%"><a href="docs/es/guide.md#control"><img src="media/walk.png" width="250" alt="Esqueleto caminando, a mitad de paso"></a><br><sub>Caminar</sub></td>
+<td align="center" width="33%"><a href="docs/es/guide.md#control"><img src="media/run.png" width="250" alt="Esqueleto corriendo, en la fase de vuelo"></a><br><sub>Correr</sub></td>
+<td align="center" width="33%"><a href="docs/es/guide.md#escaleras"><img src="media/stairs.png" width="250" alt="Esqueleto subiendo una escalera, con la mano hacia la baranda"></a><br><sub>Escaleras</sub></td>
+</tr>
+<tr>
+<td align="center" width="33%"><a href="docs/es/guide.md#suelo"><img src="media/rocks.png" width="250" alt="Esqueleto caminando sobre rocas, cada pie a su altura"></a><br><sub>Suelo irregular</sub></td>
+<td align="center" width="33%"><a href="docs/es/guide.md#caminos-angostos"><img src="media/narrow.png" width="250" alt="Esqueleto haciendo equilibrio sobre una viga, con los brazos abiertos"></a><br><sub>Caminos angostos</sub></td>
+<td align="center" width="33%"><a href="docs/es/guide.md#cornisas"><img src="media/ledge.png" width="250" alt="Esqueleto recorriendo de lado una cornisa, de espaldas a una pared con rocas"></a><br><sub>Cornisas</sub></td>
+</tr>
+<tr>
+<td align="center" width="33%"><a href="docs/es/guide.md#control"><img src="media/crouch.png" width="250" alt="Esqueleto caminando agachado"></a><br><sub>Agacharse</sub></td>
+<td align="center" width="33%"><a href="docs/es/guide.md#control"><img src="media/jump.png" width="250" alt="Esqueleto en el aire en lo alto de un salto, con los pies recogidos"></a><br><sub>Saltar</sub></td>
+<td align="center" width="33%"><a href="docs/es/guide.md#tocar-superficies"><img src="media/touch.png" width="250" alt="Esqueleto caminando junto a una pared con la mano apoyada en ella"></a><br><sub>Tocar superficies</sub></td>
+</tr>
+</table>
+
 - **Marcha medida contra personas reales**: cadencia, zancada, rodado del pie (talón → punta), trayectoria del
   pie en el aire, rodillas y brazos ajustados con capturas de movimiento de CMU
   ([naturalidad](docs/es/naturalness.md)); un test lo comprueba.
