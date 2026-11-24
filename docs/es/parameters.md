@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-152 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+153 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -254,6 +254,7 @@ opcionales y se validan (nombre, número finito y rango).
 | `maxExtraStepHeight` ↔ | 0.3 | Altura extra máxima del swing para salvar obstáculos (m). |
 | `maxStepUp` ↔ | 0.35 | Escalón más alto que sube (m): una contrahuella más alta es una pared, y el personaje se para delante. |
 | `maxStepDown` ↔ | 0.35 | Escalón más hondo que baja (m): de un desnivel más hondo no baja, se para en el borde. |
+| `maxGapStep` ↔ | 0.5 | Hueco más ancho que cruza de un paso (m; 0 = ninguno): un desnivel más hondo que `maxStepDown` con suelo que puede pisar otra vez del otro lado, a no más de esto en la dirección en que va. No se para en él: si hace falta, apoya el pie justo antes del borde y lo cruza con un paso largo. En uno más ancho se para en el borde, como ante un desnivel. |
 | `groundProbeHeight` ↔ | 1.5 | Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m). Un bloque de suelo más alto sigue siendo una pared (ver `GroundDetector.castDown`). |
 | `groundProbeDepth` ↔ | 2.5 | Profundidad bajo la raíz hasta la que se busca el suelo al caminar (m). |
 | `footProbeHeight` ↔ | 0.5 | Altura sobre el tobillo deseado desde la que se busca el suelo bajo cada pie (m). |

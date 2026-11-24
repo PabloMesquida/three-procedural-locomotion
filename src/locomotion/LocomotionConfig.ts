@@ -305,6 +305,12 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   /** Deepest step it goes down (m): from a deeper drop it doesn't step down, it stops at the edge. */
   maxStepDown: number;
   /**
+   * Widest gap it steps across (m; 0 = none): a drop deeper than `maxStepDown` with ground it can step on again on
+   * the other side, no farther than this along the way it goes. It doesn't stop at it: if it has to, it puts the foot
+   * just before the edge, and crosses it with a long step. From a wider one it stops at the edge, as from a drop.
+   */
+  maxGapStep: number;
+  /**
    * Height above the root from which the ground under the body is searched (m). A block of ground taller than
    * this is still a wall (see `GroundDetector.castDown`).
    */
@@ -435,6 +441,7 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   maxExtraStepHeight: 0.3,
   maxStepUp: 0.35,
   maxStepDown: 0.35,
+  maxGapStep: 0.5,
   groundProbeHeight: 1.5,
   groundProbeDepth: 2.5,
   footProbeHeight: 0.5,

@@ -67,7 +67,8 @@ Dos formas, que se pueden mezclar:
   Dar `targetSpeed` o `targetHeading` a mano lo cancela; `stop()` también.
   Si en el camino hay algo que no puede pisar (una contrahuella más alta que `maxStepUp`, un desnivel más hondo
   que `maxStepDown`, un hueco), al recibir el destino planea una ruta que lo rodea y la sigue desde el principio,
-  girando en curvas, sin acercarse antes a chocar; a una plataforma sube por su escalera. Si no puede llegar al
+  girando en curvas, sin acercarse antes a chocar; a una plataforma sube por su escalera, y cruza un
+  [hueco](#huecos) de un paso si rodearlo es mucho más largo. Si no puede llegar al
   punto, va al más cercano que alcanza (`moveTarget`). Planea sobre el suelo que pisa, con las mismas reglas que
   los pasos, y rodea los `colliders` (un tronco, columnas, paredes) con el cuerpo fuera de ellos. Con
   `avoid: false`, en línea recta.
@@ -171,7 +172,7 @@ parámetros y pásalo como `config` o con `setConfig`.
 
 ## Controles básicos
 
-Para cambiar cómo camina sin entrar en los 152 parámetros: trece controles de alto nivel (`basicControls`), cada
+Para cambiar cómo camina sin entrar en los 153 parámetros: trece controles de alto nivel (`basicControls`), cada
 uno mueve a la vez varios parámetros. Son una capa sobre la configuración, como los estilos:
 `applyBasicControls(base, valores)` devuelve los parámetros resultantes para `setConfig`.
 
@@ -420,7 +421,8 @@ varían mucho: con la articulación de los dedos muy atrás, la punta puede qued
 También valen las escaleras sin contrahuella (huellas sueltas con un hueco entre ellas), con suelo debajo o sobre
 el vacío: un hueco más corto que el pie, más bajo que las huellas de los dos lados, se salta, y el escalón se mide
 de huella a huella. Donde no hay suelo bajo la raíz (sobre un hueco), el cuerpo sigue la línea sobre las huellas.
-Un hueco sin suelo más ancho es un desnivel más hondo que `maxStepDown`: se para en el borde.
+Un hueco más ancho es un desnivel más hondo que `maxStepDown`: lo cruza de un paso largo si no es más ancho que
+`maxGapStep` (ver [Huecos](#huecos)); si no, se para en el borde.
 
 También valen las escaleras en curva y de caracol, subiendo y bajando, hacia los dos lados: mientras el cuerpo
 gira, el suelo se mide a lo largo del arco que sigue el pie (alrededor del centro del giro) en vez de en línea
@@ -436,6 +438,30 @@ que frenar a tiempo; unas 10 más si ahí el suelo queda fuera del alcance de un
 una escalera, unas 50–90 por paso (el perfil del suelo por delante).
 Parado, si el suelo bajo los pies cambia sin que se mueva el cuerpo (un objeto que aparece, un cambio de
 `setConfig`), se recoloca en como mucho 0,25 s.
+
+### Huecos
+
+Un desnivel que no puede bajar (más hondo que `maxStepDown`, o sin suelo) con suelo que puede pisar otra vez del
+otro lado, a no más de `maxGapStep` (50 cm por defecto, escalado con el tamaño) en la dirección en que va, es un
+hueco: en vez de pararse en el borde, el personaje lo cruza de un paso.
+
+- No frena por él. Si el paso que daría cae en el hueco, apoya el pie justo antes del borde o pasado el hueco, lo
+  que más se parezca a ese paso. Pasado el hueco, el paso puede ser tan largo como el hueco más ancho, el pie y un
+  poco más (unos 80 cm en un adulto) o, corriendo, hasta un 35 % más largo que su paso.
+- Si tiene que apoyar el pie justo antes del borde con un paso corto, frena (al 40 % de `walkSpeed`) hasta el paso
+  que cruza; mientras ese paso cruza no acelera, y luego vuelve a acelerar poco a poco. Caminando, el paso largo
+  baja un poco las caderas (unos 10 cm como mucho).
+- Sobre el hueco, el cuerpo sigue la línea entre las dos orillas.
+- La otra orilla puede estar más alta o más baja, dentro de `maxStepUp` y `maxStepDown`.
+- Llegando en diagonal, el hueco es más ancho en la dirección en que va (`maxGapStep` se mide así): uno de 45 cm
+  mide más de 50 cm a partir de unos 30° de la perpendicular, y se para en el borde.
+- `moveTo` planea rutas que cruzan huecos, de frente, pero cruzar uno cuesta lo que caminar el doble: si rodearlo no
+  es mucho más largo, lo rodea.
+- Con `maxGapStep: 0` no cruza ninguno: se para en el borde, como en cualquier desnivel.
+
+Corriendo, cruza con una zancada más larga, y en los huecos más anchos las caderas bajan más (todavía no salta).
+Consultas al suelo: unas 10 más la primera vez que encuentra el borde de un hueco (para medir la otra orilla), y
+unas pocas por cada hueco que podría cruzar una ruta al planearla.
 
 ### Caminos angostos
 
@@ -603,6 +629,6 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
   no está libre: con `StaticGroundDetector`, unos milisegundos.
 - Escaleras: solo caminando (todavía no corriendo). Al bajar, la pierna de delante apoya casi estirada
   (una persona apoya con la rodilla doblada; ver [naturalidad](naturalness.md#escaleras)). Tampoco saltos
-  planificados a otra altura.
+  planificados a otra altura, ni por encima de huecos más anchos que `maxGapStep` (se para en su borde).
 - Rigs probados: Mixamo y el metarig de Rigify. Otros rigs deben funcionar con su mapping, pero no están
   verificados (ver [esqueletos](skeletons.md)).

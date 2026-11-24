@@ -28,6 +28,11 @@ export interface Tread {
   endEdge: boolean;
   /** A gap between two higher treads, too short to step on (see `markGaps`): it is stepped over. */
   gap: boolean;
+  /**
+   * The gap is a drop it can't step down, between two treads it can step from one to the other, no wider than
+   * `maxGapStep` (see `markGaps`): it crosses it with a long step.
+   */
+  cross: boolean;
 }
 
 /**
@@ -183,13 +188,21 @@ export class GroundProfile {
 
   /**
    * Marks as gaps the treads lower than both neighbors (by an edge or more) and shorter than `maxLength`:
-   * the gaps between the treads of stairs without risers, which are stepped over.
+   * the gaps between the treads of stairs without risers, which are stepped over. Also, as gaps it crosses
+   * (`cross`), those up to `crossLength` long more than `stepDown` below the tread before them, when it can step
+   * from that tread to the next one (up to `stepUp` up and `stepDown` down): a gap in the ground with ground on
+   * the other side.
    */
-  markGaps(maxLength: number): void {
+  markGaps(maxLength: number, crossLength = 0, stepUp = 0, stepDown = 0): void {
     for (let i = 1; i < this.count - 1; i++) {
       const t = this.treads[i];
-      const low = Math.max(t.startHeight, t.endHeight) + this.edgeHeight;
-      t.gap = t.end - t.start < maxLength && this.treads[i - 1].endHeight >= low && this.treads[i + 1].startHeight >= low;
+      const before = this.treads[i - 1].endHeight;
+      const after = this.treads[i + 1].startHeight;
+      const bottom = Math.max(t.startHeight, t.endHeight);
+      const low = bottom + this.edgeHeight;
+      t.gap = t.end - t.start < maxLength && before >= low && after >= low;
+      t.cross = !t.gap && t.end - t.start <= crossLength && before - bottom > stepDown && after - before <= stepUp && before - after <= stepDown;
+      if (t.cross) t.gap = true;
     }
   }
 
@@ -333,7 +346,7 @@ export class GroundProfile {
 
   private addTread(start: number, height: number, edge: boolean): Tread {
     if (this.treads.length <= this.count) {
-      this.treads.push({ start: 0, end: 0, startHeight: 0, endHeight: 0, startEdge: false, endEdge: false, gap: false });
+      this.treads.push({ start: 0, end: 0, startHeight: 0, endHeight: 0, startEdge: false, endEdge: false, gap: false, cross: false });
     }
     const t = this.treads[this.count++];
     t.start = start;
@@ -343,6 +356,7 @@ export class GroundProfile {
     t.startEdge = edge;
     t.endEdge = false;
     t.gap = false;
+    t.cross = false;
     return t;
   }
 

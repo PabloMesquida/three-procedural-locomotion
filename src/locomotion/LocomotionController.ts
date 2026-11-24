@@ -692,6 +692,7 @@ export class LocomotionController {
     const hipsHeight = this.backBand.hips[1] / 1.1;
     this.backDepth = measureBack(rig, forward) ?? { hips: BACK_HIPS * hipsHeight, chest: BACK_CHEST * hipsHeight };
     this.body.groundLine = (position, ground) => this.stairs.groundHeight(position, ground);
+    this.body.gapLine = (fromX, fromZ, toX, toZ, ground) => this.stairs.gapLine(fromX, fromZ, toX, toZ, ground);
   }
 
   /** Velocidad deseada (m/s), entre 0 y config.runSpeed. */
@@ -912,6 +913,7 @@ export class LocomotionController {
     this.updateVariation(dt);
     // Sobre un camino angosto, a su nivel: el suelo es el suyo (ver StairPlanner.level).
     this.stairs.level = this.onNarrowPath();
+    this.stairs.setMotion(this.gait.blend, this.body.state.speed);
     this.stairs.update(dt);
     this.updateStairDescent(dt);
     this.syncPlacementConfig();
@@ -1297,8 +1299,12 @@ export class LocomotionController {
       }
       limit = this.config.runSpeed + (lo - this.config.runSpeed) * stairs.blend;
     }
-    // Al acabar la escalera, el límite se suelta poco a poco: acelerando de golpe desde el paso lento de
-    // la escalera, la pierna de atrás se quedaba lejos y las caderas se hundían.
+    // Apoyando el pie al borde de un hueco para cruzarlo con el paso siguiente: despacio hasta ese paso.
+    if (stairs.gapWait) limit = Math.min(limit, stairs.gapWaitSpeed);
+    // Cruzándolo, sin acelerar.
+    if (stairs.gapCrossing) limit = Math.min(limit, Math.max(this.body.state.speed, stairs.gapWaitSpeed));
+    // Al acabar la escalera (o cruzado el hueco), el límite se suelta poco a poco: acelerando de golpe desde el paso
+    // lento de la escalera, la pierna de atrás se quedaba lejos y las caderas se hundían.
     if (limit > this.stairLimit) limit = this.stairLimit + STAIR_RELEASE * this.config.acceleration * dt;
     this.stairLimit = limit >= this.config.runSpeed ? Number.POSITIVE_INFINITY : limit;
     // Hacia donde va y hacia donde está girando: girando hacia la pared muy cerca de ella, cuando la tenía de

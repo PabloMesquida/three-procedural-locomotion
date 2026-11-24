@@ -36,6 +36,16 @@ const BELOW_TARGET = 2;
  * nearest cell at its level where it can, at most this far (m).
  */
 const GOAL_SEARCH = 0.6;
+/**
+ * Crossing a gap it steps across (see `maxGapStep`) costs this much more than walking as far: if going round it is
+ * not much longer, it goes round. It crosses gaps up to this share of `maxGapStep` wide along the route, a little
+ * more than all of it: measured with raycasts, a gap of exactly `maxGapStep` came out a few millimetres wider (the
+ * steps allow a little more, see StairPlanner).
+ */
+const GAP_COST = 1;
+const GAP_SHARE = 1.03;
+/** Bisection steps to find each edge of a gap along a route (to ≈ 1 cm with cells of 15 cm). */
+const GAP_EDGE_STEPS = 4;
 /** Most cells it looks at for a route (then it goes to the reachable one closest to the destination). */
 const MAX_EXPANSIONS = 15000;
 /** It searches as far as this from the straight line to the destination (m, × stepLength), besides 1.5 × its length. */
@@ -133,6 +143,11 @@ interface Cell {
   clearance: number;
   /** Distance to the nearest collider (m; negative inside). NaN: not known yet. */
   apart: number;
+  /**
+   * In each direction of NEIGHBORS, how many cells away the other side of a gap it steps across is (0: none; see
+   * `gapLink`). undefined: not known yet.
+   */
+  gaps?: number[];
   /** Route cost from the start; parent cell (key) and whether it is closed (A*). */
   cost: number;
   parent: number;
@@ -415,10 +430,23 @@ export class PathPlanner {
         meet = k;
         break;
       }
-      for (const [di, dj, step] of NEIGHBORS) {
-        const ni = i + di;
-        const nj = j + dj;
-        const cost = enter(c, i, j, ni, nj, step, fromGoal);
+      for (let d = 0; d < 2 * NEIGHBORS.length; d++) {
+        const [di, dj, step] = NEIGHBORS[d % NEIGHBORS.length];
+        let ni = i + di;
+        let nj = j + dj;
+        let cost: number;
+        if (d < NEIGHBORS.length) cost = enter(c, i, j, ni, nj, step, fromGoal);
+        else {
+          // Por encima de un hueco que cruza de un paso (ver gapLink), a la celda del otro lado.
+          const k = this.gapLink(i, j, d - NEIGHBORS.length, hard);
+          if (k === 0) continue;
+          ni = i + k * di;
+          nj = j + k * dj;
+          if (Math.abs(ni) > limit + Math.abs(ti) || Math.abs(nj) > limit + Math.abs(tj)) continue;
+          const n = this.cell(ni, nj, c.height);
+          if (fromGoal ? !this.canStep(n, c) : !this.canStep(c, n)) continue;
+          cost = k * step * s * (1 + GAP_COST);
+        }
         if (Number.isNaN(cost)) continue;
         const n = this.cells.get(key(ni, nj))!;
         if (fromGoal) {
@@ -822,6 +850,77 @@ export class PathPlanner {
     const rise = b.height - a.height;
     const c = this.config();
     return rise <= c.maxStepUp && rise >= -c.maxStepDown;
+  }
+
+  /**
+   * From cell (i, j), with room for the feet (`hard`: not by an edge, so neither on a narrow path nor on a ledge), in the
+   * direction `d` of NEIGHBORS: how many cells away there is one on the other side of a gap it steps across, also with
+   * room for the feet; 0 if none. On the way, cells at its level (by the edge) and then
+   * the gap (a drop it can't step down, or no ground), no wider than GAP_SHARE × `maxGapStep` along that direction
+   * (measured with a few raycasts, see `gapWidth`), and no wall.
+   */
+  private gapLink(i: number, j: number, d: number, hard: number): number {
+    const config = this.config();
+    if (!(config.maxGapStep > 0)) return 0;
+    const c = this.cell(i, j, 0);
+    c.gaps ??= [];
+    const known = c.gaps[d];
+    if (known !== undefined) return known;
+    c.gaps[d] = 0;
+    // Desde un camino angosto, no: junto a donde se une a una plataforma, veía un atajo en diagonal por encima del vacío.
+    if (!Number.isFinite(c.height) || this.isEdge(i, j) || this.clearance(i, j) < hard) return 0;
+    const [di, dj, step] = NEIGHBORS[d];
+    const length = step * this.size;
+    const most = Math.ceil((config.maxGapStep + 2 * hard) / length) + 2;
+    let gapFrom = 0;
+    let gapTo = 0;
+    for (let k = 1; k <= most; k++) {
+      const n = this.cell(i + k * di, j + k * dj, c.height);
+      if (!(n.height >= c.height - config.maxStepDown)) {
+        if (gapTo > 0) return 0; // otro desnivel pasado el hueco
+        if (gapFrom === 0) gapFrom = k;
+        continue;
+      }
+      if (n.height > c.height + config.maxStepUp) return 0;
+      if (gapFrom === 0) continue; // a este lado, junto al borde
+      gapTo ||= k;
+      const ni = i + k * di;
+      const nj = j + k * dj;
+      if (this.isEdge(ni, nj) || this.clearance(ni, nj) < hard || this.apart(ni, nj) < hard) continue;
+      const width = this.gapWidth(i, j, di, dj, gapFrom, gapTo, c.height);
+      if (width <= GAP_SHARE * config.maxGapStep) c.gaps[d] = k;
+      return c.gaps[d];
+    }
+    return 0;
+  }
+
+  /**
+   * Width of the gap going from cell (i, j) in steps of (di, dj), coming from ground at `ground`: it starts between the
+   * cells `from` − 1 and `from`, and ends between `to` − 1 and `to` (m, along that direction; by bisection).
+   */
+  private gapWidth(i: number, j: number, di: number, dj: number, from: number, to: number, ground: number): number {
+    const config = this.config();
+    const s = this.size;
+    const x = this.x0 + i * s;
+    const z = this.z0 + j * s;
+    const length = Math.hypot(di, dj) * s;
+    const ux = (di * s) / length;
+    const uz = (dj * s) / length;
+    const level = (t: number): boolean => {
+      this.origin.set(x + ux * t, ground + config.groundProbeHeight, z + uz * t);
+      this.raycasts++;
+      const found = this.detector.castDown(this.origin, config.groundProbeHeight + config.groundProbeDepth, this.hit);
+      return found && this.hit.point.y >= ground - config.maxStepDown;
+    };
+    const edge = (lo: number, hi: number, loLevel: boolean): number => {
+      for (let k = 0; k < GAP_EDGE_STEPS; k++) {
+        const mid = (lo + hi) / 2;
+        if (level(mid) === loLevel) lo = mid;
+        else hi = mid;
+      }
+      return (lo + hi) / 2;
+    };
+    return edge((to - 1) * length, to * length, false) - edge((from - 1) * length, from * length, true);
   }
 
   /** Cell (i, j) is next to a change of level it can't step (either way) or has no ground. */

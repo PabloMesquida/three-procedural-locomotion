@@ -24,7 +24,7 @@ export const LENGTH_PARAMS = [
   'stepLength', 'stepWidth', 'stepHeight', 'ankleBack', 'jogStepLength', 'jogStepHeight', 'runStepLength', 'runStepHeight',
   'runCrouch', 'runBounce', 'crouchDepth', 'crouchHipBack', 'narrowWidth', 'narrowStepWidth', 'ledgeWidth', 'ledgeStepWidth',
   'jumpCrouch', 'jumpTuck', 'maxLandingDip', 'idleStepThreshold',
-  'toeClearance', 'maxExtraStepHeight', 'maxStepUp', 'maxStepDown', 'groundProbeHeight', 'groundProbeDepth',
+  'toeClearance', 'maxExtraStepHeight', 'maxStepUp', 'maxStepDown', 'maxGapStep', 'groundProbeHeight', 'groundProbeDepth',
   'footProbeHeight', 'footProbeDepth', 'footProbeTolerance', 'kneePoleDistance', 'shoulderForward',
   'arriveRadius', 'headingLockRadius', 'stopTolerance', 'touchCurveRadius',
 ] as const satisfies readonly (keyof ProceduralHumanConfig)[];
@@ -112,7 +112,7 @@ export function validateConfig(input: ProceduralHumanConfigInput, base: Procedur
   if (num('narrowTouchRelax') < 0 || num('narrowTouchRelax') > 1) problems.push(`"narrowTouchRelax" must be between 0 and 1 (got ${num('narrowTouchRelax')})`);
   if (num('fingerCurl') < 0) problems.push(`"fingerCurl" must be ≥ 0 (got ${num('fingerCurl')})`);
   if (!(num('touchMaxReach') > 0 && num('touchMaxReach') <= 1)) problems.push(`"touchMaxReach" must be in (0, 1] (got ${num('touchMaxReach')})`);
-  for (const key of ['narrowWidth', 'narrowStepWidth', 'narrowArmTilt', 'ledgeWidth', 'ledgeStepWidth'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
+  for (const key of ['narrowWidth', 'narrowStepWidth', 'narrowArmTilt', 'ledgeWidth', 'ledgeStepWidth', 'maxGapStep'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
   for (const key of ['touchHoldTime', 'touchCooldown', 'touchCurveRadius'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
   if (num('speedEasing') < 0) problems.push(`"speedEasing" must be ≥ 0 (got ${num('speedEasing')})`);
   if (merged.stepWidth !== null && num('stepWidth') < 0) problems.push(`"stepWidth" must be ≥ 0 or null (got ${num('stepWidth')})`);

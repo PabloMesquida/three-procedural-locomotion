@@ -67,7 +67,8 @@ Two ways, which can be mixed:
   (±5–10 cm). Emits `arrive`. Setting `targetSpeed` or `targetHeading` by hand cancels it; so does `stop()`.
   If something it can't step is in the way (a riser higher than `maxStepUp`, a drop deeper than
   `maxStepDown`, a hole), it plans a route round it when it is given the destination and follows it from the
-  start, turning along curves, without going up to it first; it goes up a platform by its stairs. If the point
+  start, turning along curves, without going up to it first; it goes up a platform by its stairs, and steps across
+  a [gap](#gaps) if going round it is much longer. If the point
   can't be reached, it goes to the reachable one closest to it (`moveTarget`). It plans on the ground it walks
   on, with the same rules as the steps, and goes round the `colliders` (a tree trunk, columns, walls) keeping
   its body clear of them. With `avoid: false`, in a straight line.
@@ -170,7 +171,7 @@ parameters and pass it as `config` or with `setConfig`.
 
 ## Basic controls
 
-To change how it walks without going into the 152 parameters: thirteen high-level controls (`basicControls`),
+To change how it walks without going into the 153 parameters: thirteen high-level controls (`basicControls`),
 each of which moves several parameters at once. They are a layer on top of the configuration, like the presets:
 `applyBasicControls(base, values)` returns the resulting parameters for `setConfig`.
 
@@ -414,7 +415,8 @@ usual proportions.
 Stairs without risers (separate treads with a gap between them) also work, with the ground under them or over
 the void: a gap shorter than the foot, lower than the treads on both sides, is stepped over, and the step is
 measured from tread to tread. Where there is no ground under the root (over a gap), the body follows the line
-over the treads. A wider gap without ground is a drop deeper than `maxStepDown`: it stops at the edge.
+over the treads. A wider gap is a drop deeper than `maxStepDown`: it crosses it with a long step if it is no wider
+than `maxGapStep` (see [Gaps](#gaps)); if not, it stops at the edge.
 
 Curved and spiral stairs work too, going up and down either way: while the body turns, the ground is sampled
 along the arc the foot follows (around the center of the turn) instead of in a straight line, the landing
@@ -428,6 +430,30 @@ about 10 more when the ground there is out of reach of a step, or about 35 the f
 50–90 per step instead (the profile of the ground ahead). When
 standing still, if the ground under the feet changes without the body moving (an object that appears, a
 `setConfig` change), it repositions itself within 0.25 s at most.
+
+### Gaps
+
+A drop it can't step down (deeper than `maxStepDown`, or without ground) with ground it can step on again on the
+other side, no farther than `maxGapStep` (50 cm by default, scaled with the size) along the way it goes, is a gap:
+instead of stopping at the edge, the character steps across it.
+
+- It doesn't brake for it. If the step it would take lands in the gap, it puts the foot just before the edge or
+  past the gap, whichever is closer to that step. Past it, the step can be as long as the widest gap plus the foot
+  and a little more (about 80 cm for an adult) or, running, up to 35 % longer than its step.
+- If it has to put the foot just before the edge with a short step, it slows down (to 40 % of `walkSpeed`) until
+  the step that crosses; while that step crosses it doesn't speed up, and then it speeds up again gradually.
+  Walking, the long step lowers the hips a little (about 10 cm at most).
+- Over the gap, the body follows the line between both sides.
+- The other side may be higher or lower, within `maxStepUp` and `maxStepDown`.
+- Coming at it at an angle, the gap is wider along the way it goes (`maxGapStep` is measured that way): a 45 cm gap
+  is wider than 50 cm from about 30° off square on, and it stops at the edge.
+- `moveTo` plans routes across gaps, square on, but crossing one costs as much as walking twice as far: if going
+  round it is not much longer, it goes round.
+- With `maxGapStep: 0` it never crosses one: it stops at the edge, as at any drop.
+
+Running, it crosses with a longer stride, and at the widest gaps the hips go down more (it doesn't leap yet). Ground
+queries: about 10 more the first time it finds the edge of a gap (to measure its other side), and a few per gap a
+route could cross when planning it.
 
 ### Narrow paths
 
@@ -596,6 +622,6 @@ measures it on your machine.
   reached), only if the straight line isn't clear: with `StaticGroundDetector`, a few milliseconds.
 - Stairs: walking only (not running yet). Going down, the leading leg lands almost straight (a person
   lands with the knee bent; see [naturalness](naturalness.md#stairs)). No planned jumps to a different height
-  either.
+  either, nor across gaps wider than `maxGapStep` (it stops at their edge).
 - Tested rigs: Mixamo and the Rigify metarig. Other rigs should work with their mapping, but they are not
   verified (see [skeletons](skeletons.md)).

@@ -1491,6 +1491,15 @@
         "constructionOnly": false
       },
       {
+        "name": "maxGapStep",
+        "doc": {
+          "en": "Widest gap it steps across (m; 0 = none): a drop deeper than `maxStepDown` with ground it can step on again on the other side, no farther than this along the way it goes. It doesn't stop at it: if it has to, it puts the foot just before the edge, and crosses it with a long step. From a wider one it stops at the edge, as from a drop.",
+          "es": "Hueco más ancho que cruza de un paso (m; 0 = ninguno): un desnivel más hondo que `maxStepDown` con suelo que puede pisar otra vez del otro lado, a no más de esto en la dirección en que va. No se para en él: si hace falta, apoya el pie justo antes del borde y lo cruza con un paso largo. En uno más ancho se para en el borde, como ante un desnivel."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
         "name": "groundProbeHeight",
         "doc": {
           "en": "Height above the root from which the ground under the body is searched (m). A block of ground taller than this is still a wall (see `GroundDetector.castDown`).",

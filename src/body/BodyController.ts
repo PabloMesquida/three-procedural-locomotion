@@ -112,6 +112,12 @@ export class BodyController {
    * where there is no ground under the root (over the gap between two treads without a riser).
    */
   groundLine: ((position: Vector3, ground: number) => number) | null = null;
+  /**
+   * Moving from (`fromX`, `fromZ`), on ground at `ground`, to (`toX`, `toZ`), over a change of level it can't step:
+   * the height to follow if it is a gap it steps across (see `maxGapStep`), NaN if not (then it stops at the edge).
+   * Set by LocomotionController.
+   */
+  gapLine: ((fromX: number, fromZ: number, toX: number, toZ: number, ground: number) => number) | null = null;
   /** Turn rate (rad/s) at the end of the last prediction (`predict`). */
   predictedAngularVelocity = 0;
   /**
@@ -611,7 +617,13 @@ export class BodyController {
     const moved = Math.hypot(p.x - fromX, p.z - fromZ);
     // Primero, contra la altura de antes (sin raycast); si parece un desnivel, se confirma con el suelo de
     // donde venía (el suelo pudo cambiar debajo, p. ej. una plataforma que sube).
-    if (moved > 0 && this.isLedge(this.followed, target, moved)) {
+    // Un hueco que cruza de un paso (ver `gapLine`): sigue por encima, a la altura que traía (ya sobre él, el suelo de
+    // donde viene también es el fondo).
+    const over = moved > 0 && this.gapLine && this.isLedge(this.followed, target, moved) ? this.gapLine(fromX, fromZ, p.x, p.z, this.followed) : Number.NaN;
+    if (Number.isFinite(over)) {
+      target = over;
+      ground = over;
+    } else if (moved > 0 && this.isLedge(this.followed, target, moved)) {
       const toX = p.x;
       const toZ = p.z;
       p.x = fromX;
