@@ -22,6 +22,30 @@ The library is built by the `prepare` script, which npm runs with `npm install` 
 To release a version: bump `version` in `package.json`, commit, create the tag `vX.Y.Z` and push it
 (`git push origin vX.Y.Z`).
 
+### Versions
+
+Semantic versioning (semver), adapted to 0.x while the API is still settling:
+
+- **Minor (0.X.0)**: a new ability, parameter, option or method, or a change of behaviour by default that someone
+  already using the library would notice without touching anything (a default value, what an option does, a parameter
+  that now means something else). In 0.x a minor version may break compatibility: the release commit says what changes.
+- **Patch (0.x.Y)**: fixes only, without new API and without intended changes of the defaults (a pose that looked
+  wrong, a crash, a wrong measurement). Several fixes can go in the same patch.
+- **1.0.0**: when the API is considered stable. From then on, breaking compatibility needs a major version (2.0.0).
+
+npm's ranges follow the same rule: `^0.6.0` accepts any 0.6.x but not 0.7.0, so a patch must not change what
+people already have working.
+
+When to release: as soon as a set of changes is complete and tested (both test models: `npm test` and with
+`PH_MODEL`/`PH_MAPPING`), without holding finished work back to join it with something else; group only changes
+that depend on each other (e.g. a fix of what the previous version added, if it isn't released yet). Changes that
+don't touch the code (documentation, README images in `media/`, tests, `tests/tools/`) don't need a release: they go
+into the next one.
+
+Checklist: `version` in `package.json` and `package-lock.json`; the install lines of `README.md` and
+`README.es.md` (`#vX.Y.Z` and the name of the `.tgz`); commit `Release X.Y.Z`; tag `vX.Y.Z`; push `main` and the
+tag.
+
 ## How it works
 
 Every frame, from top to bottom:

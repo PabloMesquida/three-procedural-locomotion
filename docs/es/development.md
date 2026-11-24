@@ -22,6 +22,31 @@ cuando otro proyecto la instala desde GitHub (`github:PabloMesquida/three-proced
 publicar una versión: sube `version` en `package.json`, haz commit, crea la etiqueta `vX.Y.Z` y súbela
 (`git push origin vX.Y.Z`).
 
+### Versiones
+
+Versionado semántico (semver), adaptado a 0.x mientras la API se asienta:
+
+- **Menor (0.X.0)**: una habilidad, un parámetro, una opción o un método nuevos, o un cambio de comportamiento por
+  defecto que notaría quien ya usa la librería sin tocar nada (un valor por defecto, lo que hace una opción, un
+  parámetro que ahora significa otra cosa). En 0.x una versión menor puede romper la compatibilidad: el commit de la
+  versión dice qué cambia.
+- **Parche (0.x.Y)**: solo correcciones, sin API nueva y sin cambios buscados en los valores por defecto (una pose que
+  se veía mal, un fallo, una medida equivocada). Varias correcciones pueden ir en el mismo parche.
+- **1.0.0**: cuando la API se considere estable. Desde entonces, romper la compatibilidad pide una versión mayor (2.0.0).
+
+Los rangos de npm siguen la misma regla: `^0.6.0` acepta cualquier 0.6.x pero no la 0.7.0, así que un parche no debe
+cambiar lo que a alguien ya le funciona.
+
+Cuándo publicar: en cuanto un conjunto de cambios está completo y probado (con los dos modelos de los tests: `npm test`
+y con `PH_MODEL`/`PH_MAPPING`), sin retener trabajo terminado para juntarlo con otro; solo se agrupan los cambios que
+dependen entre sí (p. ej. el arreglo de algo que añadió la versión anterior, si aún no salió). Los cambios que no tocan
+el código (documentación, imágenes del README en `media/`, tests, `tests/tools/`) no necesitan versión: entran en la
+siguiente.
+
+Lista: `version` en `package.json` y `package-lock.json`; las líneas de instalación de `README.md` y
+`README.es.md` (`#vX.Y.Z` y el nombre del `.tgz`); commit `Release X.Y.Z`; etiqueta `vX.Y.Z`; push de `main` y de
+la etiqueta.
+
 ## Cómo funciona
 
 Cada frame, de arriba abajo:
