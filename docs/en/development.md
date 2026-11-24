@@ -44,7 +44,8 @@ into the next one.
 
 Checklist: `version` in `package.json` and `package-lock.json`; the install lines of `README.md` and
 `README.es.md` (`#vX.Y.Z` and the name of the `.tgz`); commit `Release X.Y.Z`; tag `vX.Y.Z`; push `main` and the
-tag.
+tag; and a GitHub release on the tag (`gh release create vX.Y.Z --notes-file …`) with what it adds, changes and
+fixes, and how to install it.
 
 ## How it works
 

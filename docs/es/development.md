@@ -45,7 +45,8 @@ siguiente.
 
 Lista: `version` en `package.json` y `package-lock.json`; las líneas de instalación de `README.md` y
 `README.es.md` (`#vX.Y.Z` y el nombre del `.tgz`); commit `Release X.Y.Z`; etiqueta `vX.Y.Z`; push de `main` y de
-la etiqueta.
+la etiqueta; y un release de GitHub en la etiqueta (`gh release create vX.Y.Z --notes-file …`) con lo que añade,
+cambia y corrige, y cómo instalarla.
 
 ## Cómo funciona
 
