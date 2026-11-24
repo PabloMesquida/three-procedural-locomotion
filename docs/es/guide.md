@@ -504,7 +504,8 @@ los caminos angostos: la pared es suelo al menos 1,1 m (escalado con el tamaño)
 
 Se controla como siempre: el sentido de `targetHeading` (o de `moveTo`) a lo largo de la cornisa dice hacia dónde
 va. Si se le pide ir hacia el otro lado, se para y vuelve sin darse la vuelta; hacia la pared o hacia el vacío (a más
-de 70° de la cornisa), se queda quieto. En ella, `heading` y `velocity` son hacia donde va, y el cuerpo mira
+de 70° de la cornisa), se queda quieto, salvo que hacia allí haya suelo a su altura (al final de la cornisa, la
+plataforma de al lado): entonces sale de la cornisa y camina hasta allí. En ella, `heading` y `velocity` son hacia donde va, y el cuerpo mira
 `locomotion.body.state.facingOffset` rad (±90°) desde ahí. Una ruta de `moveTo` puede ir por una cornisa, cerca de la
 pared: cada metro cuenta como dos de suelo abierto (va más despacio), así que la toma salvo que rodearla mida menos
 del doble.

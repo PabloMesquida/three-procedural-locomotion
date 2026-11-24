@@ -267,6 +267,21 @@ describe('cornisas', () => {
     assert.ok(human.ledge > 0.99);
   });
 
+  it('parado al final de la cornisa, un destino en diagonal en la plataforma de al lado: sale de la cornisa y llega (regresión)', () => {
+    // Al final de la cornisa, el destino quedaba a más de 70° de ella (hacia "el vacío", pero ahí ya está la plataforma)
+    // y se quedaba quieto para siempre.
+    const world = ledgeWorld();
+    const { human } = world;
+    simulate(world, 26, [[0, (h) => h.moveTo(new Vector3(WALL_X - 0.17, HEIGHT, -6.75))]]);
+    assert.ok(human.position.z < -6.4, `no llegó al final de la cornisa (z = ${human.position.z.toFixed(2)})`);
+    const target = new Vector3(WALL_X - 0.9, HEIGHT, -7.35);
+    let arrived = false;
+    human.on('arrive', () => { arrived = true; });
+    simulate(world, 8, [[0, (h) => h.moveTo(target)]], { start: 26 });
+    assert.ok(arrived, `no llegó: (${human.position.x.toFixed(2)}, ${human.position.z.toFixed(2)}), cornisa ${human.ledge.toFixed(2)}`);
+    assert.ok(human.ledge < 0.01, `sigue en la cornisa (${human.ledge.toFixed(2)})`);
+  });
+
   it('de pie en la cornisa de espaldas a la pared, la reconoce parado y sale de lado sin girarse', () => {
     // Mirando hacia −X (de espaldas a la pared): heading +90° = hacia +Z.
     const world = ledgeWorld(0.05, -4, { turn: Math.PI / 2 });

@@ -367,6 +367,11 @@ const LEDGE_MAX_HIP_BACK = 0.12;
  * doesn't move.
  */
 const LEDGE_MIN_ALONG = Math.cos((70 * Math.PI) / 180);
+/**
+ * Asked to go across a ledge, it looks for ground this far that way (× stepLength): beyond the width of a ledge, so
+ * in the middle of one it finds the drop or the wall, and at its end the platform it leads to (see leavesLedge).
+ */
+const LEDGE_EXIT_PROBE = 0.7;
 /** If the ledge turns more than this (cosine; 20°), the body turns with it; less, it keeps facing the same way. */
 const LEDGE_REFACE = Math.cos((20 * Math.PI) / 180);
 /** Along a ledge, the head looks this much down (rad), and the fingers are open (see `fingerCurl`). */
@@ -545,6 +550,9 @@ export class LocomotionController {
   private ledgeLean = 0;
   private ledgeHipBack = 0;
   private readonly ledgeRays = { count: 0 };
+  private readonly ledgeExit = new Vector3();
+  private readonly ledgeExitAlong = new Vector3();
+  private readonly ledgeExitProbe = new Vector3();
   private readonly ledgeAlong = new Vector3();
   private readonly wanted = new Vector3();
   /** How much it is going down stairs (0–1), following the slope (see STAIR_DOWN_FREQUENCY). */
@@ -1990,7 +1998,8 @@ export class LocomotionController {
         });
       }
     }
-    const on = this.ledgePath.onLedge(s.position, s.travel);
+    // Pedido a través de la cornisa, pero con suelo a su altura hacia allí (la plataforma donde termina): sale de ella.
+    const on = this.ledgePath.onLedge(s.position, s.travel) && !(this.ledgeFaced && this.leavesLedge());
     const step = cfg.ledgeRate * dt;
     this.ledgeBlend += clamp((on ? 1 : 0) - this.ledgeBlend, -step, step);
     const kl = smoothstep(this.ledgeBlend);
@@ -2039,6 +2048,29 @@ export class LocomotionController {
     body.headingOverride = s.heading + signedAngle(s.travel, along);
     body.facingTarget = signedAngle(along, facing);
     return stop && this.ledgeBlend > 0.5;
+  }
+
+  /**
+   * Along a ledge, asked to go across it (more than 70° off it, see LEDGE_MIN_ALONG): is there ground to walk on that
+   * way, at about its height (the platform where the ledge ends), instead of the drop or the wall? Then it leaves the
+   * ledge and walks there. Without this, at the very end of a ledge, asked towards the platform beside it, it stood
+   * still for ever: still "on the ledge", that way was the drop, and standing still it never got off it.
+   */
+  private leavesLedge(): boolean {
+    const s = this.body.state;
+    const cfg = this.config;
+    if (!(this.body.targetSpeed > 0) || !Number.isFinite(s.groundHeight)) return false;
+    const facing = this.ledgeFacing;
+    const along = this.ledgeExitAlong.set(facing.z, 0, -facing.x);
+    const wanted = this.ledgeExit.copy(s.travel).applyAxisAngle(UP, this.body.targetHeading - s.heading);
+    if (Math.abs(wanted.dot(along)) >= LEDGE_MIN_ALONG) return false;
+    const ground = s.groundHeight;
+    const probe = this.ledgeExitProbe.copy(s.position).addScaledVector(wanted, LEDGE_EXIT_PROBE * cfg.stepLength);
+    probe.y = ground + cfg.groundProbeHeight;
+    this.ledgeRays.count++;
+    if (!this.detector.castDown(probe, cfg.groundProbeHeight + cfg.maxStepDown, this.sampleHit)) return false;
+    const y = this.sampleHit.point.y;
+    return y >= ground - cfg.maxStepDown && y <= ground + cfg.maxStepUp;
   }
 
   /** Going along a ledge with its back to the wall, with the body already turned (not still turning onto it). */

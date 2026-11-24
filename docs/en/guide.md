@@ -496,8 +496,9 @@ doesn't count. `ledge` (0–1) says how much it is doing it, and changes over `1
 
 It is controlled as usual: the direction of `targetHeading` (or of `moveTo`) along the ledge sets which way it
 goes. Asked to go the other way, it stops and goes back without turning round; asked towards the wall or the drop
-(more than 70° off the ledge), it stays still. Along it, `heading` and `velocity` are where it goes, and the body
-faces `locomotion.body.state.facingOffset` rad (±90°) from there. A `moveTo` route can go along a ledge, close to
+(more than 70° off the ledge), it stays still, unless that way there is ground at its height (at the end of the ledge,
+the platform beside it): then it leaves the ledge and walks there. Along it, `heading` and `velocity` are where it
+goes, and the body faces `locomotion.body.state.facingOffset` rad (±90°) from there. A `moveTo` route can go along a ledge, close to
 the wall: each metre of it counts as two of open ground (it is slower), so it takes it unless going round is less than
 about twice as long.
 
