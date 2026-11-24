@@ -159,7 +159,7 @@ check it.
 Raycasts per character: 1 per frame (root probe, which also detects changes in the ground under the body)
 and ~14 at the start of each step (landing: heel and toes; arc height: 12 samples of the toes), plus 1 every
 0.25 s looking for narrow paths and 1 more looking for ledges (every 1 s standing still; ~20 on a narrow path or
-when it finds a ledge, see `NarrowPath` and `Ledge`, and 5–9 per frame along a ledge). Standing
+when it finds a ledge, see `NarrowPath` and `Ledge`, and ~10 per frame along a ledge: the wall behind the back and behind the hands). Standing
 still, the check of whether the feet are settled (4 raycasts) is reused while the root matrix doesn't
 change and repeated every `IDLE_RECHECK_TIME` (0.25 s) to notice changes in the configuration or the
 terrain under the feet. `tests/raycasts.test.ts` sets the budget (standing ≤ 1.3/frame, walking ≤ 1.62,

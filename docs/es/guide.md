@@ -496,9 +496,11 @@ los caminos angostos: la pared es suelo al menos 1,1 m (escalado con el tamaño)
   pared sobresale más a una altura que a la otra, el tronco se inclina hacia atrás (o la cadera va hacia atrás) hasta
   10° para tocarla en las dos. Lo que sobresale la espalda detrás de la cadera se mide en la malla del modelo (sin
   malla, las proporciones habituales).
-- Los brazos cuelgan a los costados, algo abiertos y hacia atrás, con las manos en la pared (`ledgeArmAbduction`,
-  `ledgeArmForward`, `ledgeElbowBend`), y la cabeza mira un poco hacia abajo y hacia donde va (`ledgeGaze`).
-  Mientras, no toca superficies con las manos.
+- Las palmas se apoyan en la pared a cada lado de la cadera, algo más abajo, con los dedos hacia abajo y un poco hacia
+  fuera; se deslizan por ella con el cuerpo y siguen sus irregularidades. Donde no hay pared detrás de una mano (pasado
+  su final), ese brazo cuelga al costado, algo abierto y hacia atrás (`ledgeArmAbduction`, `ledgeArmForward`,
+  `ledgeElbowBend`). La cabeza mira un poco hacia abajo y hacia donde va (`ledgeGaze`). Mientras, no toca otras
+  superficies con las manos (`locomotion.touch.brace` es lo que mantiene una mano apoyada en una superficie que sigues).
 
 Se controla como siempre: el sentido de `targetHeading` (o de `moveTo`) a lo largo de la cornisa dice hacia dónde
 va. Si se le pide ir hacia el otro lado, se para y vuelve sin darse la vuelta; hacia la pared o hacia el vacío (a más

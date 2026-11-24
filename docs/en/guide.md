@@ -488,9 +488,11 @@ doesn't count. `ledge` (0–1) says how much it is doing it, and changes over `1
   most; if the wall sticks out more at one height than at the other, the trunk leans back (or the hips go back) up to
   10° to touch it at both. How far the back sticks out behind the hips is measured on the model's mesh (without
   meshes, the usual proportions).
-- The arms hang by its sides, a little open and back, with the hands against the wall (`ledgeArmAbduction`,
-  `ledgeArmForward`, `ledgeElbowBend`), and the head looks a little down and towards where it goes (`ledgeGaze`).
-  It doesn't touch surfaces with the hands meanwhile.
+- The palms rest on the wall on each side of the hips, a little below them, with the fingers pointing down and
+  slightly out; they slide along it with the body and follow its irregularities. Where there is no wall behind a hand
+  (past the end of it), that arm hangs by its side, a little open and back (`ledgeArmAbduction`, `ledgeArmForward`,
+  `ledgeElbowBend`). The head looks a little down and towards where it goes (`ledgeGaze`). It doesn't touch other
+  surfaces with the hands meanwhile (`locomotion.touch.brace` is what keeps a hand resting on a surface you follow).
 
 It is controlled as usual: the direction of `targetHeading` (or of `moveTo`) along the ledge sets which way it
 goes. Asked to go the other way, it stops and goes back without turning round; asked towards the wall or the drop

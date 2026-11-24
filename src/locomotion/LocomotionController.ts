@@ -344,6 +344,15 @@ const LEDGE_ROLL = 0.15;
  */
 const LEDGE_WALL_REACH = 0.8;
 const BACK_HALF_WIDTH = 0.18;
+/**
+ * Along a ledge, the palms rest on the wall behind: each one LEDGE_HAND_SPREAD to the side of the hips and
+ * LEDGE_HAND_HEIGHT above them (× stepLength; negative = below), the fingers pointing down and LEDGE_FINGERS_OUT out
+ * to the side (rad). The wall is looked for in a band of ±LEDGE_HAND_BAND (× stepLength) around that height.
+ */
+const LEDGE_HAND_SPREAD = 0.4;
+const LEDGE_HAND_HEIGHT = -0.08;
+const LEDGE_FINGERS_OUT = (25 * Math.PI) / 180;
+const LEDGE_HAND_BAND = 0.1;
 const LEDGE_CENTERING = 8;
 /**
  * Against an irregular wall, how much the trunk leans (back or forward) to keep both the hips and the shoulder
@@ -526,6 +535,12 @@ export class LocomotionController {
    */
   private readonly wallSamples: number[] = new Array<number>(6).fill(Number.NEGATIVE_INFINITY);
   private wallSample = 0;
+  /** Where the wall is behind each hand along a ledge (m along `ledgeFacing`, like `wallSamples`); one measured per frame. */
+  private readonly handWall: Record<Side, number> = { left: Number.NEGATIVE_INFINITY, right: Number.NEGATIVE_INFINITY };
+  private handWallSide: Side = 'left';
+  private readonly handAt = new Vector3();
+  private readonly handRight = new Vector3();
+  private readonly handFingers = new Vector3();
   /** Along an irregular wall: lean of the trunk (rad, + forward) and how far the hips go back (m). */
   private ledgeLean = 0;
   private ledgeHipBack = 0;
@@ -729,6 +744,7 @@ export class LocomotionController {
     this.ledgeLean = 0;
     this.ledgeHipBack = 0;
     this.wallSamples.fill(Number.NEGATIVE_INFINITY);
+    this.handWall.left = this.handWall.right = Number.NEGATIVE_INFINITY;
     this.planner.landingShift.set(0, 0, 0);
     this.stairLimit = Number.POSITIVE_INFINITY;
     this.stairLean = 0;
@@ -1127,6 +1143,7 @@ export class LocomotionController {
     }
     this.lastRootHeight = rootHeight;
     this.touch.update(this.touchMotion(dt), this.surfaces);
+    this.braceOnWall(kl);
     // Haciendo equilibrio, con una mano apoyada en algo (una baranda, una pared) ya se sostiene: el otro brazo baja
     // casi a la pose normal (narrowTouchRelax) y deja de corregir.
     const steadied = Math.max(this.touch.weight('left'), this.touch.weight('right')) * c.narrowTouchRelax;
@@ -2072,6 +2089,45 @@ export class LocomotionController {
     }
     this.ledgeLean += (lean * kl - this.ledgeLean) * follow;
     this.ledgeHipBack += (hipBack * kl - this.ledgeHipBack) * follow;
+  }
+
+  /**
+   * Along a ledge, the palms against the wall behind, on each side of the hips (see LEDGE_HAND_SPREAD), with the
+   * fingers pointing down and out: the touch controller's `brace`, as much as the ledge blend. Where there is no
+   * wall within reach behind a hand, that hand swings as usual.
+   */
+  private braceOnWall(kl: number): void {
+    const s = this.body.state;
+    const measured = this.handWallSide;
+    this.handWallSide = measured === 'left' ? 'right' : 'left';
+    const active = kl > 0 && this.ledgeFaced && !s.airborne;
+    for (const side of SIDES) {
+      if (!active) {
+        this.handWall[side] = Number.NEGATIVE_INFINITY;
+        this.touch.brace(side, this.handAt, UP, UP, 0);
+        continue;
+      }
+      const out = this.ledgeFacing;
+      const unit = this.config.stepLength;
+      const sign = side === 'right' ? 1 : -1;
+      const right = this.handRight.crossVectors(out, UP).normalize();
+      const at = worldPosition(this.rig.hips, this.handAt).addScaledVector(right, sign * LEDGE_HAND_SPREAD * unit);
+      at.y += LEDGE_HAND_HEIGHT * unit;
+      const base = at.x * out.x + at.z * out.z;
+      if (side === measured) {
+        const band = LEDGE_HAND_BAND * unit;
+        const reach = LEDGE_WALL_REACH * unit;
+        this.handWall[side] = base - this.ledgePath.wallDistance(at, out, at.y - band, at.y + band, reach, base - this.handWall[side], this.ledgeRays);
+      }
+      const wall = this.handWall[side];
+      if (!Number.isFinite(wall)) {
+        this.touch.brace(side, at, out, UP, 0);
+        continue;
+      }
+      at.addScaledVector(out, wall - base);
+      const fingers = this.handFingers.copy(UP).multiplyScalar(-Math.cos(LEDGE_FINGERS_OUT)).addScaledVector(right, sign * Math.sin(LEDGE_FINGERS_OUT));
+      this.touch.brace(side, at, out, fingers, kl);
+    }
   }
 
   /**

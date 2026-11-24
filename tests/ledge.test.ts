@@ -157,6 +157,34 @@ describe('cornisas', () => {
     assert.ok(afterLedge === 0 && afterTurn < 3 * DEG, `en la plataforma: ledge ${afterLedge}, girado ${(afterTurn / DEG).toFixed(1)}°`);
   });
 
+  it('las palmas, apoyadas en la pared a cada lado de las caderas, con los dedos hacia abajo', () => {
+    const world = ledgeWorld();
+    const { human } = world;
+    let frames = 0;
+    let worst = 0;
+    let minWeight = 1;
+    let fingersUp = -Infinity;
+    simulate(world, 9, [[0, (h) => { h.targetSpeed = 1; }]], {
+      onFrame: () => {
+        // Ya asentado: al entrar, frenando, la espalda (y con ella las manos) aún se acerca a la pared.
+        if (human.ledge < 0.999 || ++frames < 60) return;
+        for (const side of SIDES) {
+          const arm = side === 'left' ? human.rig.leftArm! : human.rig.rightArm!;
+          const wrist = arm.hand.getWorldPosition(new Vector3());
+          const knuckle = (arm.fingers?.middle?.[0] ?? arm.hand).getWorldPosition(new Vector3());
+          // Muñeca y nudillos, a lo sumo a 3 cm de la pared (el grosor de la mano): la palma, plana sobre ella.
+          worst = Math.max(worst, WALL_X - wrist.x, WALL_X - knuckle.x);
+          minWeight = Math.min(minWeight, human.locomotion.touch.weight(side));
+          fingersUp = Math.max(fingersUp, knuckle.y - wrist.y);
+        }
+      },
+    });
+    assert.ok(frames > 180, `en la cornisa ${frames} frames`);
+    assert.ok(minWeight > 0.999, `apoyo ${minWeight.toFixed(3)}`);
+    assert.ok(worst < 0.03, `mano a ${(worst * 100).toFixed(1)} cm de la pared`);
+    assert.ok(fingersUp < 0, `dedos hacia arriba (${(fingersUp * 100).toFixed(1)} cm)`);
+  });
+
   it('contra una pared irregular, la espalda sigue en ella y el cuerpo no gira', () => {
     // Salientes de 4 a 8 cm en la pared, a distintas alturas, de 40 cm a lo largo.
     const bumps: [y: number, h: number, depth: number, z: number][] = [

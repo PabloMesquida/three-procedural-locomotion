@@ -108,6 +108,8 @@ interface Hand {
   phase: TouchPhase;
   /** How much the gesture overrides the swing (0–1) and its value when the phase started. */
   weight: number;
+  /** Resting on a surface that the caller follows every frame (see `brace`): no reaching or letting go. */
+  braced: boolean;
   from: number;
   /** Time in the current phase (s). */
   time: number;
@@ -439,6 +441,7 @@ export class TouchController {
     for (const hand of Object.values(this.hands)) {
       hand.phase = 'none';
       hand.weight = 0;
+      hand.braced = false;
     }
     this.cooldown = 0;
     this.scanTimer = 0;
@@ -486,6 +489,42 @@ export class TouchController {
   }
 
   /**
+   * Keeps a hand resting on a surface that the caller follows every frame, e.g. the wall behind the back along a
+   * ledge: the palm against it at `point` (world) with `normal` (towards the character) and the fingers pointing
+   * along `fingers` (on the surface). `weight` (0–1) is how much it overrides the swing: the caller blends it in
+   * and out, there is no gesture of reaching or letting go (with 0 the hand goes back to the swing). Takes over any
+   * gesture of that hand. After `update` and before `apply`.
+   */
+  brace(side: Side, point: Vector3, normal: Vector3, fingers: Vector3, weight: number): void {
+    const hand = this.hands[side];
+    if (!hand) return;
+    if (!(weight > 0)) {
+      if (hand.braced) {
+        hand.braced = false;
+        hand.phase = 'none';
+        hand.weight = 0;
+        hand.hasActual = false;
+      }
+      return;
+    }
+    if (!hand.braced) {
+      hand.braced = true;
+      hand.phase = 'contact';
+      hand.hold = true;
+      hand.slide = false;
+      hand.time = 0;
+      hand.bulgeSet = false;
+      hand.pathSet = false;
+    }
+    hand.point.copy(point);
+    hand.normal.copy(normal).normalize();
+    this.finger.copy(fingers).addScaledVector(hand.normal, -fingers.dot(hand.normal)).normalize();
+    worldPosition(hand.bones.upperArm, this.shoulder);
+    this.contactPose(hand, hand.point, hand.normal, this.shoulder, hand.wrist, hand.rotation, this.finger);
+    hand.weight = Math.min(weight, 1);
+  }
+
+  /**
    * Advances the gestures and, in `auto` mode, looks for surfaces. Before moving the arms (the fingers open
    * with `weight`).
    */
@@ -506,7 +545,7 @@ export class TouchController {
     this.dt = dt;
     this.cooldown = Math.max(this.cooldown - dt, 0);
     for (const hand of Object.values(this.hands)) {
-      if (hand.phase === 'none') continue;
+      if (hand.phase === 'none' || hand.braced) continue;
       hand.time += dt;
       worldPosition(hand.bones.upperArm, this.shoulder);
       // Acercándose, cuenta dónde estará el hombro al tocar.
@@ -1248,6 +1287,7 @@ function createHand(side: Side, bones: ArmBones, sign: number): Hand {
     palmLocal: palm.applyQuaternion(inverse),
     phase: 'none',
     weight: 0,
+    braced: false,
     from: 0,
     time: 0,
     hold: false,
