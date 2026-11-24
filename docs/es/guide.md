@@ -484,9 +484,12 @@ lado con la espalda pegada a la pared, como una persona. También se detecta en 
 los caminos angostos: la pared es suelo al menos 1,1 m (escalado con el tamaño) más alto que la cornisa; una más baja
 (un pretil) no cuenta. `ledge` (0–1) dice cuánto lo está haciendo, y cambia en `1 / ledgeRate` s.
 
-- Al llegar a la cornisa se pone de espaldas a la pared sin cambiar su dirección de avance, y mira siempre hacia el
-  mismo lado a lo largo de ella (solo gira con la cornisa si esta tuerce más de 20°). Cuando la cornisa se ensancha o
-  se acaba, vuelve a girarse hacia donde va y sigue caminando.
+- En cuanto ve la cornisa por delante frena hasta `ledgeMaxSpeed` y, ya despacio, se pone de espaldas a la pared sin
+  cambiar su dirección de avance (si aún llega deprisa, da antes unos pasos de frente: girando a velocidad de caminar,
+  los pies se cruzaban). Mira siempre hacia el mismo lado a lo largo de ella (solo gira con la cornisa si esta tuerce
+  más de 20°). Cuando la cornisa se ensancha o se acaba, vuelve a girarse hacia donde va y sigue caminando: dos pasos
+  más a `ledgeMaxSpeed` y luego acelera suave, a un tercio de `acceleration` (de golpe, el pie aún apoyado con los
+  pasos lentos de la cornisa se quedaba atrás y el paso siguiente era muy largo).
 - Va de lado: abre el pie del lado hacia el que va, pasa el peso a él y acerca el otro, sin cruzarlos
   (`ledgeStepWidth` entre los tobillos con los pies juntos; se separan más o menos lo que avanza en un paso), con
   pasos cortos y rápidos que apenas despegan del suelo, un doble apoyo largo y las rodillas algo dobladas
@@ -508,7 +511,8 @@ de 70° de la cornisa), se queda quieto, salvo que hacia allí haya suelo a su a
 plataforma de al lado): entonces sale de la cornisa y camina hasta allí. En ella, `heading` y `velocity` son hacia donde va, y el cuerpo mira
 `locomotion.body.state.facingOffset` rad (±90°) desde ahí. Una ruta de `moveTo` puede ir por una cornisa, cerca de la
 pared: cada metro cuenta como dos de suelo abierto (va más despacio), así que la toma salvo que rodearla mida menos
-del doble.
+del doble. Entra desde un punto antes de ella, en su línea y algo separado de la pared, para llegar yendo a lo largo de
+la pared y no en diagonal.
 
 Con `ledgeWidth: 0` no lo hace nunca. Cuesta una consulta al suelo cada 0,25 s en marcha (cada segundo parado), como
 los caminos angostos, unas 20 al encontrar una cornisa, y 5–9 por frame en ella (la pared detrás de la espalda).

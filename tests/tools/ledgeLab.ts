@@ -79,7 +79,72 @@ export function legIssues(human: ProceduralHuman, side: Side): string[] {
   return issues;
 }
 
-const scenario = process.argv[2] ?? 'cruzar';
+const scenario = process.argv[1]?.endsWith("ledgeLab.js") ? (process.argv[2] ?? "cruzar") : "";
+if (scenario === 'entrar') {
+  // Desde la plataforma derecha (sx, sz desde la cara) a un punto de la cornisa (tx): pies en la pared y cruzados.
+  const [sx, sz, tx] = process.argv.slice(3, 6).map(Number);
+  const world = cliffWorld(sx, FACE + sz);
+  const { human } = world;
+  let inWall = 0;
+  let crossed = 0;
+  let firstBad = -1;
+  let time = 0;
+  simulate(world, 14, [[0, (h) => h.moveTo(new Vector3(tx, H, FACE + 0.17))]], {
+    onFrame: () => {
+      time += 1 / 60;
+      for (const side of ['left', 'right'] as const) {
+        const leg = human.rig[side];
+        const pts = [leg.foot, leg.toe ?? leg.foot].map((b) => b.getWorldPosition(new Vector3()));
+        const depth = Math.max(...pts.map((p) => FACE + 0.01 - p.z));
+        if (depth > inWall) { inWall = depth; if (depth > 0.01 && firstBad < 0) firstBad = time; }
+      }
+      const F = human.locomotion.body.state.forward;
+      const right = new Vector3().crossVectors(F, new Vector3(0, 1, 0));
+      const apart = human.rig.right.foot.getWorldPosition(new Vector3()).sub(human.rig.left.foot.getWorldPosition(new Vector3())).dot(right);
+      if (-apart > crossed) { crossed = -apart; if (crossed > 0.03 && firstBad < 0) firstBad = time; }
+    },
+  });
+  console.log(`entrar desde (${sx}, cara+${sz}) → cornisa x ${tx}: pie en la pared ${(inWall * 100).toFixed(1)} cm, pies cruzados ${(crossed * 100).toFixed(1)} cm${firstBad >= 0 ? `, desde t ${firstBad.toFixed(2)}` : ''}; final x ${human.position.x.toFixed(2)}`);
+  process.exit(0);
+}
+if (scenario === 'pasos') {
+  // Cada aterrizaje al cruzar (o volver: pasos volver t): cuánto avanzó ese pie y cómo estaba la cornisa.
+  const back = process.argv[3] === 'volver';
+  const t0 = Number(process.argv[4] ?? 9);
+  // DEST=x,z (desde la cara): adónde cruza.
+  const [dx, dz] = (process.env.DEST ?? `${HALF + 1.2},1`).split(',').map(Number);
+  const world = cliffWorld(-HALF - 1.2, FACE + 1);
+  const { human } = world;
+  const was: Record<Side, boolean> = { left: false, right: false };
+  const last: Record<Side, Vector3 | null> = { left: null, right: null };
+  let t = 0;
+  const steps: [number, (h: ProceduralHuman) => void][] = [[0, (h) => h.moveTo(new Vector3(dx, H, FACE + dz))]];
+  if (back) steps.push([t0, (h) => h.moveTo(new Vector3(-HALF - 1.2, H, FACE + 1))]);
+  simulate(world, back ? t0 + 16 : 32, steps, {
+    onFrame: () => {
+      t += 1 / 60;
+      const [from, to] = (process.env.TRACE ?? '').split(',').map(Number);
+      if (t >= from && t <= to) {
+        const st = human.locomotion.body.state;
+        const feet = (human.locomotion as unknown as { feet: Record<Side, { phase: string; swing: { landing: Vector3 }; planted: Vector3 }> }).feet;
+        const fs2 = (side: Side): string => { const ft = feet[side]; const p = ft.phase === 'SWING' ? ft.swing.landing : ft.planted; return `${side[0]} ${ft.phase.padEnd(6)} ${p.x.toFixed(2)},${(p.z - FACE).toFixed(2)}`; };
+        console.log(`  ${t.toFixed(2)} cuerpo ${st.position.x.toFixed(2)},${(st.position.z - FACE).toFixed(2)} v ${st.speed.toFixed(2)}→${human.locomotion.body.targetSpeed.toFixed(2)} lim ${human.locomotion.body.speedLimit.toFixed(2)} ledge ${human.ledge.toFixed(2)} giro ${((st.facingOffset * 180) / Math.PI).toFixed(0)} | ${fs2('left')} | ${fs2('right')}`);
+      }
+      for (const side of ['left', 'right'] as const) {
+        const air = human.footPhase(side) === 'SWING';
+        if (was[side] && !air) {
+          const p = human.rig[side].foot.getWorldPosition(new Vector3());
+          const d = last[side] ? p.distanceTo(last[side]!) : 0;
+          const other = human.rig[side === 'left' ? 'right' : 'left'].foot.getWorldPosition(new Vector3());
+          console.log(`t ${t.toFixed(2)} ${side.padEnd(5)} x ${p.x.toFixed(2)} cara+${(p.z - FACE).toFixed(2)} paso ${d.toFixed(2)} sep ${p.distanceTo(other).toFixed(2)} ledge ${human.ledge.toFixed(2)} v ${human.speed.toFixed(2)} ${human.gaitMode}`);
+          last[side] = p;
+        }
+        was[side] = air;
+      }
+    },
+  });
+  process.exit(0);
+}
 if (scenario === 'cerca') {
   // Parado en la cornisa cerca de su final (x), y un clic en la plataforma de al lado (tx, tz desde la cara).
   const [x, tx, tz] = process.argv.slice(3, 6).map(Number);
@@ -117,7 +182,7 @@ const note = (kind: string, detail: string): void => {
 let stuck = 0;
 const steps: [number, (h: ProceduralHuman) => void][] = [[0, (h) => h.moveTo(far)]];
 if (scenario === 'volver') steps.push([backAt, (h) => h.moveTo(back)]);
-simulate(world, scenario === 'volver' ? backAt + 20 : 24, steps, {
+simulate(world, scenario === "volver" ? backAt + Number(process.env.EXTRA ?? 20) : 32, steps, {
   onFrame: () => {
     t += 1 / 60;
     const hips = human.rig.hips.getWorldPosition(new Vector3());

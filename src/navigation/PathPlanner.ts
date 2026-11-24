@@ -84,6 +84,19 @@ const SIDE_APPROACH = 0.6;
  * root goes with the back against it.
  */
 const LEDGE_LINE = 0.2;
+/**
+ * Getting on a ledge from open ground, the route first goes to a point this far before it, on its line (LEDGE_LINE
+ * from the wall; × stepLength): the character gets there going along the wall, close to it. Less if it is already
+ * nearly there.
+ */
+const LEDGE_APPROACH = 1;
+/**
+ * The approach point of a ledge, this far from its wall (× stepLength): walking forward, not yet with the back to the
+ * wall, at LEDGE_LINE the shoulder touched it and the guard against walls stopped the body dead.
+ */
+const LEDGE_APPROACH_LINE = 0.3;
+/** A route already on the line of the ledge (closer than this to it, × stepLength) needs no approach. */
+const LEDGE_IN_LINE = 0.1;
 /** Bisection steps to find each edge of a narrow path (to ≈ 1 cm with cells of 15 cm). */
 const NARROW_EDGE_STEPS = 4;
 
@@ -463,8 +476,90 @@ export class PathPlanner {
     this.approachNarrow(start, out, narrow);
     this.centerNarrow(out, narrow);
     this.alongWall(out);
+    this.approachLedge(start, out);
     return true;
   }
+
+  /**
+   * Where the route gets on a ledge from open ground, it first goes to a point before it on its line (LEDGE_APPROACH,
+   * at LEDGE_LINE from the wall), if it can walk there and from there on. Getting there at an angle, or far from the
+   * wall, the foot ahead would land beyond the edge of the ledge and, moved back onto it, crossed the other one; and the
+   * body turned its back to the wall while still coming at it.
+   */
+  private approachLedge(start: Vector3, points: Vector3[]): void {
+    const config = this.config();
+    if (!(config.ledgeWidth > 0)) return;
+    const s = this.size;
+    const step = config.stepLength;
+    const at = (x: number, z: number, y: number): [number, number] => {
+      const i = Math.round((x - this.x0) / s);
+      const j = Math.round((z - this.z0) / s);
+      this.cell(i, j, y);
+      return [i, j];
+    };
+    for (let k = 0; k < points.length; k++) {
+      const a = k === 0 ? start : points[k - 1];
+      const b = points[k];
+      // Un tramo que llega a la cornisa: `b` en ella (ya en su línea, ver alongWall) y `a` fuera.
+      if (!this.isLedge(...at(b.x, b.z, b.y)) || this.isLedge(...at(a.x, a.z, a.y))) continue;
+      // La cornisa en `b`: a lo largo, hacia donde viene la ruta (hacia `a`).
+      const c = this.cell(...at(b.x, b.z, b.y), b.y);
+      const [di, dj] = ACROSS[c.ledgeAcross!];
+      const across = Math.hypot(di, dj);
+      let ux = -dj / across;
+      let uz = di / across;
+      if ((a.x - b.x) * ux + (a.z - b.z) * uz < 0) {
+        ux = -ux;
+        uz = -uz;
+      }
+      // Por su línea, desde `b` hacia atrás (no más allá de `a`) hasta donde, un ancho de cornisa más hacia fuera, ya hay
+      // suelo a su altura: ahí termina (la entrada). Las celdas no lo dicen: junto a la esquina de la plataforma, con la
+      // caída en diagonal, también son de cornisa.
+      const ox = (-di / across) * c.ledgeWall!;
+      const oz = (-dj / across) * c.ledgeWall!;
+      const limit = (a.x - b.x) * ux + (a.z - b.z) * uz;
+      let back = -1;
+      for (let t = 0; t <= limit; t += s / 2) {
+        this.origin.set(b.x + ux * t + ox * config.ledgeWidth, b.y + config.groundProbeHeight, b.z + uz * t + oz * config.ledgeWidth);
+        this.raycasts++;
+        if (this.detector.castDown(this.origin, config.groundProbeHeight + config.maxStepDown, this.hit) && Math.abs(this.hit.point.y - b.y) <= config.maxStepDown) {
+          back = t;
+          break;
+        }
+      }
+      // Todo el tramo es cornisa: ya llega por ella.
+      if (back < 0) continue;
+      const ex = b.x + ux * back;
+      const ez = b.z + uz * back;
+      const approach = LEDGE_APPROACH * step;
+      // Lo que `a` queda antes de la entrada (a lo largo, hacia fuera de la cornisa) y de lado.
+      const before = (a.x - ex) * ux + (a.z - ez) * uz;
+      const side = Math.abs((a.x - ex) * uz - (a.z - ez) * ux);
+      if (side < LEDGE_IN_LINE * step && before >= 0.5 * approach) continue;
+      // Si ya está cerca de la entrada, el punto no más allá de donde está (volver atrás para girar daba vueltas); y en
+      // vez del punto de antes, si este (de la ruta, no la salida) queda a menos de una aproximación de la entrada: si no,
+      // la ruta iba a él, después al de aproximación y después a la cornisa, en zigzag.
+      const d0 = before <= 0 ? approach : Math.min(approach, Math.max(before, approach / 2));
+      const replace = k > 0 && before > 0 && before < approach * 1.5;
+      const from = replace ? (k > 1 ? points[k - 2] : start) : a;
+      const off = (LEDGE_APPROACH_LINE - LEDGE_LINE) * step;
+      for (const d of [d0, d0 / 2]) {
+        const px = ex + ux * d + ox * off;
+        const pz = ez + uz * d + oz * off;
+        const [pi, pj] = at(px, pz, a.y);
+        const pc = this.cell(pi, pj, a.y);
+        if (!Number.isFinite(pc.height)) continue;
+        if (!this.lineClear(from.x, from.z, from.y, px, pz, 0, false) || !this.lineClear(px, pz, pc.height, b.x, b.z, 0, false)) continue;
+        if (replace) points[k - 1] = new Vector3(px, pc.height, pz);
+        else {
+          points.splice(k, 0, new Vector3(px, pc.height, pz));
+          k++;
+        }
+        break;
+      }
+    }
+  }
+
 
   /**
    * The points of the route on a ledge, to LEDGE_LINE from its wall: the body goes along it with its back to the

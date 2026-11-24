@@ -112,7 +112,7 @@ describe('cornisas', () => {
     let afterLedge = 0;
     let afterTurn = 0;
     let next = 0;
-    const r = simulate(world, 22, [[0, (h) => { h.targetSpeed = 1; }]], {
+    const r = simulate(world, 23, [[0, (h) => { h.targetSpeed = 1; }]], {
       onFrame: (t) => {
         if (t >= next) {
           trace(world, t);
@@ -166,8 +166,9 @@ describe('cornisas', () => {
     let fingersUp = -Infinity;
     simulate(world, 9, [[0, (h) => { h.targetSpeed = 1; }]], {
       onFrame: () => {
-        // Ya asentado: al entrar, frenando, la espalda (y con ella las manos) aún se acerca a la pared.
-        if (human.ledge < 0.999 || ++frames < 60) return;
+        // Ya asentado: al entrar frena y, ya despacio, se pone de espaldas; la espalda (y con ella las manos) aún se
+        // acerca a la pared.
+        if (human.ledge < 0.999 || ++frames < 120) return;
         for (const side of SIDES) {
           const arm = side === 'left' ? human.rig.leftArm! : human.rig.rightArm!;
           const wrist = arm.hand.getWorldPosition(new Vector3());
@@ -209,6 +210,7 @@ describe('cornisas', () => {
     let minGap = Infinity;
     let sumGap = 0;
     let count = 0;
+    let settled = 0;
     let next = 0;
     simulate(world, 21, [[0, (h) => { h.targetSpeed = 1; }]], {
       onFrame: (t) => {
@@ -219,6 +221,9 @@ describe('cornisas', () => {
         const z = human.position.z;
         if (z > -2 || z < -6) return;
         maxTurn = Math.max(maxTurn, angleTo(facingYaw(world), AWAY_FROM_WALL));
+        // Ya asentado, un segundo en la cornisa: al entrar frena y, ya despacio, se pone de espaldas, y la espalda aún se
+        // acerca a la pared.
+        if (human.ledge < 0.999 || ++settled < 60) return;
         // La cadera, a lo que sobresalen los glúteos de lo que más sobresale la pared a su altura, a lo ancho de la espalda.
         const h = hips(world);
         let wall = -Infinity;
@@ -267,6 +272,32 @@ describe('cornisas', () => {
     assert.ok(human.ledge > 0.99);
   });
 
+  for (const [x, z] of [[WALL_X - 1, 0.6], [WALL_X - 0.6, 0.2], [WALL_X - 0.3, 0.8]]) {
+    it(`moveTo a la cornisa desde la plataforma (${(WALL_X - x).toFixed(1)} m de la pared): entra sin cruzar los pies ni pisar la pared (regresión)`, () => {
+      // Entraba en diagonal hacia la pared, o lejos de ella, y a velocidad de caminar: el pie del lado del vacío caía más
+      // allá del borde y, devuelto a la cornisa, cruzaba el otro; girando, el cuerpo se pegaba a la pared y un pie se
+      // metía en ella.
+      const world = ledgeWorld(x, z);
+      const { human } = world;
+      let inWall = -Infinity;
+      let crossed = 0;
+      simulate(world, 16, [[0, (h) => h.moveTo(new Vector3(WALL_X - 0.17, HEIGHT, -4))]], {
+        onFrame: () => {
+          for (const side of SIDES) {
+            const leg = human.rig[side];
+            for (const bone of [leg.foot, leg.toe ?? leg.foot]) inWall = Math.max(inWall, bone.getWorldPosition(new Vector3()).x - WALL_X);
+          }
+          const right = new Vector3().crossVectors(human.locomotion.body.state.forward, new Vector3(0, 1, 0));
+          crossed = Math.max(crossed, -ankle(world, 'right').sub(ankle(world, 'left')).dot(right));
+        },
+      });
+      // Las articulaciones del tobillo y de los dedos, a lo sumo a 1 cm más allá del plano de la pared.
+      assert.ok(inWall < 0.01, `un pie ${(inWall * 100).toFixed(1)} cm dentro de la pared`);
+      assert.ok(crossed < 0.1, `pies cruzados ${(crossed * 100).toFixed(1)} cm`);
+      assert.ok(human.position.z < -3.8, `no llegó (z = ${human.position.z.toFixed(2)})`);
+    });
+  }
+
   it('parado al final de la cornisa, un destino en diagonal en la plataforma de al lado: sale de la cornisa y llega (regresión)', () => {
     // Al final de la cornisa, el destino quedaba a más de 70° de ella (hacia "el vacío", pero ahí ya está la plataforma)
     // y se quedaba quieto para siempre.
@@ -298,7 +329,7 @@ describe('cornisas', () => {
     assert.ok(human.position.z > -3.2, `avanzó hasta z = ${human.position.z.toFixed(2)}`);
   });
 
-  for (const stairs of [false, true]) it(`moveTo a la otra plataforma${stairs ? ', con escaleras para rodearla' : ''}: va por la cornisa, de lado, y llega`, () => {
+  for (const stairs of [false, true]) it(`moveTo a la otra plataforma${stairs ? ', con escaleras para rodearla' : ''}: va por la cornisa, de lado, llega y sale sin un paso largo`, () => {
     const world = ledgeWorld(-0.6, 0.5, { stairs });
     const { human } = world;
     const target = new Vector3(-0.5, HEIGHT, -8.5);
@@ -306,6 +337,9 @@ describe('cornisas', () => {
     let arrived = false;
     human.on('arrive', () => { arrived = true; });
     let next = 0;
+    // Saliendo de la cornisa, lo que separa los pies cada vez que uno aterriza (regresión: un paso de 1–1,2 m).
+    const inAir = { left: false, right: false };
+    let exitStep = 0;
     simulate(world, 30, [[0, (h) => { h.moveTo(target); }]], {
       onFrame: (t) => {
         if (t >= next) {
@@ -313,9 +347,15 @@ describe('cornisas', () => {
           next += 0.25;
         }
         maxLedge = Math.max(maxLedge, human.ledge);
+        for (const side of SIDES) {
+          const air = human.footPhase(side) === 'SWING';
+          if (inAir[side] && !air && maxLedge > 0.99 && human.ledge < 1) exitStep = Math.max(exitStep, ankle(world, 'left').distanceTo(ankle(world, 'right')));
+          inAir[side] = air;
+        }
       },
     });
     assert.ok(maxLedge > 0.99, `ledge ${maxLedge.toFixed(2)}`);
+    assert.ok(exitStep < 0.8, `al salir de la cornisa, un paso de ${exitStep.toFixed(2)} m`);
     assert.ok(arrived, `no llegó (en ${human.position.x.toFixed(2)}, ${human.position.y.toFixed(2)}, ${human.position.z.toFixed(2)}; ruta ${human.movePath?.map((p) => `(${p.x.toFixed(1)},${p.z.toFixed(1)})`).join(' ')})`);
     assert.ok(human.position.distanceTo(target) < 0.3, `acabó a ${human.position.distanceTo(target).toFixed(2)} m`);
   });

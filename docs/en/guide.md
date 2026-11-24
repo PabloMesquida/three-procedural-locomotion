@@ -476,9 +476,12 @@ with its back to the wall, as a person does. It is detected from the geometry to
 narrow paths: the wall is ground at least 1.1 m (scaled with the size) higher than the ledge; a lower one (a parapet)
 doesn't count. `ledge` (0–1) says how much it is doing it, and changes over `1 / ledgeRate` s.
 
-- When it gets to the ledge it turns its back to the wall without changing its direction of travel, and keeps facing
-  the same way all along it (it only turns with the ledge if this bends more than 20°). When the ledge widens or
-  ends, it turns back to face where it goes and walks on.
+- As soon as it sees the ledge ahead it slows down to `ledgeMaxSpeed`, and once slow it turns its back to the wall
+  without changing its direction of travel (if it still comes fast, it takes a few steps forward first: turning at
+  walking speed, the feet crossed). It keeps facing the same way all along it (it only turns with the ledge if this
+  bends more than 20°). When the ledge widens or ends, it turns back to face where it goes and walks on: two more
+  steps at `ledgeMaxSpeed`, and then it speeds up gently, at a third of `acceleration` (at once, the foot still on
+  the ground with the slow steps of the ledge stayed behind and the next step was very long).
 - It goes sideways: it opens the foot on the side it is going towards, takes the weight onto it and brings the other
   one up to it, without crossing them (`ledgeStepWidth` between the ankles with the feet together; they open about
   as much as it advances in a step), with short, quick steps that barely leave the ground, a long double support and
@@ -500,7 +503,8 @@ goes. Asked to go the other way, it stops and goes back without turning round; a
 the platform beside it): then it leaves the ledge and walks there. Along it, `heading` and `velocity` are where it
 goes, and the body faces `locomotion.body.state.facingOffset` rad (±90°) from there. A `moveTo` route can go along a ledge, close to
 the wall: each metre of it counts as two of open ground (it is slower), so it takes it unless going round is less than
-about twice as long.
+about twice as long. It gets on it from a point before it in line with it, a little off the wall, so that it arrives
+going along the wall and not at an angle.
 
 With `ledgeWidth: 0` it never does it. It costs one ground query every 0.25 s while moving (every second standing
 still), as narrow paths do, about 20 when it finds a ledge, and 5–9 per frame along it (the wall behind the back).

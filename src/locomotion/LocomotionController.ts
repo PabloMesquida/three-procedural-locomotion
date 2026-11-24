@@ -368,10 +368,29 @@ const LEDGE_MAX_HIP_BACK = 0.12;
  */
 const LEDGE_MIN_ALONG = Math.cos((70 * Math.PI) / 180);
 /**
- * Asked to go across a ledge, it looks for ground this far that way (× stepLength): beyond the width of a ledge, so
- * in the middle of one it finds the drop or the wall, and at its end the platform it leads to (see leavesLedge).
+ * Asked to go off a ledge, it looks for ground that way beyond the edge of the ledge, this much further (× stepLength):
+ * in the middle of a ledge it finds the drop, and at its end the platform it leads to (see leavesLedge).
  */
-const LEDGE_EXIT_PROBE = 0.7;
+const LEDGE_EXIT_PROBE = 0.3;
+/** The most it looks for ground that way (× stepLength), asked to leave a ledge in a shallow diagonal. */
+const LEDGE_EXIT_MAX = 2;
+/**
+ * Leaving a ledge, it keeps to ledgeMaxSpeed for this many steps, and then speeds up at this fraction of
+ * `acceleration`. The foot on the ground had landed with the slow cadence and long stance of the ledge: speeding up at
+ * once (and at the usual acceleration, in one step), it stayed behind and the next step was very long (1–1.2 m).
+ */
+const LEDGE_EXIT_STEPS = 2;
+const LEDGE_EXIT_ACCELERATION = 1 / 3;
+/**
+ * Getting on a ledge, it turns its back to the wall only once it has slowed down to this many times ledgeMaxSpeed:
+ * turning at walking speed, the foot on the side of the drop landed beyond the edge and, moved back onto the ledge,
+ * crossed the other one, and the other one went into the wall.
+ */
+const LEDGE_TURN_SPEED = 1.3;
+/** Along a ledge, asked to go less than this off it (rad), it goes the way asked instead of exactly along it. */
+const LEDGE_ASKED_SNAP = (15 * Math.PI) / 180;
+/** Getting on a ledge, the facing follows the measures of the wall with this time constant (s). */
+const LEDGE_FACING_TIME = 0.4;
 /** If the ledge turns more than this (cosine; 20°), the body turns with it; less, it keeps facing the same way. */
 const LEDGE_REFACE = Math.cos((20 * Math.PI) / 180);
 /** Along a ledge, the head looks this much down (rad), and the fingers are open (see `fingerCurl`). */
@@ -527,6 +546,11 @@ export class LocomotionController {
   private readonly narrowAlong = new Vector3();
   /** Time left until the next look across for a ledge (s), and which way it looks standing still (see updateLedge). */
   private ledgeProbe = 0;
+  /** On a ledge (or one detected ahead) this frame: it brakes to ledgeMaxSpeed at once, not as `ledgeBlend` rises. */
+  private ledgeOn = false;
+  /** Leaving a ledge: steps left at ledgeMaxSpeed, and the speed limit as it speeds up (see LEDGE_EXIT_STEPS). */
+  private ledgeLeaving = 0;
+  private ledgeExitLimit = Number.POSITIVE_INFINITY;
   private ledgeIdleAcross = false;
   /** Along a ledge: where the body faces (away from the wall; world, unit), and whether it is set. */
   private readonly ledgeFacing = new Vector3();
@@ -551,6 +575,7 @@ export class LocomotionController {
   private ledgeHipBack = 0;
   private readonly ledgeRays = { count: 0 };
   private readonly ledgeExit = new Vector3();
+  private readonly ledgeTravel = new Vector3();
   private readonly ledgeExitAlong = new Vector3();
   private readonly ledgeExitProbe = new Vector3();
   private readonly ledgeAlong = new Vector3();
@@ -749,6 +774,9 @@ export class LocomotionController {
     this.ledgeBlend = 0;
     this.ledgeProbe = 0;
     this.ledgeFaced = false;
+    this.ledgeOn = false;
+    this.ledgeLeaving = 0;
+    this.ledgeExitLimit = Number.POSITIVE_INFINITY;
     this.ledgeLean = 0;
     this.ledgeHipBack = 0;
     this.wallSamples.fill(Number.NEGATIVE_INFINITY);
@@ -901,7 +929,9 @@ export class LocomotionController {
     this.body.speedLimit = Math.min(
       this.config.runSpeed + (this.config.crouchMaxSpeed - this.config.runSpeed) * k,
       this.config.runSpeed + (this.config.narrowMaxSpeed - this.config.runSpeed) * kb,
-      this.config.runSpeed + (this.config.ledgeMaxSpeed - this.config.runSpeed) * kl,
+      // En cuanto ve la cornisa (por delante): frena ya, para llegar despacio y girar sin cruzar los pies.
+      this.ledgeExitLimit,
+      this.ledgeOn ? this.config.ledgeMaxSpeed : this.config.runSpeed + (this.config.ledgeMaxSpeed - this.config.runSpeed) * kl,
       ledgeStop ? 0 : Number.POSITIVE_INFINITY,
       this.stairSpeedLimit(dt),
     );
@@ -943,6 +973,7 @@ export class LocomotionController {
       for (const event of this.gait.update(dt, this.speed, angularSpeed)) {
         const foot = feet[event.side];
         if (event.type === 'touchdown') {
+          this.ledgeLeaving = Math.max(this.ledgeLeaving - 1, 0);
           foot.planted.copy(foot.swing.landing);
           foot.plantedRotation.copy(foot.swing.landingRotation);
           this.pivotApplied[event.side] = 0;
@@ -982,6 +1013,13 @@ export class LocomotionController {
           foot.swing.t = this.gait.swingProgress(side);
           this.retargetSwing(foot);
           evaluateSwing(foot.swing, foot.swing.t, foot.swing.height, foot.position, foot.rotation, 1 - this.gait.blend, this.gait.pace);
+          // En una cornisa, el pie en el aire tampoco se acerca a la pared más que donde se apoya (ver keepOnLedge): su
+          // desvío para rodear el pie de apoyo iba hacia ella, con los dos pies pegados, y la atravesaba.
+          if (this.ledgeFaced && this.ledgeBlend > 0) {
+            const min = this.stairs.heelBack + LEDGE_FOOT_MARGIN;
+            const d = this.ledgePath.fromWall(foot.position);
+            if (d < min) foot.position.addScaledVector(this.ledgePath.out, (min - d) * smoothstep(this.ledgeBlend));
+          }
           // Los dedos, doblados al despegar, vuelven a su reposo al principio del swing.
           this.toeBend[side] = this.liftoffToeBend[side] * (1 - smoothstep(foot.swing.t / TOE_RELAX));
           continue;
@@ -1266,6 +1304,11 @@ export class LocomotionController {
     // Hacia donde va y hacia donde está girando: girando hacia la pared muy cerca de ella, cuando la tenía de
     // frente ya no le daba para frenar.
     const s = this.body.state;
+    // De espaldas a la pared de una cornisa que sigue por delante, sus bordes (la pared y el del vacío) los lleva la
+    // cornisa (el cuerpo contra la pared, los pies en ella): esta guarda mide en perpendicular al borde que cruce la línea
+    // de avance y, con ellos casi paralelos y a ~15 cm, unos grados de desvío lo paraban en seco, sin salida. Donde la
+    // cornisa se acaba (o la cierra una pared), la guarda vuelve.
+    if (this.onLedge() && this.ledgePath.ledge) return limit;
     const turning = this.turnDirection.copy(s.travel).applyAxisAngle(UP, this.body.headingTarget - s.heading);
     // Se para con los pies delante de la contrahuella: las puntas, a un talón de ella. Medido perpendicular al
     // borde: llegando en diagonal, la raíz quedaba más cerca de él de lo que pueden apoyar los pies, que se
@@ -2000,6 +2043,15 @@ export class LocomotionController {
     }
     // Pedido a través de la cornisa, pero con suelo a su altura hacia allí (la plataforma donde termina): sale de ella.
     const on = this.ledgePath.onLedge(s.position, s.travel) && !(this.ledgeFaced && this.leavesLedge());
+    // Saliendo de ella: unos pasos aún despacio, y luego acelera suave (ver LEDGE_EXIT_STEPS).
+    if (this.ledgeOn && !on && this.ledgeFaced) {
+      this.ledgeLeaving = LEDGE_EXIT_STEPS;
+      this.ledgeExitLimit = cfg.ledgeMaxSpeed;
+    } else if (on || this.ledgeExitLimit >= Math.max(body.targetSpeed, s.speed) + 0.01) {
+      this.ledgeLeaving = 0;
+      this.ledgeExitLimit = Number.POSITIVE_INFINITY;
+    } else if (this.ledgeLeaving <= 0) this.ledgeExitLimit += LEDGE_EXIT_ACCELERATION * cfg.acceleration * dt;
+    this.ledgeOn = on;
     const step = cfg.ledgeRate * dt;
     this.ledgeBlend += clamp((on ? 1 : 0) - this.ledgeBlend, -step, step);
     const kl = smoothstep(this.ledgeBlend);
@@ -2025,6 +2077,10 @@ export class LocomotionController {
       this.ledgeFacing.copy(out);
       this.wallSamples.fill(Number.NEGATIVE_INFINITY);
       this.ledgeFaced = true;
+    } else if (this.ledgeBlend < 1) {
+      // Al entrar, poco a poco hacia la última medida: la primera, en la esquina donde empieza la cornisa, puede salir
+      // torcida (unos 8°). Ya en ella, no: en una pared irregular la medida varía y el cuerpo giraba con ella.
+      this.ledgeFacing.lerp(out, 1 - Math.exp(-dt / LEDGE_FACING_TIME)).normalize();
     }
     const facing = this.ledgeFacing;
     // A lo largo de la cornisa, a la izquierda de donde mira; el sentido, el pedido (targetHeading).
@@ -2045,15 +2101,24 @@ export class LocomotionController {
       }
     }
     if (sign < 0) along.negate();
-    body.headingOverride = s.heading + signedAngle(s.travel, along);
-    body.facingTarget = signedAngle(along, facing);
+    // Avanza paralelo a la pared según la última medida (el cuerpo, de espaldas según `ledgeFacing`, que no gira con las
+    // rocas): la medida de cuando se puso de espaldas, en la esquina donde empieza la cornisa, puede salir unos grados
+    // torcida y, yendo por ella, a un metro se salía por el borde o iba contra la pared (y una guarda lo paraba en seco).
+    const latest = this.ledgePath.out;
+    const travelAlong = this.ledgeTravel.set(latest.z, 0, -latest.x);
+    if (travelAlong.dot(along) < 0) travelAlong.negate();
+    const travel = travelAlong.dot(along) > LEDGE_REFACE ? travelAlong : along;
+    body.headingOverride = s.heading + signedAngle(s.travel, travel);
+    // De espaldas a la pared (respecto a hacia donde avanza, para que el cuerpo no gire con la medida), ya frenado (si aún
+    // va deprisa, sigue de frente unos pasos).
+    if (s.facingOffset !== 0 || s.speed <= LEDGE_TURN_SPEED * cfg.ledgeMaxSpeed) body.facingTarget = signedAngle(travel, facing);
     return stop && this.ledgeBlend > 0.5;
   }
 
   /**
-   * Along a ledge, asked to go across it (more than 70° off it, see LEDGE_MIN_ALONG): is there ground to walk on that
-   * way, at about its height (the platform where the ledge ends), instead of the drop or the wall? Then it leaves the
-   * ledge and walks there. Without this, at the very end of a ledge, asked towards the platform beside it, it stood
+   * Along a ledge, asked to go off it (more than LEDGE_ASKED_SNAP away from the wall): is there ground to walk on that
+   * way, beyond the edge of the ledge and at about its height (the platform where the ledge ends), instead of the drop?
+   * Then it leaves the ledge and walks there. Without this, at the very end of a ledge, asked towards the platform beside it, it stood
    * still for ever: still "on the ledge", that way was the drop, and standing still it never got off it.
    */
   private leavesLedge(): boolean {
@@ -2063,9 +2128,15 @@ export class LocomotionController {
     const facing = this.ledgeFacing;
     const along = this.ledgeExitAlong.set(facing.z, 0, -facing.x);
     const wanted = this.ledgeExit.copy(s.travel).applyAxisAngle(UP, this.body.targetHeading - s.heading);
-    if (Math.abs(wanted.dot(along)) >= LEDGE_MIN_ALONG) return false;
+    // Hacia fuera de la cornisa (hacia la pared, nunca) y desviado de ella más que LEDGE_ASKED_SNAP: también en diagonal
+    // (volviendo, una ruta sale de la cornisa hacia la plataforma a ~45°; a lo largo, moveTo frenaba hasta casi pararse).
+    const across = Math.abs(wanted.x * along.z - wanted.z * along.x);
+    if (wanted.dot(facing) <= 0 || across < Math.sin(LEDGE_ASKED_SNAP)) return false;
+    // Tan lejos como haga falta para pasar el borde de una cornisa (en ella, la caída), y no más de LEDGE_EXIT_MAX.
+    const width = Number.isFinite(this.ledgePath.width) ? this.ledgePath.width : cfg.ledgeWidth;
+    const reach = Math.min((width + LEDGE_EXIT_PROBE * cfg.stepLength) / across, LEDGE_EXIT_MAX * cfg.stepLength);
     const ground = s.groundHeight;
-    const probe = this.ledgeExitProbe.copy(s.position).addScaledVector(wanted, LEDGE_EXIT_PROBE * cfg.stepLength);
+    const probe = this.ledgeExitProbe.copy(s.position).addScaledVector(wanted, reach);
     probe.y = ground + cfg.groundProbeHeight;
     this.ledgeRays.count++;
     if (!this.detector.castDown(probe, cfg.groundProbeHeight + cfg.maxStepDown, this.sampleHit)) return false;
@@ -2109,8 +2180,11 @@ export class LocomotionController {
       const chest = base - Math.max(w[3], w[4], w[5]) - this.backDepth.chest;
       const move = Math.min(hips, chest);
       if (Number.isFinite(move)) {
-        // Hacia la pared (o apartándose, si la espalda la atraviesa), poco a poco.
-        this.body.drift.addScaledVector(out, -move * kl * (1 - Math.exp(-LEDGE_CENTERING * dt)));
+        // Hacia la pared (o apartándose, si la espalda la atraviesa), poco a poco, y a medida que se pone de espaldas a
+        // ella: girando aún, de lado, las caderas (medidas como espalda) quedaban a ~7 cm de la pared y el pie de ese
+        // lado se metía en ella. Apartándose, siempre.
+        const turned = move > 0 ? smoothstep(Math.max(s.forward.dot(out), 0)) : 1;
+        this.body.drift.addScaledVector(out, -move * kl * turned * (1 - Math.exp(-LEDGE_CENTERING * dt)));
         const rise = (this.backBand.chest[0] + this.backBand.chest[1] - this.backBand.hips[0] - this.backBand.hips[1]) / 2;
         const chestGap = Number.isFinite(chest) ? chest - move : 0;
         hipBack = Number.isFinite(hips) ? Math.min(hips - move, LEDGE_MAX_HIP_BACK * this.config.stepLength) : 0;
