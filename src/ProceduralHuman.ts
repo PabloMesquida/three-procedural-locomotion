@@ -285,7 +285,7 @@ export class ProceduralHuman {
   }
 
   /**
-   * Walk (or run, with `run`) to a point on the ground (world). If something it can't step is in the way (a
+   * Walk (or jog, with `run`, at `jogSpeed`) to a point on the ground (world). If something it can't step is in the way (a
    * riser higher than `maxStepUp`, a drop deeper than `maxStepDown`, a hole), it plans a route round it from
    * the start and follows it with curves; it goes up a platform by its stairs. If the point can't be reached,
    * it goes to the reachable one closest to it (`moveTarget`). With `avoid: false`, in a straight line (it
@@ -310,7 +310,7 @@ export class ProceduralHuman {
   }
 
   /**
-   * Walk (or run, with `run`) along a route (world points; the last one is the destination), e.g. from a
+   * Walk (or jog, with `run`, at `jogSpeed`) along a route (world points; the last one is the destination), e.g. from a
    * navmesh: it heads for a point a little ahead on it, so it turns at its corners along curves. It doesn't
    * check it: what it can't step, it stops in front of.
    */
@@ -494,6 +494,11 @@ export class ProceduralHuman {
   /** How much it runs instead of walking (0 = walking, 1 = running). */
   get runBlend(): number {
     return this.locomotion.gait.blend;
+  }
+
+  /** Pace of the run (0–1): 0 = jogging (up to `jogSpeed`), 1 = a full run (at `runSpeed`). */
+  get runPace(): number {
+    return this.locomotion.gait.pace;
   }
 
   /** Destination of the current `moveTo` (or `followPath`), or null. */

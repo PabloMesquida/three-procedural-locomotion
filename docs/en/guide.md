@@ -60,7 +60,7 @@ Two ways, which can be mixed:
 
 - **Continuous** (keyboard, gamepad, your own AI): `targetSpeed` (m/s) and `targetHeading` (rad). The body
   accelerates, brakes and turns towards them within its limits (acceleration, turn speed, lateral acceleration).
-- **By destination**: `moveTo(point, { run })` goes to a point on the ground; if it is to the side, it turns
+- **By destination**: `moveTo(point, { run })` goes to a point on the ground (with `run`, jogging, at `jogSpeed`); if it is to the side, it turns
   while walking, in a tighter curve the closer it is; if it is behind (more than 120°), it brakes and turns
   towards it in 2–3 large steps that already move in the new direction (~1 s for 180°, like a person) and sets
   off in a straight line. It adjusts its speed so as not to circle around it and brakes to stop on it
@@ -75,7 +75,7 @@ Two ways, which can be mixed:
   control with the mouse), don't use `pointerdown` alone: it also fires at the start of every drag of the camera.
   Keep where `pointerdown` was and, on `click`, ignore it if the pointer moved more than a few pixels (see
   [`examples/basic.ts`](../../examples/basic.ts)).
-- **Along a route**: `followPath(points, { run })` follows the points given (e.g. from your own navmesh) with
+- **Along a route**: `followPath(points, { run })` (with `run`, jogging) follows the points given (e.g. from your own navmesh) with
   curves and stops on the last one; it doesn't check them.
 
 Also: `targetCrouch` (0 = standing, 1 = crouched), `jump()` (returns `false` if already jumping).
@@ -98,8 +98,10 @@ foot pivots on the toes. How fast it turns is set by `turnSpeed` and `maxLateral
 
 Running is not a separate mode: `walkSpeed` (1.4 m/s) is the normal walking speed, but it keeps walking, at a
 brisk pace, up to `runStartSpeed` (1.7 m/s); above that the gait gradually turns into running (`runBlend`) over
-`runTransition` (complete at about 2.3 m/s; a person switches at about 2 m/s) and it can accelerate up to
-`runSpeed`. While crouching, speed is limited to `crouchMaxSpeed`, on a narrow path to `narrowMaxSpeed` and along a
+`runTransition` (complete at about 2.3 m/s; a person switches at about 2 m/s). Up to `jogSpeed` (3 m/s) it jogs, with
+the `jog*` parameters; above that the jog gradually turns into a run, complete at `runSpeed` (5 m/s, the maximum),
+with the `run*` ones: more steps per second and longer ones, a longer flight with the knee up and the heel towards
+the buttocks, more lean and a wider arm swing (`runPace`, 0 → 1). While crouching, speed is limited to `crouchMaxSpeed`, on a narrow path to `narrowMaxSpeed` and along a
 ledge to `ledgeMaxSpeed`.
 
 ## State
@@ -110,7 +112,8 @@ ledge to `ledgeMaxSpeed`.
 | `speed`, `velocity` | Horizontal speed (m/s) and velocity vector (world). |
 | `heading` | Current heading (rad, same convention as `targetHeading`). |
 | `gaitMode` | `'idle'` (still, feet on the ground) or `'walk'` (taking steps, walking or running). |
-| `runBlend` | 0 = walking, 1 = running. |
+| `runBlend` | 0 = walking, 1 = running (jogging or running). |
+| `runPace` | Running: 0 = jogging (up to `jogSpeed`), 1 = a full run (at `runSpeed`). |
 | `crouch` | Current crouch (0–1). |
 | `balance` | How much it is balancing on a narrow path (0–1, see [Narrow paths](#narrow-paths)). |
 | `ledge` | How much it is going along a ledge with its back to the wall (0–1, see [Ledges](#ledges)). |
@@ -167,7 +170,7 @@ parameters and pass it as `config` or with `setConfig`.
 
 ## Basic controls
 
-To change how it walks without going into the 144 parameters: thirteen high-level controls (`basicControls`),
+To change how it walks without going into the 152 parameters: thirteen high-level controls (`basicControls`),
 each of which moves several parameters at once. They are a layer on top of the configuration, like the presets:
 `applyBasicControls(base, values)` returns the resulting parameters for `setConfig`.
 
@@ -305,8 +308,8 @@ character running at 3 m/s takes frantic little steps and a large one walking at
 motion. With `speedScale: 'auto'` they move as they really would (dynamic similarity, the relation between a
 child's gait and an adult's): with *s* = `bodyScale`,
 
-- speeds × √s (`walkSpeed`, `runStartSpeed`, `runSpeed`, `crouchMaxSpeed`, the jump speed…): a 1.1 m child
-  (s ≈ 0.6) walks at ~1.1 m/s, starts running at ~1.3 m/s and runs at most at ~2.3 m/s;
+- speeds × √s (`walkSpeed`, `runStartSpeed`, `jogSpeed`, `runSpeed`, `crouchMaxSpeed`, the jump speed…): a 1.1 m
+  child (s ≈ 0.6) walks at ~1.1 m/s, starts running at ~1.3 m/s, jogs at ~2.3 m/s and runs at most at ~3.9 m/s;
 - rates ÷ √s (steps per second, turn speed, spring frequencies) and durations × √s;
 - accelerations and gravity, unchanged; jumps reach a height proportional to its size.
 

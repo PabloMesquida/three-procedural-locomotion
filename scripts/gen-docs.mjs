@@ -149,8 +149,9 @@ for (const [kind, names] of [['parameters', unique.map((m) => m.name)], ['preset
 
 // ---------- Secciones ----------
 const sections = [
-  [{ en: 'Speed and starting', es: 'Velocidad y arranque' }, (n) => ['walkSpeed', 'runSpeed', 'runStartSpeed', 'runTransition', 'acceleration', 'deceleration', 'speedEasing'].includes(n)],
+  [{ en: 'Speed and starting', es: 'Velocidad y arranque' }, (n) => ['walkSpeed', 'runSpeed', 'jogSpeed', 'runStartSpeed', 'runTransition', 'acceleration', 'deceleration', 'speedEasing'].includes(n)],
   [{ en: 'Steps (walking)', es: 'Paso (caminando)' }, (n) => ['stepFrequency', 'minStepFrequency', 'stepLength', 'stepWidth', 'stepHeight', 'dutyFactor', 'liftFraction', 'plantFraction', 'heelLiftAngle', 'heelStrikeAngle', 'standKneeBend', 'stanceKneeBend', 'loadingKneeBend', 'walkLandingLead'].includes(n)],
+  [{ en: 'Jogging', es: 'Trote' }, (n) => n.startsWith('jog') && n !== 'jogSpeed'],
   [{ en: 'Running', es: 'Correr' }, (n) => n.startsWith('run') && !['runSpeed', 'runStartSpeed', 'runTransition'].includes(n)],
   [{ en: 'Posture', es: 'Postura' }, (n) => n === 'walkLean' || n === 'ankleBack'],
   [{ en: 'Crouching', es: 'Agacharse' }, (n) => n.startsWith('crouch')],

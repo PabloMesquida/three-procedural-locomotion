@@ -59,7 +59,7 @@ Dos formas, que se pueden mezclar:
 
 - **Continua** (teclado, mando, IA propia): `targetSpeed` (m/s) y `targetHeading` (rad). El cuerpo acelera,
   frena y gira hacia ellos con sus límites (aceleración, velocidad de giro, aceleración lateral).
-- **Por destino**: `moveTo(punto, { run })` va hasta un punto del suelo; si queda de lado gira caminando, en
+- **Por destino**: `moveTo(punto, { run })` va hasta un punto del suelo (con `run`, trotando, a `jogSpeed`); si queda de lado gira caminando, en
   una curva más cerrada cuanto más cerca está; si queda detrás (más de 120°) frena y gira hacia él en 2–3
   pasos grandes que ya se desplazan hacia la nueva dirección (~1 s para 180°, como una persona) y sale en
   línea recta. Ajusta la velocidad para no
@@ -75,7 +75,7 @@ Dos formas, que se pueden mezclar:
   cámara con el ratón), no uses solo `pointerdown`: también salta al empezar cada arrastre de la cámara. Guarda
   dónde fue el `pointerdown` y, en `click`, ignóralo si el puntero se movió más de unos píxeles (ver
   [`examples/basic.ts`](../../examples/basic.ts)).
-- **Por una ruta**: `followPath(puntos, { run })` sigue los puntos que le das (por ejemplo, de tu navmesh) con
+- **Por una ruta**: `followPath(puntos, { run })` (con `run`, trotando) sigue los puntos que le das (por ejemplo, de tu navmesh) con
   curvas y se para en el último; no los comprueba.
 
 Además: `targetCrouch` (0 = de pie, 1 = agachado), `jump()` (devuelve `false` si ya está saltando).
@@ -98,7 +98,10 @@ marcan `turnSpeed` y `maxLateralAcceleration`.
 
 Correr no es un modo aparte: `walkSpeed` (1,4 m/s) es la velocidad normal de caminar, pero se sigue caminando, a
 paso vivo, hasta `runStartSpeed` (1,7 m/s); por encima la marcha pasa gradualmente a carrera (`runBlend`) en
-`runTransition` (completa hacia 2,3 m/s; una persona cambia hacia los 2 m/s) y se puede acelerar hasta `runSpeed`.
+`runTransition` (completa hacia 2,3 m/s; una persona cambia hacia los 2 m/s). Hasta `jogSpeed` (3 m/s) trota, con los
+parámetros `jog*`; por encima el trote pasa gradualmente a carrera, completa en `runSpeed` (5 m/s, la máxima), con los
+`run*`: más pasos por segundo y más largos, un vuelo más largo con la rodilla arriba y el talón hacia el glúteo, más
+inclinación y más braceo (`runPace`, 0 → 1).
 Agachado la velocidad se limita a `crouchMaxSpeed`, en un camino angosto a `narrowMaxSpeed` y en una cornisa a
 `ledgeMaxSpeed`.
 
@@ -110,7 +113,8 @@ Agachado la velocidad se limita a `crouchMaxSpeed`, en un camino angosto a `narr
 | `speed`, `velocity` | Velocidad horizontal (m/s) y vector velocidad (world). |
 | `heading` | Rumbo actual (rad, misma convención que `targetHeading`). |
 | `gaitMode` | `'idle'` (quieto, pies apoyados) o `'walk'` (dando pasos, caminando o corriendo). |
-| `runBlend` | 0 = caminar, 1 = correr. |
+| `runBlend` | 0 = caminar, 1 = correr (trotar o correr). |
+| `runPace` | Corriendo: 0 = trote (hasta `jogSpeed`), 1 = carrera (en `runSpeed`). |
 | `crouch` | Agachado actual (0–1). |
 | `balance` | Cuánto hace equilibrio en un camino angosto (0–1, ver [Caminos angostos](#caminos-angostos)). |
 | `ledge` | Cuánto va por una cornisa de espaldas a la pared (0–1, ver [Cornisas](#cornisas)). |
@@ -167,7 +171,7 @@ parámetros y pásalo como `config` o con `setConfig`.
 
 ## Controles básicos
 
-Para cambiar cómo camina sin entrar en los 144 parámetros: trece controles de alto nivel (`basicControls`), cada
+Para cambiar cómo camina sin entrar en los 152 parámetros: trece controles de alto nivel (`basicControls`), cada
 uno mueve a la vez varios parámetros. Son una capa sobre la configuración, como los estilos:
 `applyBasicControls(base, valores)` devuelve los parámetros resultantes para `setConfig`.
 
@@ -307,8 +311,8 @@ personaje pequeño que corre a 3 m/s da pasitos frenéticos y uno grande que cam
 lenta. Con `speedScale: 'auto'` se mueven como lo harían de verdad (semejanza dinámica, la que relaciona la
 marcha de un niño con la de un adulto): con *s* = `bodyScale`,
 
-- velocidades × √s (`walkSpeed`, `runStartSpeed`, `runSpeed`, `crouchMaxSpeed`, la de salto…): un niño de 1,1 m
-  (s ≈ 0,6) camina a ~1,1 m/s, empieza a correr a ~1,3 m/s y corre como mucho a ~2,3 m/s;
+- velocidades × √s (`walkSpeed`, `runStartSpeed`, `jogSpeed`, `runSpeed`, `crouchMaxSpeed`, la de salto…): un niño
+  de 1,1 m (s ≈ 0,6) camina a ~1,1 m/s, empieza a correr a ~1,3 m/s, trota a ~2,3 m/s y corre como mucho a ~3,9 m/s;
 - ritmos ÷ √s (pasos por segundo, velocidad de giro, frecuencias de los muelles) y duraciones × √s;
 - aceleraciones y gravedad, iguales; los saltos son de altura proporcional a su tamaño.
 

@@ -63,20 +63,23 @@ export const stylePresets = {
   },
   /**
    * Athletic: faster and more responsive, long strides, leaning run with lots of arm swing, jumps higher and
-   * turns quickly.
+   * turns quickly. It jogs a little faster and runs up to 6 m/s.
    */
   athletic: {
     walkSpeed: 1.3,
-    runSpeed: 4.5,
+    runSpeed: 6,
+    jogSpeed: 3.3,
     acceleration: 3,
     deceleration: 4,
     stepFrequency: 2.1,
     stepLength: 0.85,
     stepHeight: 0.054,
-    runStepFrequency: 3.2,
-    runStepHeight: 0.28,
-    runLean: 12,
+    runStepFrequency: 3.4,
+    runStepLength: 1.9,
+    runStepHeight: 0.32,
+    runLean: 15,
     armSwing: 18,
+    jogArmSwing: 30,
     runArmSwing: 45,
     jumpSpeed: 4,
     // Gira rápido de pie o despacio; a toda velocidad lo limita maxLateralAcceleration (curvas más abiertas).

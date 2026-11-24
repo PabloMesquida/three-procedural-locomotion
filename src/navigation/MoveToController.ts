@@ -517,10 +517,10 @@ export class MoveToController {
     return next === 'left' ? 1 : -1;
   }
 
-  /** Cruising speed towards the destination (walking or running). */
+  /** Cruising speed towards the destination (walking or jogging: around turns, stairs and narrow paths, not a full run). */
   private cruiseSpeed(): number {
     const loco = this.controller.config;
-    return this.run ? loco.runSpeed : loco.walkSpeed;
+    return this.run ? Math.min(loco.jogSpeed, loco.runSpeed) : loco.walkSpeed;
   }
 
   /** Heading (rad, BodyController convention) pointing towards `point`. */

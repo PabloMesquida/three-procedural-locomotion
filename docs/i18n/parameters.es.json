@@ -5,8 +5,12 @@
       "es": "Velocidad normal de caminar (m/s): la de crucero al navegar caminando y a la que se dan `stepFrequency` pasos por segundo. Se puede caminar más deprisa, hasta `runStartSpeed`."
     },
     "runSpeed": {
-      "en": "Maximum running speed (m/s).",
-      "es": "Velocidad máxima corriendo (m/s)."
+      "en": "Maximum speed (m/s): a full run, with the `run*` parameters. Between `jogSpeed` and this, jogging gradually turns into running.",
+      "es": "Velocidad máxima (m/s): carrera, con los parámetros `run*`. Entre `jogSpeed` y esta, el trote pasa poco a poco a carrera."
+    },
+    "jogSpeed": {
+      "en": "Speed up to which it jogs (m/s): from `runStartSpeed` walking turns into jogging (the `jog*` parameters, where the `run*` ones have a jogging version); above it, into a full run, reached at `runSpeed`. A jog is about 2.5–3 m/s; a run, 4–6 m/s. If it is not below runSpeed, it only jogs.",
+      "es": "Velocidad hasta la que trota (m/s): desde `runStartSpeed` el caminar pasa a trote (los parámetros `jog*`, donde los `run*` tienen una versión de trote); por encima, a carrera, completa en `runSpeed`. Un trote va a unos 2,5–3 m/s; una carrera, a 4–6 m/s. Si no es menor que runSpeed, solo trota."
     },
     "runStartSpeed": {
       "en": "Speed at which the transition to running begins (m/s). A person starts running at about 2 m/s (Froude number v²/(g·leg) ≈ 0.5); below that they walk, even at a brisk pace.",
@@ -56,21 +60,45 @@
       "en": "Walking: fraction of the normal lead at which the foot lands (0–1). With 1, the stance is centred on the neutral position; with less, further back: the trailing leg extends with the heel raised before lifting off and the leading foot lands closer, as in motion capture. It applies in full when the heel lifts 45° or more at toe-off (`heelLiftAngle`); with less, the stance moves towards centred (with flat feet the trailing leg cannot extend as far).",
       "es": "Caminar: fracción del adelanto normal con la que aterriza el pie (0–1). Con 1, el apoyo queda centrado en la posición neutra; menos, más atrás: la pierna de atrás se estira con el talón levantado antes de despegar y la de delante aterriza más cerca, como en las capturas de movimiento. Se aplica entero con el talón levantado 45° o más al despegar (`heelLiftAngle`); con menos, el apoyo se acerca al centrado (con los pies planos la pierna de atrás no puede estirarse tanto)."
     },
+    "jogStepFrequency": {
+      "en": "Jogging: steps per second at jogSpeed (a jog, 160–175 steps per minute).",
+      "es": "Trote: pasos por segundo a jogSpeed (al trote, 160–175 pasos por minuto)."
+    },
+    "jogStepLength": {
+      "en": "Jogging: maximum step length (m).",
+      "es": "Trote: longitud máxima de paso (m)."
+    },
+    "jogDutyFactor": {
+      "en": "Jogging: fraction of the cycle with the foot on the ground (< 0.5: flight phase, short when jogging).",
+      "es": "Trote: fracción del ciclo con el pie apoyado (< 0,5: fase de vuelo, corta al trote)."
+    },
+    "jogStepHeight": {
+      "en": "Jogging: foot height in the air (m).",
+      "es": "Trote: altura del pie en el aire (m)."
+    },
+    "jogLean": {
+      "en": "Jogging: forward lean of the torso (degrees; more upright than running).",
+      "es": "Trote: inclinación del torso hacia delante (grados; más erguido que corriendo)."
+    },
+    "jogArmSwing": {
+      "en": "Jogging: maximum arm swing (degrees; relaxed arms, less than running).",
+      "es": "Trote: balanceo máximo del brazo (grados; brazos relajados, menos que corriendo)."
+    },
     "runStepFrequency": {
-      "en": "Running: steps per second at runSpeed.",
-      "es": "Correr: pasos por segundo a runSpeed."
+      "en": "Running: steps per second at runSpeed (a run, 175–200 steps per minute).",
+      "es": "Correr: pasos por segundo a runSpeed (corriendo, 175–200 pasos por minuto)."
     },
     "runStepLength": {
       "en": "Running: maximum step length (m).",
       "es": "Correr: longitud máxima de paso (m)."
     },
     "runDutyFactor": {
-      "en": "Running: fraction of the cycle with the foot on the ground (< 0.5: flight phase).",
-      "es": "Correr: fracción del ciclo con el pie apoyado (< 0,5: fase de vuelo)."
+      "en": "Running: fraction of the cycle with the foot on the ground (< 0.5: flight phase, longer than jogging).",
+      "es": "Correr: fracción del ciclo con el pie apoyado (< 0,5: fase de vuelo, más larga que al trote)."
     },
     "runStepHeight": {
-      "en": "Running: foot height in the air (m).",
-      "es": "Correr: altura del pie en el aire (m)."
+      "en": "Running: foot height in the air (m; the heel rises towards the buttocks).",
+      "es": "Correr: altura del pie en el aire (m; el talón sube hacia el glúteo)."
     },
     "runHeelLiftAngle": {
       "en": "Running: heel angle at toe-off (degrees).",
@@ -97,8 +125,8 @@
       "es": "Correr: inclinación del torso hacia delante (grados)."
     },
     "walkLean": {
-      "en": "Forward lean of the torso when standing and walking (degrees; when running it changes to `runLean`).",
-      "es": "Inclinación del torso hacia delante de pie y caminando (grados; al correr pasa a `runLean`)."
+      "en": "Forward lean of the torso when standing and walking (degrees; jogging it changes to `jogLean`, and running to `runLean`).",
+      "es": "Inclinación del torso hacia delante de pie y caminando (grados; al trote pasa a `jogLean` y corriendo a `runLean`)."
     },
     "ankleBack": {
       "en": "How far the ankle sits behind the hip in the neutral foot position (m): when standing, the weight falls on the middle of the foot, ahead of the ankle. It is not taken from the model's rest pose, which may have the feet forward or back.",
@@ -125,12 +153,16 @@
       "es": "Correr: flexión del codo (grados)."
     },
     "runArmSwing": {
-      "en": "Running: maximum arm swing (degrees).",
-      "es": "Correr: balanceo máximo del brazo (grados)."
+      "en": "Running: maximum arm swing (degrees; vigorous: the hand reaches the chest in front, and goes well back).",
+      "es": "Correr: balanceo máximo del brazo (grados; enérgico: adelante la mano llega al pecho y atrás va bien lejos)."
     },
     "runElbowSwingBend": {
       "en": "Running: extra elbow bend when the arm swings forward (degrees).",
       "es": "Correr: flexión extra del codo con el brazo hacia delante (grados)."
+    },
+    "runArmInward": {
+      "en": "Running: internal rotation of the upper arm (degrees): with the elbows bent, the forearms point in towards the body's midline, more so when the arm swings forward (with it back, a fifth). 0 = they swing straight forward and back.",
+      "es": "Correr: rotación interna del brazo (grados): con los codos doblados, los antebrazos apuntan hacia la línea media del cuerpo, más con el brazo adelante (atrás, una quinta parte). 0 = se balancean rectos, adelante y atrás."
     },
     "crouchDepth": {
       "en": "Crouching: how much the hips drop (m).",
@@ -587,8 +619,8 @@
       "es": "Sigiloso: lento, pasos cortos y altos con apoyo largo, tronco adelantado, brazos recogidos, cabeza muy estable."
     },
     "athletic": {
-      "en": "Athletic: faster and more responsive, long strides, leaning run with lots of arm swing, jumps higher and turns quickly.",
-      "es": "Atlético: más rápido y reactivo, zancadas largas, carrera inclinada con mucho braceo, salta más y gira rápido."
+      "en": "Athletic: faster and more responsive, long strides, leaning run with lots of arm swing, jumps higher and turns quickly. It jogs a little faster and runs up to 6 m/s.",
+      "es": "Atlético: más rápido y reactivo, zancadas largas, carrera inclinada con mucho braceo, salta más y gira rápido. Trota algo más deprisa y corre hasta 6 m/s."
     },
     "heavy": {
       "en": "Heavy: wide stance, marked side-to-side sway, slow and low steps, arms held out, starts and stops slowly.",

@@ -75,7 +75,7 @@ describe('controles básicos (capa sobre la configuración)', () => {
   });
 
   for (const [name, values] of extremes) {
-    it(`${name}: camina, corre, gira, salta y llega a un destino con una marcha limpia`, () => {
+    it(`${name}: camina, trota, gira, salta y llega a un destino con una marcha limpia`, () => {
       const world = createWorld({ human: { config: applyBasicControls(defaultConfig, values) } });
       const { human } = world;
       const c = human.config;
@@ -83,7 +83,8 @@ describe('controles básicos (capa sobre la configuración)', () => {
       human.on('arrive', () => { arrived = true; });
       const r = simulate(world, 22, [
         [0, (h) => { h.targetSpeed = c.walkSpeed; }],
-        [3, (h) => { h.targetSpeed = c.runSpeed; }],
+        // Al trote (como navega moveTo); la carrera rápida, en run.test.ts.
+        [3, (h) => { h.targetSpeed = Math.min(c.jogSpeed, c.runSpeed); }],
         [5, (h) => { h.targetHeading = Math.PI / 2; }],
         [7, (h) => h.jump()],
         [9, (h) => h.moveTo(new Vector3(h.position.x - 4, 0, h.position.z + 2))],

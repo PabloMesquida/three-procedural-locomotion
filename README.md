@@ -33,8 +33,10 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
 
 - **Gait measured against real people**: cadence, stride, foot roll (heel → toe), foot path during the swing,
   knees and arms tuned with CMU motion capture ([naturalness](docs/en/naturalness.md)); a test checks it.
-- **Walking and running without separate modes**: it walks up to ~1.7 m/s and above that (`runStartSpeed`)
-  gradually turns into a run, as a person does at about 2 m/s, with a flight phase, hip bounce and torso lean.
+- **Walking, jogging and running without separate modes**: it walks up to ~1.7 m/s and above that
+  (`runStartSpeed`) gradually turns into a jog, as a person does at about 2 m/s, with a flight phase, hip bounce
+  and torso lean; from `jogSpeed` (3 m/s) on, into a run (up to 5 m/s): longer flight, knee up, heel towards the
+  buttocks, more lean and a vigorous arm swing, the hands in a fist.
 - **Believable turns**: it slows down according to the turn still to be made, tightens the curve, the head and
   chest anticipate the new heading and the feet land already pointing the right way (or pivot on the toes).
 - **Feet on the terrain**: heel → sole → toe, tilting over bumps and slopes, low steps, toe clearance during the
@@ -60,7 +62,7 @@ terrain and the posture of the body (pelvis, torso, head, arms, hands).
 - **A living body**: counter-rotation of pelvis and shoulders, weight shift, arms and fingers as damped
   pendulums, deterministic natural variation per seed (two characters never move the same way).
 - **Styles and tuning on two levels**: `tired`, `sneaky`, `athletic` and `heavy` presets; thirteen basic controls
-  (tempo, stride, arm swing, intensity…) that move several parameters at once; and all 144 parameters one by
+  (tempo, stride, arm swing, intensity…) that move several parameters at once; and all 152 parameters one by
   one, adjustable at runtime and validated.
 - **Walking in place**: `shiftOrigin` moves the character without changing its motion (a treadmill to tune
   while watching the effect, or a floating origin in large worlds).
@@ -84,7 +86,7 @@ const human = createProceduralHuman({
   preset: 'athletic',     // optional: walking style
 });
 
-human.moveTo(point, { run: true });                 // go to a point…
+human.moveTo(point, { run: true });                 // go to a point (jogging)…
 human.targetSpeed = 1.2; human.targetHeading = 0.5; // …or continuous control (m/s, rad)
 human.targetCrouch = 1;                             // crouch (0–1)
 human.jump();

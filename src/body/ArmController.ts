@@ -78,6 +78,11 @@ export interface ArmPose {
   abductionTilt?: number;
   /** How much the fingers close, instead of the configuration's `fingerCurl` (e.g. open hands balancing). */
   fingerCurl?: number;
+  /**
+   * Internal rotation of the upper arm (degrees): with the elbow bent, the forearm points in towards the body's
+   * midline, as when running. All of it with the arm forward; with it back, a fifth.
+   */
+  armInward?: number;
 }
 
 /** Motion data that swings the arms. */
@@ -94,6 +99,12 @@ export interface ArmMotion {
   dt?: number;
   /** Acceleration of the body in the direction of travel (m/s²). */
   acceleration?: number;
+  /**
+   * How much of the arms' lag behind the legs is made up (0–1): 0 = they follow them like pendulums, a little
+   * late (walking); 1 = in step with them (running: the arms are driven, and in motion capture they go with the
+   * opposite leg).
+   */
+  lead?: number;
   /** Scale of each arm's swing (1 = the pose's), e.g. natural variation: they are not an exact mirror. */
   swingScale?: { left: number; right: number };
   /**
@@ -155,6 +166,12 @@ const LIMB_DAMPING = 0.55;
 const MAX_ARM_STEP = 1 / 120;
 /** Maximum distance between the feet, in `stepLength`, that still increases the swing of the arms. */
 const MAX_SWING_RATIO = 1.3;
+/** Smoothing of the rate of the requested swing (s), with which the lag is made up (`lead`). */
+const LEAD_SMOOTHING = 0.03;
+/** The most the requested swing is brought forward to make up the lag (rad). */
+const MAX_LEAD = (30 * Math.PI) / 180;
+/** With the arm swung back, fraction of `armInward` that remains (forward, all of it). */
+const INWARD_BACK = 0.3;
 
 /**
  * Procedural arms:
@@ -228,6 +245,9 @@ export class ArmController {
   }
 
   private initialized = false;
+  /** Requested swing in the previous update and its rate (rad/s, smoothed), to make up the lag. */
+  private lastTarget = 0;
+  private targetRate = 0;
 
   /** Only the pose (keeps the state of the swing). */
   private resetPose(): void {
@@ -245,7 +265,7 @@ export class ArmController {
    * equilibrium proportional to the acceleration of the body (what a pendulum whose pivot accelerates
    * feels).
    */
-  private integrate(target: number, dt: number | undefined, acceleration: number, scale?: { left: number; right: number }): void {
+  private integrate(target: number, dt: number | undefined, acceleration: number, scale: { left: number; right: number } | undefined, lead: number): void {
     const scaleOf = (arm: ArmRuntime): number => (scale ? (arm.sign > 0 ? scale.right : scale.left) : 1);
     const c = this.config;
     const inertia = -c.armInertia * DEG * acceleration;
@@ -255,9 +275,18 @@ export class ArmController {
         arm.velocity = 0;
       }
       this.initialized = dt !== undefined;
+      this.lastTarget = target;
+      this.targetRate = 0;
       return;
     }
     const w = 2 * Math.PI * c.armSwingFrequency;
+    // Recuperar el retraso: un péndulo amortiguado que persigue u = θ + θ'·2ζ/ω (en vez de θ) sigue a θ casi sin
+    // desfase (la diferencia que queda es de orden (Ω/ω)²). La velocidad del balanceo pedido, suavizada: los pies
+    // no se mueven como una sinusoide y su derivada tiene esquinas.
+    this.targetRate += ((target - this.lastTarget) / dt - this.targetRate) * (1 - Math.exp(-dt / LEAD_SMOOTHING));
+    this.lastTarget = target;
+    const ahead = clamp(lead * ((2 * c.armSwingDamping) / w) * this.targetRate, -MAX_LEAD, MAX_LEAD);
+    target += ahead;
     // Pasos de como mucho 1/120 s y lo bastante cortos para la frecuencia (w·h ≤ 0,5): estable siempre.
     const steps = Math.max(Math.ceil(dt / MAX_ARM_STEP - 1e-9), Math.ceil((dt * w) / 0.5));
     const h = dt / steps;
@@ -283,7 +312,7 @@ export class ArmController {
     this.swingTarget = c.armSwing * DEG * k;
     // Antebrazo, mano y hombro solo se mueven con inercia si el balanceo ya estaba en marcha.
     const dynamic = this.initialized && motion.dt !== undefined && motion.dt > 0;
-    this.integrate(this.swingTarget, motion.dt, motion.acceleration ?? 0, motion.swingScale);
+    this.integrate(this.swingTarget, motion.dt, motion.acceleration ?? 0, motion.swingScale, motion.lead ?? 0);
     this.swing = this.arms.find((arm) => arm.sign > 0)?.angle ?? this.swingTarget;
 
     const cfg = this.config;
@@ -338,6 +367,15 @@ export class ArmController {
       // …y balanceo hacia delante/atrás sobre el eje lateral (ángulo positivo = hacia delante).
       this.rotateWorld(upperArm, this.q.setFromAxisAngle(R, swing + forward));
 
+      // …y rotación interna sobre su propio eje (corriendo): al doblar el codo, el antebrazo va hacia la línea media
+      // (en el mocap de trote la muñeca se acerca a ella al ir adelante). Toda con el brazo adelante; atrás, una parte.
+      const reach = clamp(swing / (Math.max(c.armSwing, MIN_SWING_FOR_BEND) * DEG), -1, 1);
+      const inward = -arm.sign * (c.armInward ?? 0) * DEG * (INWARD_BACK + ((1 - INWARD_BACK) * (reach + 1)) / 2);
+      if (inward !== 0) {
+        this.boneDirection(upperArm, forearm, this.dir);
+        this.rotateWorld(upperArm, this.q.setFromAxisAngle(this.dir, inward));
+      }
+
       // 2. Codo: el antebrazo es un péndulo cuyo ángulo absoluto (en el plano del balanceo)
       //    persigue el del brazo + la flexión pedida; la diferencia es la flexión del codo.
       const upperAngle = swing + forward;
@@ -361,7 +399,10 @@ export class ArmController {
       this.axis.crossVectors(this.dir, F);
       const hinge = this.axis.lengthSq() > 1e-8;
       if (hinge) {
-        this.rotateWorld(forearm, this.q.setFromAxisAngle(this.axis.normalize(), bend));
+        // Con la rotación interna, la bisagra gira con el brazo (sobre su eje, que es el del antebrazo aún recto).
+        this.axis.normalize();
+        if (inward !== 0) this.axis.applyAxisAngle(this.dir, inward);
+        this.rotateWorld(forearm, this.q.setFromAxisAngle(this.axis, bend));
       }
 
       // 3. Muñeca: la mano sigue al antebrazo con algo más de retraso.
@@ -383,7 +424,8 @@ export class ArmController {
         arm.fingerSwing.target = handAngle;
         if (dynamic) stepSpring(arm.fingerSwing, 2 * Math.PI * cfg.fingerFrequency, LIMB_DAMPING, motion.dt!);
         else snapSpring(arm.fingerSwing);
-        const lag = clamp(arm.fingerSwing.value - handAngle, -MAX_FINGER_LAG, MAX_FINGER_LAG) * (1 - touch);
+        // Con la mano cerrada (corriendo, en puño) los dedos casi no se balancean: van apretados.
+        const lag = (clamp(arm.fingerSwing.value - handAngle, -MAX_FINGER_LAG, MAX_FINGER_LAG) * (1 - touch)) / Math.max(curl, 1);
         if (hinge) arm.fingers.sway(this.axis, lag);
       }
       updateSubtree(shoulder ?? upperArm);

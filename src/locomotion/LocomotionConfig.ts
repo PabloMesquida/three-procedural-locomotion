@@ -13,8 +13,17 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
    * steps per second. It can walk faster, up to `runStartSpeed`.
    */
   walkSpeed: number;
-  /** Maximum running speed (m/s). */
+  /**
+   * Maximum speed (m/s): a full run, with the `run*` parameters. Between `jogSpeed` and this, jogging gradually
+   * turns into running.
+   */
   runSpeed: number;
+  /**
+   * Speed up to which it jogs (m/s): from `runStartSpeed` walking turns into jogging (the `jog*` parameters,
+   * where the `run*` ones have a jogging version); above it, into a full run, reached at `runSpeed`. A jog is
+   * about 2.5–3 m/s; a run, 4–6 m/s. If it is not below runSpeed, it only jogs.
+   */
+  jogSpeed: number;
   /**
    * Speed at which the transition to running begins (m/s). A person starts running at about 2 m/s (Froude
    * number v²/(g·leg) ≈ 0.5); below that they walk, even at a brisk pace.
@@ -60,13 +69,26 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
    */
   walkLandingLead: number;
 
-  /** Running: steps per second at runSpeed. */
+  /** Jogging: steps per second at jogSpeed (a jog, 160–175 steps per minute). */
+  jogStepFrequency: number;
+  /** Jogging: maximum step length (m). */
+  jogStepLength: number;
+  /** Jogging: fraction of the cycle with the foot on the ground (< 0.5: flight phase, short when jogging). */
+  jogDutyFactor: number;
+  /** Jogging: foot height in the air (m). */
+  jogStepHeight: number;
+  /** Jogging: forward lean of the torso (degrees; more upright than running). */
+  jogLean: number;
+  /** Jogging: maximum arm swing (degrees; relaxed arms, less than running). */
+  jogArmSwing: number;
+
+  /** Running: steps per second at runSpeed (a run, 175–200 steps per minute). */
   runStepFrequency: number;
   /** Running: maximum step length (m). */
   runStepLength: number;
-  /** Running: fraction of the cycle with the foot on the ground (< 0.5: flight phase). */
+  /** Running: fraction of the cycle with the foot on the ground (< 0.5: flight phase, longer than jogging). */
   runDutyFactor: number;
-  /** Running: foot height in the air (m). */
+  /** Running: foot height in the air (m; the heel rises towards the buttocks). */
   runStepHeight: number;
   /** Running: heel angle at toe-off (degrees). */
   runHeelLiftAngle: number;
@@ -83,7 +105,7 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   runLandingLead: number;
   /** Running: forward lean of the torso (degrees). */
   runLean: number;
-  /** Forward lean of the torso when standing and walking (degrees; when running it changes to `runLean`). */
+  /** Forward lean of the torso when standing and walking (degrees; jogging it changes to `jogLean`, and running to `runLean`). */
   walkLean: number;
   /**
    * How far the ankle sits behind the hip in the neutral foot position (m): when standing, the weight falls
@@ -104,10 +126,16 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   runArmAbduction: number;
   /** Running: elbow bend (degrees). */
   runElbowBend: number;
-  /** Running: maximum arm swing (degrees). */
+  /** Running: maximum arm swing (degrees; vigorous: the hand reaches the chest in front, and goes well back). */
   runArmSwing: number;
   /** Running: extra elbow bend when the arm swings forward (degrees). */
   runElbowSwingBend: number;
+  /**
+   * Running: internal rotation of the upper arm (degrees): with the elbows bent, the forearms point in towards
+   * the body's midline, more so when the arm swings forward (with it back, a fifth). 0 = they swing straight
+   * forward and back.
+   */
+  runArmInward: number;
 
   /** Crouching: how much the hips drop (m). */
   crouchDepth: number;
@@ -298,7 +326,8 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
 
 export const defaultLocomotionConfig: LocomotionConfig = {
   walkSpeed: 1.4,
-  runSpeed: 3.0,
+  runSpeed: 5.0,
+  jogSpeed: 3.0,
   runStartSpeed: 1.7,
   runTransition: 0.6,
   acceleration: 1.5,
@@ -314,25 +343,32 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   dutyFactor: 0.61,
   walkLandingLead: 0.8,
 
-  runStepFrequency: 2.9,
-  runStepLength: 1.2,
-  runDutyFactor: 0.35,
-  runStepHeight: 0.15,
+  jogStepFrequency: 2.9,
+  jogStepLength: 1.2,
+  jogDutyFactor: 0.35,
+  jogStepHeight: 0.15,
+  jogLean: 10,
+  jogArmSwing: 25,
+  runStepFrequency: 3.2,
+  runStepLength: 1.7,
+  runDutyFactor: 0.28,
+  runStepHeight: 0.3,
   runHeelLiftAngle: 45,
   runHeelStrikeAngle: 2,
   runCrouch: 0.08,
   runBounce: 0.03,
   runLandingLead: 0.6,
-  runLean: 10,
+  runLean: 14,
   walkLean: 0,
   ankleBack: 0.03,
   idleArmAbduction: 10,
   idleElbowBend: 14,
   idleArmForward: -4,
   runArmAbduction: 9,
-  runElbowBend: 95,
-  runArmSwing: 25,
+  runElbowBend: 100,
+  runArmSwing: 40,
   runElbowSwingBend: 10,
+  runArmInward: 30,
 
   crouchDepth: 0.32,
   crouchHipBack: 0.06,

@@ -27,7 +27,8 @@ const SIDES: readonly Side[] = ['left', 'right'];
  *  - running: β < 0.5 → there are flight phases (no foot on the ground).
  *
  * Walking ↔ running is gradual: the running factor `blend` (0 → 1) grows with speed and interpolates the
- * parameters. Each foot fixes its β when it lands and keeps it during its cycle, so that a change of β
+ * parameters. Running itself goes from jogging (up to `jogSpeed`, the `jog*` parameters) to a full run (at
+ * `runSpeed`, the `run*` ones) with the pace `pace` (0 → 1). Each foot fixes its β when it lands and keeps it during its cycle, so that a change of β
  * doesn't make it change state abruptly (for example, "landing" in the air).
  *
  * Modes:
@@ -48,6 +49,8 @@ export class GaitController {
   frequency = 0;
   /** Factor de carrera actual: 0 = caminar, 1 = correr. */
   blend = 0;
+  /** Ritmo de la carrera: 0 = trote (hasta jogSpeed), 1 = carrera (en runSpeed). */
+  pace = 0;
   /** Duty factor of each foot, fixed at its last landing. */
   readonly duty: Record<Side, number> = { left: 0, right: 0 };
   readonly offsets: Record<Side, number> = { left: 0, right: 0.5 };
@@ -65,6 +68,7 @@ export class GaitController {
     this.mode = 'idle';
     this.frequency = 0;
     this.blend = 0;
+    this.pace = 0;
     this.duty.left = this.config.dutyFactor;
     this.duty.right = this.config.dutyFactor;
     this.phase = (this.config.dutyFactor - 0.5) / 2; // centro del primer doble apoyo
@@ -76,15 +80,35 @@ export class GaitController {
     return smoothstep((speed - runStartSpeed) / Math.max(runTransition, 1e-6));
   }
 
+  /**
+   * Pace of the run (0–1) for a speed: 0 jogging, up to `jogSpeed`; from there it rises to 1 (a full run) at
+   * `runSpeed`. If runSpeed ≤ jogSpeed it only jogs.
+   */
+  paceFactor(speed: number): number {
+    const { jogSpeed, runSpeed } = this.config;
+    if (!(runSpeed > jogSpeed)) return 0;
+    return smoothstep((speed - jogSpeed) / (runSpeed - jogSpeed));
+  }
+
   /** Interpolates a parameter between its walking value and its running value with the current factor. */
   mix(walkValue: number, runValue: number): number {
     return walkValue + (runValue - walkValue) * this.blend;
   }
 
-  /** Duty factor for a running factor. */
-  dutyFor(blend: number): number {
-    const { dutyFactor, runDutyFactor } = this.config;
-    return dutyFactor + (runDutyFactor - dutyFactor) * blend;
+  /** A running parameter at the current pace: between its jogging value and its full-run value. */
+  run(jogValue: number, runValue: number, pace = this.pace): number {
+    return jogValue + (runValue - jogValue) * pace;
+  }
+
+  /** Duty factor for a running factor and a pace. */
+  dutyFor(blend: number, pace = 0): number {
+    const { dutyFactor, jogDutyFactor, runDutyFactor } = this.config;
+    return dutyFactor + (this.run(jogDutyFactor, runDutyFactor, pace) - dutyFactor) * blend;
+  }
+
+  /** Duty factor of a foot landing at this speed. */
+  dutyAt(speed: number): number {
+    return this.dutyFor(this.runFactor(speed), this.paceFactor(speed));
   }
 
   /** Phase of the foot, 0 → 1 (0 = landing). */
@@ -157,22 +181,27 @@ export class GaitController {
    * Steps per second for a speed:
    *  - walking: stepFrequency at walkSpeed, proportional to √speed (the relation motion capture follows:
    *    at higher speed, steps a little faster and quite a lot longer), never below minStepFrequency;
-   *  - running: from the walking one at the start of the transition up to runStepFrequency (at runSpeed),
-   *    according to the running factor;
+   *  - running: from the walking one at the start of the transition up to jogStepFrequency (at jogSpeed) and
+   *    from there up to runStepFrequency (at runSpeed), according to the running factor;
    *  - never fewer than needed so as not to exceed the maximum step length (interpolated between
-   *    stepLength and runStepLength), nor to turn more than maxTurnPerStep degrees per step.
+   *    stepLength and jogStepLength, and then runStepLength), nor to turn more than maxTurnPerStep degrees
+   *    per step.
    */
   stepFrequencyFor(speed: number, angularSpeed = 0): number {
     const c = this.config;
     const walkFrequency = (v: number): number => Math.max(c.minStepFrequency, c.stepFrequency * Math.sqrt(Math.max(v, 0) / c.walkSpeed));
     const walkF = walkFrequency(speed);
     const runStart = Math.min(c.runStartSpeed, c.runSpeed);
-    const kRun = clamp01((speed - runStart) / Math.max(c.runSpeed - runStart, 1e-6));
+    // Hasta jogSpeed (o runSpeed, si es menor), hacia la cadencia del trote; de ahí a runSpeed, hacia la de la carrera.
+    const jog = Math.min(Math.max(c.jogSpeed, runStart), c.runSpeed);
+    const kJog = clamp01((speed - runStart) / Math.max(jog - runStart, 1e-6));
     const startF = walkFrequency(runStart);
-    const runF = startF + (c.runStepFrequency - startF) * kRun;
+    const jogF = startF + (c.jogStepFrequency - startF) * kJog;
+    const pace = this.paceFactor(speed);
+    const runF = this.run(jogF, c.runStepFrequency, clamp01((speed - jog) / Math.max(c.runSpeed - jog, 1e-6)));
     const r = this.runFactor(speed);
     const f = walkF + (runF - walkF) * r;
-    const maxStep = c.stepLength + (c.runStepLength - c.stepLength) * r;
+    const maxStep = c.stepLength + (this.run(c.jogStepLength, c.runStepLength, pace) - c.stepLength) * r;
     // Cada pie da un paso por ciclo (= 2 pasos): gira ω·2/f entre dos apoyos suyos.
     const turnLimit = (2 * Math.abs(angularSpeed)) / ((c.maxTurnPerStep * this.turnPerStepScale * Math.PI) / 180);
     return Math.max(f, speed / maxStep, turnLimit, this.minFrequency);
@@ -185,7 +214,7 @@ export class GaitController {
 
   /** Stance duration (s) a foot landing at this speed would have. */
   stanceDuration(speed: number, angularSpeed = 0): number {
-    return this.dutyFor(this.runFactor(speed)) / this.cycleFrequency(speed, angularSpeed);
+    return this.dutyAt(speed) / this.cycleFrequency(speed, angularSpeed);
   }
 
   /**
@@ -236,6 +265,7 @@ export class GaitController {
   update(dt: number, speed: number, angularSpeed = 0): readonly GaitEvent[] {
     this.events.length = 0;
     this.blend = this.runFactor(speed);
+    this.pace = this.paceFactor(speed);
     if (this.mode !== 'walk') {
       this.frequency = 0;
       return this.events;
@@ -257,7 +287,7 @@ export class GaitController {
       if (p1 < p0) {
         // Dio la vuelta (1 → 0): aterriza y fija su duty factor para este ciclo.
         this.events.push({ side, type: 'touchdown' });
-        this.duty[side] = this.dutyFor(this.blend);
+        this.duty[side] = this.dutyFor(this.blend, this.pace);
       }
     }
     return this.events;

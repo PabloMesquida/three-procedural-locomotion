@@ -6,7 +6,7 @@ import { PelvisController } from '../body/PelvisController.ts';
 import { TorsoController } from '../body/TorsoController.ts';
 import { TouchController, type TouchMotion } from '../body/TouchController.ts';
 import { TwistController } from '../body/TwistController.ts';
-import { worldPosition, worldQuaternion } from '../core/pose.ts';
+import { setWorldQuaternionNode, worldPosition, worldQuaternion } from '../core/pose.ts';
 import { LegIK } from '../ik/LegIK.ts';
 import type { TwoBoneIKResult } from '../ik/TwoBoneIK.ts';
 import type { HumanRig, Side } from '../rig/HumanRig.ts';
@@ -199,12 +199,35 @@ const IDLE_ARMS_SPEED = 0.5;
  */
 const ARM_SWING_BACK = 0.3;
 /**
- * When running, with the elbows bent, the arm is almost always behind the body (mocap: ≈ 1.4 × the
- * amplitude).
+ * When jogging, with the elbows bent, the arm is almost always behind the body (mocap: ≈ 1.4 × the
+ * amplitude). With the lag made up (`lead`) it reaches a little further, so 1 gives about the same range: at
+ * 3 m/s, −50…0° (CMU, jogging at 3.1 m/s: −48…−8°).
  */
-const RUN_ARM_SWING_BACK = 0.7;
+const JOG_ARM_SWING_BACK = 1;
+/** Running, the arms swing further forward: the hand reaches the chest (centre of the swing, × amplitude). */
+const RUN_ARM_SWING_BACK = 0.5;
 /** Maximum of the increase of the arm swing with speed (×armSwing). */
 const MAX_ARM_SWING_GAIN = 1.4;
+/**
+ * Running, the foot in the air limits the height of the hips (as a leg that has to reach it) during the first
+ * SWING_REACH_EARLY of the swing and from SWING_REACH_LATE on. Running fast (pace 1), those windows shrink by
+ * FAST_SWING_REACH (the late one, 0.6 of that towards the end).
+ */
+const SWING_REACH_EARLY = 0.35;
+const SWING_REACH_LATE = 0.5;
+const FAST_SWING_REACH = 0.7;
+/**
+ * Running, the foot in the air follows the shin (see swingAnkle) from SWING_ANKLE_IN of the swing on, and until
+ * SWING_ANKLE_OUT it blends back to the swing's own orientation (that of landing). Right after toe-off the ankle is
+ * extended SWING_ANKLE_EXTENSION beyond the rest pose (CMU jogging: ~25°), and it returns to neutral.
+ */
+const SWING_ANKLE_IN = 0.2;
+const SWING_ANKLE_OUT = 0.7;
+const SWING_ANKLE_EXTENSION = (25 * Math.PI) / 180;
+/** Landing from a jump, the leading foot lifts off at least this much (cycle fraction) after the trailing one. */
+const LANDING_LIFT_GAP = 0.03;
+/** Running, the hands close into a loose fist: `fingerCurl` times this. */
+const RUN_FINGER_CURL = 3.2;
 /** Running blend from which it doesn't touch (and lets go): the hand doesn't rest on things while running. */
 const TOUCH_MAX_RUN_BLEND = 0.3;
 /** Smoothing of how fast the ground under the body rises or falls (s; for touching, see `climb`). */
@@ -355,6 +378,10 @@ const TIE_TOLERANCE = 1e-9;
 interface LegRuntime {
   ik: LegIK;
   roll: FootRoll;
+  /** Angle between the shin (knee → ankle) and the foot (ankle → toes on the ground) in the rest pose (rad). */
+  restAnkle: number;
+  /** Height of the ankle above the ground in the rest pose (m). */
+  ankleHeight: number;
   /** Knee pole relative to the thigh, in root space. */
   poleOffsetLocal: Vector3;
   result: TwoBoneIKResult | null;
@@ -453,6 +480,14 @@ export class LocomotionController {
   private readonly toeOffLevel: Record<Side, number> = { left: 0, right: 0 };
   /** Toe bend of each foot (rad): the one that keeps the toes on the ground with the heel raised. */
   private readonly toeBend: Record<Side, number> = { left: 0, right: 0 };
+  /** Highest ground under the toes along the planned swing of each foot (m, world; see swingHeight). */
+  private readonly swingGround: Record<Side, number> = { left: Number.NEGATIVE_INFINITY, right: Number.NEGATIVE_INFINITY };
+  private readonly ankleAxis = new Vector3();
+  private readonly ankleShin = new Vector3();
+  private readonly ankleFoot = new Vector3();
+  private readonly ankleToe = new Vector3();
+  private readonly ankleQ = new Quaternion();
+  private readonly ankleRotation = new Quaternion();
   /** Toe bend at toe-off: it goes back to 0 in the air. */
   private readonly liftoffToeBend: Record<Side, number> = { left: 0, right: 0 };
   /** Offset of the hips at take-off (m): it smoothly goes back to 0 in the air. */
@@ -576,9 +611,15 @@ export class LocomotionController {
       const leg = rig[side];
       const thigh = leg.thigh.getWorldPosition(new Vector3());
       const poleWorld = leg.shin.getWorldPosition(new Vector3()).addScaledVector(forward, config.kneePoleDistance);
+      const roll = new FootRoll(leg, rig.root);
+      const ankle = leg.foot.getWorldPosition(new Vector3());
+      const shin = ankle.clone().sub(leg.shin.getWorldPosition(new Vector3()));
+      const toe = roll.toeLocal.clone().applyQuaternion(leg.foot.getWorldQuaternion(new Quaternion()));
       return {
         ik: new LegIK(leg, forward),
-        roll: new FootRoll(leg, rig.root),
+        roll,
+        restAnkle: shin.angleTo(toe),
+        ankleHeight: -toe.y,
         poleOffsetLocal: poleWorld.sub(thigh).applyQuaternion(rootQInv),
         result: null,
       };
@@ -892,7 +933,7 @@ export class LocomotionController {
           // pierna de atrás se estiraba y las caderas se hundían).
           this.body.predict(this.gait.stanceDuration(this.speed, angularSpeed), this.midStanceDisplacement, this.midStanceVelocity);
           const fastest = Math.max(this.speed, this.midStanceVelocity.length());
-          const duty = this.gait.dutyFor(this.gait.runFactor(fastest));
+          const duty = this.gait.dutyAt(fastest);
           // Bajando una escalera, el pie de atrás despega antes (menos tiempo apoyado). De espaldas a la pared, más tiempo
           // con los dos pies apoyados: el peso pasa de uno a otro despacio.
           const stairDuty = duty + (Math.min(STAIR_DOWN_DUTY, duty) - duty) * this.stairDescent;
@@ -916,7 +957,7 @@ export class LocomotionController {
           this.toeOffLevel[side] = 0;
           foot.swing.t = this.gait.swingProgress(side);
           this.retargetSwing(foot);
-          evaluateSwing(foot.swing, foot.swing.t, foot.swing.height, foot.position, foot.rotation, 1 - this.gait.blend);
+          evaluateSwing(foot.swing, foot.swing.t, foot.swing.height, foot.position, foot.rotation, 1 - this.gait.blend, this.gait.pace);
           // Los dedos, doblados al despegar, vuelven a su reposo al principio del swing.
           this.toeBend[side] = this.liftoffToeBend[side] * (1 - smoothstep(foot.swing.t / TOE_RELAX));
           continue;
@@ -1023,6 +1064,7 @@ export class LocomotionController {
       worldPosition(leg.ik.leg.thigh, this.pole);
       this.pole.add(this.tmp.copy(leg.poleOffsetLocal).applyQuaternion(this.qRoot));
       leg.result = leg.ik.solve(foot.position, this.pole, foot.rotation);
+      if (foot.phase === 'SWING' && this.gait.blend > 0 && !inAir) this.swingAnkle(side);
       // En el aire tras un salto, los dedos vuelven a su reposo.
       if (inAir) this.toeBend[side] *= Math.exp(-dt / (TOE_RELAX * AIR_TUCK_TIME));
       leg.roll.bendToe(this.toeBend[side]);
@@ -1058,7 +1100,7 @@ export class LocomotionController {
       speed: bodyState.speed,
       angularVelocity: bodyState.angularVelocity,
       dt,
-      extraLean: (((cfg.walkLean + (cfg.runLean - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean + this.stairLean) * (1 - kl) + this.ledgeLean,
+      extraLean: (((cfg.walkLean + (this.gait.run(cfg.jogLean, cfg.runLean) - cfg.walkLean) * this.gait.blend + k * cfg.crouchLean) * Math.PI) / 180 + this.jumping.lean() + this.variationNow.lean + this.stairLean) * (1 - kl) + this.ledgeLean,
       airborne: bodyState.airborne,
       headOffset: { yaw: this.variationNow.headYaw + gaze, pitch: this.variationNow.headPitch + this.glance + DOWN_GAZE * Math.max(-this.stairSlope, 0) + kb * cfg.narrowGaze * DEG + kl * LEDGE_GAZE_DOWN },
       headNod: 1 / (1 + STAIR_HEAD_STEADY * Math.abs(this.stairSlope)),
@@ -1099,21 +1141,25 @@ export class LocomotionController {
     this.arms.update({
       forward: bodyState.forward,
       feetAhead: this.tmp.subVectors(feet.right.position, feet.left.position).dot(bodyState.forward),
-      stepLength: mix(c.walkSpeed / c.stepFrequency, c.runStepLength),
+      // Corriendo del todo, la zancada a runSpeed (runStepLength es solo el máximo y la dejaría corta).
+      stepLength: mix(c.walkSpeed / c.stepFrequency, this.gait.run(c.jogStepLength, Math.min(c.runSpeed / c.runStepFrequency, c.runStepLength))),
       dt,
       acceleration: bodyState.acceleration,
       swingScale: { left: this.variationNow.armLeft, right: this.variationNow.armRight },
       touch: { left: this.touch.weight('left'), right: this.touch.weight('right') },
       shoulderTilt: this.torso.shoulderLineTilt,
+      // Corriendo, los brazos van a la par de la pierna contraria (caminando, algo detrás, como péndulos).
+      lead: this.gait.blend,
       // Haciendo equilibrio: brazos abiertos, casi sin balanceo, con correcciones lentas (uno sube y el otro baja).
       pose: {
         armAbduction: balancing(relax(mix(c.armAbduction, c.runArmAbduction), c.idleArmAbduction), c.narrowArmAbduction, c.ledgeArmAbduction),
         elbowBend: balancing(relax(mix(c.elbowBend, c.runElbowBend), c.idleElbowBend), c.narrowElbowBend, c.ledgeElbowBend) + k * c.crouchElbowBend,
-        armSwing: balancing(mix(walkSwing, c.runArmSwing), c.narrowArmSwing, 0),
+        armSwing: balancing(mix(walkSwing, this.gait.run(c.jogArmSwing, c.runArmSwing)), c.narrowArmSwing, 0),
         elbowSwingBend: balancing(mix(c.elbowSwingBend, c.runElbowSwingBend), 0, 0),
-        armForward: balancing(relax(c.armForward, c.idleArmForward) - mix(ARM_SWING_BACK * walkSwing, RUN_ARM_SWING_BACK * c.runArmSwing), c.narrowArmForward, c.ledgeArmForward) + k * c.crouchArmForward + this.jumping.armForward(),
+        armForward: balancing(relax(c.armForward, c.idleArmForward) - mix(ARM_SWING_BACK * walkSwing, this.gait.run(JOG_ARM_SWING_BACK * c.jogArmSwing, RUN_ARM_SWING_BACK * c.runArmSwing)), c.narrowArmForward, c.ledgeArmForward) + k * c.crouchArmForward + this.jumping.armForward(),
         abductionTilt: this.balanceTilt,
-        fingerCurl: balancing(c.fingerCurl, NARROW_FINGER_CURL, LEDGE_FINGER_CURL),
+        fingerCurl: balancing(mix(c.fingerCurl, c.fingerCurl * RUN_FINGER_CURL), NARROW_FINGER_CURL, LEDGE_FINGER_CURL),
+        armInward: balancing(mix(0, c.runArmInward), 0, 0),
       },
     });
 
@@ -2053,10 +2099,11 @@ export class LocomotionController {
    * profile of the arc (`swingArc`), each sample's deficit is divided by that factor.
    */
   private swingHeight(foot: FootTarget): number {
-    const base = this.gait.mix(this.config.stepHeight, this.config.runStepHeight) * (1 - (1 - LEDGE_STEP_HEIGHT) * smoothstep(this.ledgeBlend));
+    const base = this.gait.mix(this.config.stepHeight, this.gait.run(this.config.jogStepHeight, this.config.runStepHeight)) * (1 - (1 - LEDGE_STEP_HEIGHT) * smoothstep(this.ledgeBlend));
     // Haciendo equilibrio y sin cambiar de altura, como en terreno normal: mirando hacia el costado de un camino angosto,
     // la escalera veía en él un escalón y cada paso subía la rodilla al máximo (maxExtraStepHeight).
     const level = (this.balance > 0.5 || this.narrowPath.narrow) && Math.abs(foot.swing.landing.y - foot.planted.y) < this.stairs.edgeHeight;
+    this.swingGround[foot.side] = Math.max(foot.swing.start.y, foot.swing.landing.y) - this.legs[foot.side].ankleHeight;
     if (this.stairs.active && !level) return base + Math.min(this.stairSwingExtra(foot, base), this.config.maxExtraStepHeight);
     const roll = this.legs[foot.side].roll;
     const n = CLEARANCE_SAMPLES;
@@ -2066,12 +2113,13 @@ export class LocomotionController {
     toeY.push(0);
     groundY.push(-Infinity);
     for (let i = 1; i <= n; i++) {
-      evaluateSwing(foot.swing, i / n, base, this.samplePos, this.sampleRot, 1 - this.gait.blend);
+      evaluateSwing(foot.swing, i / n, base, this.samplePos, this.sampleRot, 1 - this.gait.blend, this.gait.pace);
       const toe = this.tmp.copy(roll.toeLocal).applyQuaternion(this.sampleRot).add(this.samplePos);
       toeY.push(toe.y);
       toe.y += 1;
       groundY.push(this.detector.castDown(toe, 3, this.sampleHit) ? this.sampleHit.point.y : -Infinity);
     }
+    this.swingGround[foot.side] = Math.max(this.swingGround[foot.side], ...groundY);
     let extra = 0;
     for (let i = 1; i < n; i++) {
       const ground = Math.max(groundY[i], groundY[i + 1]);
@@ -2116,7 +2164,7 @@ export class LocomotionController {
       let previousU = Number.NaN;
       let previousY = 0;
       for (let i = 1; i <= n; i++) {
-        evaluateSwing(swing, i / n, base, this.samplePos, this.sampleRot, walk);
+        evaluateSwing(swing, i / n, base, this.samplePos, this.sampleRot, walk, this.gait.pace);
         const p = this.tmp.copy(points[k]).applyQuaternion(this.sampleRot).add(this.samplePos);
         let u = profile.along(p);
         if (k === 2) {
@@ -2236,7 +2284,8 @@ export class LocomotionController {
     const cfg = this.config;
     gait.reset();
     gait.blend = gait.runFactor(this.speed);
-    const duty = gait.dutyFor(gait.blend);
+    gait.pace = gait.paceFactor(this.speed);
+    const duty = gait.dutyFor(gait.blend, gait.pace);
     const ahead = this.tmp.subVectors(this.feet.right.planted, this.feet.left.planted).dot(this.body.state.forward);
     // Saltando quieto los pies caen a la par (ahead ≈ ±1e-16): el signo sería ruido numérico y
     // decidiría al azar qué pie sale primero (distinto, p. ej., con otro tamaño). Empate → izquierdo.
@@ -2250,6 +2299,9 @@ export class LocomotionController {
     const share = gait.maxLiftShare();
     const trailDuty = cfg.liftFraction <= share * (start + cfg.liftFraction) ? start + cfg.liftFraction : start / (1 - share);
     gait.duty[trail] = Math.max(duty, trailDuty);
+    // El de delante no despega antes que el de atrás: corriendo deprisa su apoyo (runDutyFactor) es más corto que lo
+    // que le queda al de atrás para despegar, y despegaban en el orden equivocado (el mismo pie dos veces seguidas).
+    gait.duty[lead] = Math.max(duty, plant + gait.duty[trail] - start + LANDING_LIFT_GAP);
     gait.phase = fract(plant - gait.offsets[lead]);
   }
 
@@ -2376,11 +2428,61 @@ export class LocomotionController {
     return smoothstep((foot.swing.t - LANDING_ANTICIPATION_START) / (1 - LANDING_ANTICIPATION_START)) * (1 - this.gait.blend);
   }
 
+  /**
+   * Running, the foot in the air follows the shin: the ankle keeps (relative to the rest pose) the angle of motion
+   * capture, a little extended after toe-off (SWING_ANKLE_EXTENSION) and back to neutral before landing. Without it
+   * the foot kept its orientation in the world while the knee bent and the shin rose behind: the foot stayed
+   * horizontal, in line with the shin (up to 67° of flexion; CMU jogging: the foot points down, −56…−76°, with the
+   * ankle within 30° of neutral). In the middle of the swing only: at toe-off and landing it is the swing's
+   * orientation. The tips of the toes never go below the highest ground of the planned swing plus toeClearance.
+   */
+  private swingAnkle(side: Side): void {
+    const foot = this.feet[side];
+    const t = foot.swing.t;
+    const weight = this.gait.blend * smoothstep(t / SWING_ANKLE_IN) * (1 - smoothstep((t - SWING_ANKLE_OUT) / (1 - SWING_ANKLE_OUT)));
+    if (weight <= 0) return;
+    const leg = this.legs[side];
+    const bones = leg.ik.leg;
+    const ankle = worldPosition(bones.foot, this.ankleFoot);
+    const shin = this.ankleShin.subVectors(ankle, worldPosition(bones.shin, this.ankleToe)).normalize();
+    const toeLocal = leg.roll.toeLocal;
+    const footDir = this.ankleToe.copy(toeLocal).applyQuaternion(foot.rotation).normalize();
+    const axis = this.ankleAxis.crossVectors(shin, footDir);
+    if (axis.lengthSq() < 1e-10) return;
+    axis.normalize();
+    // Extendido al principio (punta abajo) y neutro hacia el final.
+    const extension = SWING_ANKLE_EXTENSION * (1 - smoothstep((t - 0.15) / 0.6));
+    const delta = (leg.restAnkle + extension - shin.angleTo(footDir)) * weight;
+    // La punta, nunca más abajo que el suelo del recorrido + toeClearance (ni que donde iba, si ya iba más baja).
+    const toeY = (k: number): number =>
+      this.ankleToe.copy(toeLocal).applyQuaternion(this.ankleRotation.setFromAxisAngle(axis, delta * k).multiply(foot.rotation)).y + ankle.y;
+    const limit = Math.min(this.swingGround[side] + this.config.toeClearance, toeY(0));
+    let k = 1;
+    if (toeY(1) < limit) {
+      let lo = 0;
+      let hi = 1;
+      for (let i = 0; i < 8; i++) {
+        const mid = (lo + hi) / 2;
+        if (toeY(mid) >= limit) lo = mid;
+        else hi = mid;
+      }
+      k = lo;
+    }
+    if (k <= 0) return;
+    setWorldQuaternionNode(bones.foot, this.ankleQ.setFromAxisAngle(axis, delta * k).multiply(foot.rotation));
+  }
+
   private reachWeight(side: Side): number {
     const foot = this.feet[side];
     if (foot.phase !== 'SWING') return 1;
     const t = foot.swing.t;
-    const swingWeight = Math.max(1 - smoothstep(t / 0.35), smoothstep((t - 0.5) / 0.5));
+    // Corriendo deprisa (pace), el pie en el aire limita las caderas menos tiempo tras despegar y antes de aterrizar: a
+    // 5–6 m/s el de atrás se aleja mucho al despegar y el de delante se adelanta, y hundían las caderas en el vuelo
+    // (cuando el cuerpo está más alto). La pierna se queda estirada sin llegar del todo, como al impulsarse.
+    const pace = this.gait.pace;
+    const early = SWING_REACH_EARLY * (1 - FAST_SWING_REACH * pace);
+    const late = SWING_REACH_LATE + (1 - SWING_REACH_LATE) * FAST_SWING_REACH * 0.6 * pace;
+    const swingWeight = Math.max(1 - smoothstep(t / early), smoothstep((t - late) / (1 - late)));
     return 1 - this.gait.blend * (1 - swingWeight);
   }
 }

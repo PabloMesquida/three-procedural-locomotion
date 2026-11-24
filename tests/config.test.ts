@@ -45,7 +45,7 @@ describe('configuración', () => {
   });
 
   it('rechaza rangos que romperían el cálculo e incoherencias, todas a la vez', () => {
-    const problems = problemsOf(() => resolveConfig({ gravity: -1, dutyFactor: 1.5, walkSpeed: 4, minStepFrequency: 3 }));
+    const problems = problemsOf(() => resolveConfig({ gravity: -1, dutyFactor: 1.5, walkSpeed: 6, minStepFrequency: 3 }));
     assert.equal(problems.length, 4, problems.join('\n'));
   });
 

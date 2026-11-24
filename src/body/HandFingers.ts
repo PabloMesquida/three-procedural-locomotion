@@ -24,6 +24,12 @@ const RELAXED_FLEX: Record<FingerName, readonly number[]> = {
 const CLOSE_SPREAD = 0.6;
 /** Fraction of the angle between the thumb and the index finger by which the thumb moves towards it. */
 const THUMB_ADDUCTION = 0.3;
+/**
+ * Closing the hand beyond relaxed (curl > 1, a fist), the thumb keeps moving towards the index finger, this
+ * fraction of THUMB_ADDUCTION per unit of curl, until it lies over it (THUMB_FIST of the angle).
+ */
+const THUMB_FIST_RATE = 0.8;
+const THUMB_FIST = 0.85;
 
 interface Phalanx {
   bone: Bone;
@@ -119,11 +125,13 @@ export class HandFingers {
    */
   pose(curl: number): void {
     const together = Math.min(curl, 1);
+    // En puño, el pulgar sigue cerrándose hasta quedar sobre el índice (slerp más allá de 1: sigue el mismo giro).
+    const thumb = Math.min(together + Math.max(curl - 1, 0) * THUMB_FIST_RATE, THUMB_FIST / THUMB_ADDUCTION);
     for (const f of this.fingers) {
       const flex = RELAXED_FLEX[f.name];
       f.phalanges.forEach((p, i) => {
         p.bone.quaternion.copy(p.rest);
-        if (i === 0) p.bone.quaternion.multiply(this.q.identity().slerp(f.base, together));
+        if (i === 0) p.bone.quaternion.multiply(this.q.identity().slerp(f.base, f.name === 'thumb' ? thumb : together));
         const angle = (flex[Math.min(i, flex.length - 1)] ?? 0) * DEG * curl;
         if (angle !== 0) p.bone.quaternion.multiply(this.q.setFromAxisAngle(p.flexAxis, angle));
       });

@@ -110,6 +110,11 @@ const LIFT_DELAY = 0.12;
  */
 const ARC_PEAK = 0.25;
 /**
+ * Running: fraction of the swing at which the arc reaches its maximum height. Early, as the heel rises towards the
+ * buttocks right after toe-off (CMU jogging: the ankle at its highest at ~35 % of the swing).
+ */
+const RUN_ARC_PEAK = 0.38;
+/**
  * Walking: initial fraction of the swing in which the foot stays extended before it starts raising the
  * toes.
  */
@@ -125,8 +130,10 @@ const TOE_UP_DELAY = 0.15;
  *    reaches its highest point shortly after toe-off and then glides down;
  *  - on top, an arc of height `height` is added, peaking shortly after toe-off;
  *  - the toes rise gradually, after a short delay: it lands on the heel with the toes up.
- * When running, the foot first rises and then moves forward, with the arc at mid-swing and the toes
- * raised early. When stepping up, it always rises first (so as not to hit the edge); when stepping down
+ * When jogging, the foot first rises and then moves forward, with the arc at mid-swing and the toes
+ * raised early, and at the end it lowers barely moving forward. Running faster (`pace`), it moves forward from
+ * the start to the end: standing still in the air while the body moves on at 5 m/s, the foot was left far
+ * behind after toe-off and then far ahead before landing (and the legs, to reach it, dragged the hips down). When stepping up, it always rises first (so as not to hit the edge); when stepping down
  * some stairs (`dropDelay`), it first moves forward over the edge and then drops.
  * When running it starts with no velocity; in every case it lands with none (see `swingArc`).
  */
@@ -137,12 +144,13 @@ export function evaluateSwing(
   outPosition: Vector3,
   outRotation: Quaternion,
   walk = 1,
+  pace = 0,
 ): void {
   const goingUp = swing.end.y > swing.start.y;
   // Hermite con la velocidad del despegue y llegada sin velocidad: smoothstep + h10·tangente.
   const h10 = t * (1 - t) * (1 - t);
   const tangent = goingUp ? 0 : walk;
-  const { s, k, turn } = swingBlend(swing, t, walk);
+  const { s, k, turn } = swingBlend(swing, t, walk, pace);
   // Final efectivo: con un cambio de aterrizaje en marcha, del anterior al nuevo con un smoothstep que
   // empieza sin pendiente (ni salto de posición ni de velocidad).
   let end = swing.end;
@@ -175,11 +183,14 @@ export function effectiveSwingEnd(swing: SwingState, t: number, out: Vector3): V
  * How much of the path from start to end the swing has covered at `t`: horizontally (`s`), vertically
  * (`k`) and in orientation (`turn`).
  */
-function swingBlend(swing: SwingState, t: number, walk: number): { s: number; k: number; turn: number } {
+function swingBlend(swing: SwingState, t: number, walk: number, pace: number): { s: number; k: number; turn: number } {
   const goingUp = swing.end.y > swing.start.y;
   const delayed = smoothstep((t - LIFT_DELAY) / (1 - 2 * LIFT_DELAY));
+  // Corriendo deprisa, sin las pausas del principio y del final (ver evaluateSwing).
+  const delay = LIFT_DELAY * (1 - pace);
+  const running = smoothstep((t - delay) / (1 - 2 * delay));
   return {
-    s: goingUp ? delayed : mix(delayed, smoothstep(t), walk),
+    s: goingUp ? delayed : mix(running, smoothstep(t), walk),
     k: goingUp
       ? smoothstep(t / 0.6)
       : mix(smoothstep((t - 0.4) / 0.6), swing.dropDelay > 0 ? smoothstep((t - swing.dropDelay) / (1 - swing.dropDelay)) : smoothstep(t), walk),
@@ -189,13 +200,13 @@ function swingBlend(swing: SwingState, t: number, walk: number): { s: number; k:
 
 /**
  * Shape of the swing arc (0 → 1 → 0). When running, it rises like a sine (quick toe-off, the toes don't
- * scrape) up to the middle; when walking, smoothly up to ARC_PEAK (the heel is already raised at toe-off).
+ * scrape) up to RUN_ARC_PEAK; when walking, smoothly up to ARC_PEAK (the heel is already raised at toe-off).
  * It goes down with a smoothstep that reaches the ground with no vertical velocity: with the full sine the
  * foot landed at ~0.8 m/s and, since the leg about to land limits the height of the hips, it dragged them
  * down just before contact.
  */
 export function swingArc(t: number, walk = 1): number {
-  const peak = 0.5 + (ARC_PEAK - 0.5) * walk;
+  const peak = RUN_ARC_PEAK + (ARC_PEAK - RUN_ARC_PEAK) * walk;
   if (t >= peak) return 1 - smoothstep((t - peak) / (1 - peak));
   return mix(Math.sin((Math.PI / 2) * (t / peak)), smoothstep(t / peak), walk);
 }

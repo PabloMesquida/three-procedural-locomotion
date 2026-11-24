@@ -34,8 +34,10 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
 - **Marcha medida contra personas reales**: cadencia, zancada, rodado del pie (talón → punta), trayectoria del
   pie en el aire, rodillas y brazos ajustados con capturas de movimiento de CMU
   ([naturalidad](docs/es/naturalness.md)); un test lo comprueba.
-- **Caminar y correr sin modos aparte**: camina hasta ~1,7 m/s y por encima (`runStartSpeed`) pasa gradualmente
-  a carrera, como una persona hacia los 2 m/s, con fase de vuelo, rebote de caderas e inclinación del torso.
+- **Caminar, trotar y correr sin modos aparte**: camina hasta ~1,7 m/s y por encima (`runStartSpeed`) pasa
+  gradualmente a trote, como una persona hacia los 2 m/s, con fase de vuelo, rebote de caderas e inclinación del
+  torso; desde `jogSpeed` (3 m/s), a carrera (hasta 5 m/s): vuelo más largo, rodilla arriba, talón hacia el glúteo,
+  más inclinación y un braceo enérgico, con las manos en puño.
 - **Giros creíbles**: frena según el giro pendiente, cierra la curva, la cabeza y el pecho anticipan el nuevo
   rumbo y los pies aterrizan ya orientados (o pivotan sobre la punta).
 - **Pies sobre el terreno**: talón → planta → punta, inclinación sobre baches y pendientes, escalones bajos,
@@ -60,7 +62,7 @@ sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
   siga al lado; o a mano con `touch(punto)` ([guía](docs/es/guide.md#tocar-superficies)).
 - **Cuerpo vivo**: contrarrotación de pelvis y hombros, reparto del peso, brazos y dedos como péndulos
   amortiguados, variación natural determinista por semilla (dos personajes nunca se mueven igual).
-- **Estilos y ajustes en dos niveles**: estilos `tired`, `sneaky`, `athletic`, `heavy`; trece controles básicos (ritmo, zancada, braceo, intensidad…) que mueven varios parámetros a la vez; y los 144 parámetros uno a uno, ajustables en ejecución y validados.
+- **Estilos y ajustes en dos niveles**: estilos `tired`, `sneaky`, `athletic`, `heavy`; trece controles básicos (ritmo, zancada, braceo, intensidad…) que mueven varios parámetros a la vez; y los 152 parámetros uno a uno, ajustables en ejecución y validados.
 - **Caminar en el sitio**: `shiftOrigin` desplaza al personaje sin cambiar su movimiento (cinta de correr para ajustar viendo el efecto, u origen flotante en mundos grandes).
 - **Cualquier tamaño y proporción**: las longitudes se escalan con el largo de pierna del modelo (de un niño a un gigante) y también las velocidades y el ritmo de los pasos, como en una persona de ese tamaño. Probado con esqueletos de proporciones distintas (piernas, torso, caderas, brazos, pies).
 - **Rigs**: Mixamo y metarig de Rigify incluidos; cualquier otro con un mapping de huesos.
@@ -80,7 +82,7 @@ const human = createProceduralHuman({
   preset: 'athletic',     // opcional: estilo de marcha
 });
 
-human.moveTo(point, { run: true });                 // ir a un punto…
+human.moveTo(point, { run: true });                 // ir a un punto (trotando)…
 human.targetSpeed = 1.2; human.targetHeading = 0.5; // …o control continuo (m/s, rad)
 human.targetCrouch = 1;                             // agacharse (0–1)
 human.jump();

@@ -49,8 +49,8 @@ describe('API del personaje', () => {
     simulate(a, 4, [[0, (h) => { h.targetSpeed = 4; }]]);
     simulate(b, 4, [[0, (h) => { h.targetSpeed = 4; }]]);
     assert.equal(b.human.config.walkSpeed, 1.4);
-    assert.equal(b.human.config.runSpeed, 3);
-    assert.ok(Math.abs(a.human.speed - 4) < 1e-6 && Math.abs(b.human.speed - 3) < 1e-6);
+    assert.equal(b.human.config.runSpeed, 5);
+    assert.ok(Math.abs(a.human.speed - 4) < 1e-6 && Math.abs(b.human.speed - 4) < 1e-6);
   });
 
   it('dentro de un grupo movido, girado y escalado se mueve igual en el mundo que sin padre', () => {

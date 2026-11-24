@@ -21,7 +21,7 @@ export const REFERENCE_LEG_LENGTH = 0.8789660528788095;
  * REFERENCE_LEG_LENGTH). Speeds, accelerations, times, angles and fractions are not scaled.
  */
 export const LENGTH_PARAMS = [
-  'stepLength', 'stepWidth', 'stepHeight', 'ankleBack', 'runStepLength', 'runStepHeight',
+  'stepLength', 'stepWidth', 'stepHeight', 'ankleBack', 'jogStepLength', 'jogStepHeight', 'runStepLength', 'runStepHeight',
   'runCrouch', 'runBounce', 'crouchDepth', 'crouchHipBack', 'narrowWidth', 'narrowStepWidth', 'ledgeWidth', 'ledgeStepWidth',
   'jumpCrouch', 'jumpTuck', 'maxLandingDip', 'idleStepThreshold',
   'toeClearance', 'maxExtraStepHeight', 'maxStepUp', 'maxStepDown', 'groundProbeHeight', 'groundProbeDepth',
@@ -36,7 +36,7 @@ export const LENGTH_PARAMS = [
  * clock runs slower or faster: see ProceduralHuman.
  */
 export const SPEED_PARAMS = [
-  'walkSpeed', 'runSpeed', 'runStartSpeed', 'runTransition', 'crouchMaxSpeed', 'narrowMaxSpeed', 'ledgeMaxSpeed', 'jumpSpeed',
+  'walkSpeed', 'runSpeed', 'jogSpeed', 'runStartSpeed', 'runTransition', 'crouchMaxSpeed', 'narrowMaxSpeed', 'ledgeMaxSpeed', 'jumpSpeed',
 ] as const satisfies readonly (keyof ProceduralHumanConfig)[];
 export const ACCELERATION_PARAMS = [
   'acceleration', 'deceleration', 'gravity', 'maxLateralAcceleration',
@@ -66,8 +66,8 @@ type Key = keyof ProceduralHumanConfig;
 
 /** Must be > 0 (used as divisors, times or speeds). */
 const POSITIVE: readonly Key[] = [
-  'walkSpeed', 'runSpeed', 'runStartSpeed', 'acceleration', 'deceleration',
-  'stepFrequency', 'minStepFrequency', 'runStepFrequency', 'stepLength', 'runStepLength',
+  'walkSpeed', 'runSpeed', 'jogSpeed', 'runStartSpeed', 'acceleration', 'deceleration',
+  'stepFrequency', 'minStepFrequency', 'jogStepFrequency', 'runStepFrequency', 'stepLength', 'jogStepLength', 'runStepLength',
   'turnSpeed', 'turnAcceleration', 'maxTurnPerStep', 'maxLateralAcceleration',
   'crouchMaxSpeed', 'crouchRate', 'narrowMaxSpeed', 'narrowRate', 'ledgeMaxSpeed', 'ledgeRate',
   'gravity', 'jumpSpeed', 'jumpCrouch', 'landingTime',
@@ -76,7 +76,7 @@ const POSITIVE: readonly Key[] = [
 ];
 
 /** Fractions of the step cycle. */
-const OPEN_FRACTION: readonly Key[] = ['dutyFactor', 'runDutyFactor']; // (0, 1)
+const OPEN_FRACTION: readonly Key[] = ['dutyFactor', 'jogDutyFactor', 'runDutyFactor']; // (0, 1)
 const FRACTION: readonly Key[] = ['liftFraction', 'plantFraction']; // [0, 1)
 
 /** Parameters that are only read when the character is created (changing them later has no effect). */
@@ -117,6 +117,7 @@ export function validateConfig(input: ProceduralHumanConfigInput, base: Procedur
   if (num('speedEasing') < 0) problems.push(`"speedEasing" must be ≥ 0 (got ${num('speedEasing')})`);
   if (merged.stepWidth !== null && num('stepWidth') < 0) problems.push(`"stepWidth" must be ≥ 0 or null (got ${num('stepWidth')})`);
   if (num('runSpeed') < num('walkSpeed')) problems.push(`"runSpeed" (${num('runSpeed')}) cannot be less than "walkSpeed" (${num('walkSpeed')})`);
+  if (num('jogSpeed') < num('runStartSpeed')) problems.push(`"jogSpeed" (${num('jogSpeed')}) cannot be less than "runStartSpeed" (${num('runStartSpeed')})`);
   if (num('runStartSpeed') > num('runSpeed')) problems.push(`"runStartSpeed" (${num('runStartSpeed')}) cannot be greater than "runSpeed" (${num('runSpeed')})`);
   if (num('minStepFrequency') > num('stepFrequency')) {
     problems.push(`"minStepFrequency" (${num('minStepFrequency')}) cannot be greater than "stepFrequency" (${num('stepFrequency')})`);

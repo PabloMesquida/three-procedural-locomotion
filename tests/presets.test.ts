@@ -39,15 +39,17 @@ describe('estilos de marcha (presets)', () => {
   });
 
   for (const name of names) {
-    it(`${name}: camina, corre, gira, salta y llega a un destino con una marcha limpia`, () => {
+    it(`${name}: camina, trota, gira, salta y llega a un destino con una marcha limpia`, () => {
       const world = createWorld({ human: { preset: name } });
       const { human } = world;
       const c = human.config;
+      // Al trote (como navega moveTo); la carrera rápida, en run.test.ts.
+      const jog = Math.min(c.jogSpeed, c.runSpeed);
       let arrived = false;
       human.on('arrive', () => { arrived = true; });
       const r = simulate(world, 22, [
         [0, (h) => { h.targetSpeed = c.walkSpeed; }],
-        [3, (h) => { h.targetSpeed = c.runSpeed; }],
+        [3, (h) => { h.targetSpeed = jog; }],
         [5, (h) => { h.targetHeading = Math.PI / 2; }],
         [7, (h) => h.jump()],
         [9, (h) => h.moveTo(new Vector3(h.position.x - 4, 0, h.position.z + 2))],
@@ -57,7 +59,7 @@ describe('estilos de marcha (presets)', () => {
       assert.ok(r.stanceIK < 0.001, `IK ${r.stanceIK}`);
       assert.ok(r.toeClearance > -0.005, `punta ${(r.toeClearance * 1000).toFixed(1)} mm`);
       assert.ok(r.hipDrop > -0.4, `caderas ${r.hipDrop.toFixed(3)} × pierna`);
-      assert.ok(Math.abs(r.maxSpeed - c.runSpeed) < 1e-6, `velocidad máxima ${r.maxSpeed}`);
+      assert.ok(Math.abs(r.maxSpeed - jog) < 1e-6, `velocidad máxima ${r.maxSpeed}`);
       assert.ok(arrived, 'no llegó al destino');
       assert.equal(human.gaitMode, 'idle');
     });

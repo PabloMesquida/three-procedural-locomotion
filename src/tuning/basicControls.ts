@@ -67,7 +67,7 @@ const individualControls: readonly BasicControlInfo[] = [
       es: 'Más rápido o más lento, con pasos del mismo tamaño (velocidades y pasos por segundo).',
     },
     kind: 'factor', min: 0.6, max: 1.6, neutral: 1,
-    params: ['walkSpeed', 'runSpeed', 'runStartSpeed', 'runTransition', 'crouchMaxSpeed', 'stepFrequency', 'minStepFrequency', 'runStepFrequency'],
+    params: ['walkSpeed', 'runSpeed', 'jogSpeed', 'runStartSpeed', 'runTransition', 'crouchMaxSpeed', 'stepFrequency', 'minStepFrequency', 'jogStepFrequency', 'runStepFrequency'],
   },
   {
     name: 'stride',
@@ -77,7 +77,7 @@ const individualControls: readonly BasicControlInfo[] = [
       es: 'Pasos más largos y más lentos (o más cortos y rápidos) a la misma velocidad.',
     },
     kind: 'factor', min: 0.7, max: 1.2, neutral: 1,
-    params: ['stepLength', 'runStepLength', 'stepFrequency', 'minStepFrequency', 'runStepFrequency'],
+    params: ['stepLength', 'jogStepLength', 'runStepLength', 'stepFrequency', 'minStepFrequency', 'jogStepFrequency', 'runStepFrequency'],
   },
   {
     name: 'stepHeight',
@@ -87,7 +87,7 @@ const individualControls: readonly BasicControlInfo[] = [
       es: 'Cuánto levanta los pies y cuánto articula el pie (talón y punta).',
     },
     kind: 'factor', min: 0.3, max: 2, neutral: 1,
-    params: ['stepHeight', 'runStepHeight', 'heelLiftAngle', 'runHeelLiftAngle', 'heelStrikeAngle', 'runHeelStrikeAngle'],
+    params: ['stepHeight', 'jogStepHeight', 'runStepHeight', 'heelLiftAngle', 'runHeelLiftAngle', 'heelStrikeAngle', 'runHeelStrikeAngle'],
   },
   {
     name: 'knees',
@@ -117,7 +117,7 @@ const individualControls: readonly BasicControlInfo[] = [
       es: 'Amplitud del balanceo de los brazos, caminando y corriendo.',
     },
     kind: 'factor', min: 0, max: 2.5, neutral: 1,
-    params: ['armSwing', 'runArmSwing', 'elbowSwingBend', 'runElbowSwingBend', 'shoulderSwing'],
+    params: ['armSwing', 'jogArmSwing', 'runArmSwing', 'elbowSwingBend', 'runElbowSwingBend', 'shoulderSwing'],
   },
   {
     name: 'armSpread',
@@ -147,7 +147,7 @@ const individualControls: readonly BasicControlInfo[] = [
       es: 'Postura hacia delante (positivo) o más erguida (negativo), en grados.',
     },
     kind: 'degrees', min: -10, max: 25, neutral: 0,
-    params: ['walkLean', 'runLean'],
+    params: ['walkLean', 'jogLean', 'runLean'],
   },
   {
     name: 'looseness',
@@ -244,16 +244,20 @@ export function applyBasicControls(base: Readonly<ProceduralHumanConfig>, values
     // con menos frecuencia (misma velocidad).
     walkSpeed: base.walkSpeed * tempo,
     runSpeed: base.runSpeed * tempo,
+    jogSpeed: base.jogSpeed * tempo,
     runStartSpeed: base.runStartSpeed * tempo,
     runTransition: base.runTransition * tempo,
     crouchMaxSpeed: base.crouchMaxSpeed * tempo,
     stepFrequency: (base.stepFrequency * tempo) / stride,
     minStepFrequency: (base.minStepFrequency * tempo) / stride,
+    jogStepFrequency: (base.jogStepFrequency * tempo) / stride,
     runStepFrequency: (base.runStepFrequency * tempo) / stride,
     stepLength: base.stepLength * stride,
+    jogStepLength: base.jogStepLength * stride,
     runStepLength: base.runStepLength * stride,
 
     stepHeight: base.stepHeight * stepHeight,
+    jogStepHeight: base.jogStepHeight * stepHeight,
     runStepHeight: base.runStepHeight * stepHeight,
     // El pie se articula más, pero menos que la altura (√): con el talón muy levantado al despegar
     // la punta apuntaría al suelo.
@@ -273,6 +277,7 @@ export function applyBasicControls(base: Readonly<ProceduralHumanConfig>, values
     runBounce: base.runBounce * hipSway,
 
     armSwing: base.armSwing * armSwing,
+    jogArmSwing: base.jogArmSwing * armSwing,
     runArmSwing: base.runArmSwing * armSwing,
     elbowSwingBend: base.elbowSwingBend * armSwing,
     runElbowSwingBend: base.runElbowSwingBend * armSwing,
@@ -285,6 +290,7 @@ export function applyBasicControls(base: Readonly<ProceduralHumanConfig>, values
     armForward: base.armForward + armForward,
 
     walkLean: base.walkLean + lean,
+    jogLean: base.jogLean + lean,
     runLean: base.runLean + lean,
 
     // Soltura: muelles más lentos (frecuencia ÷) y más inercia (×).

@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-144 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+152 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -16,7 +16,8 @@ opcionales y se validan (nombre, número finito y rango).
 | Parámetro | Por defecto | Descripción |
 |---|---|---|
 | `walkSpeed` | 1.4 | Velocidad normal de caminar (m/s): la de crucero al navegar caminando y a la que se dan `stepFrequency` pasos por segundo. Se puede caminar más deprisa, hasta `runStartSpeed`. |
-| `runSpeed` | 3.0 | Velocidad máxima corriendo (m/s). |
+| `runSpeed` | 5.0 | Velocidad máxima (m/s): carrera, con los parámetros `run*`. Entre `jogSpeed` y esta, el trote pasa poco a poco a carrera. |
+| `jogSpeed` | 3.0 | Velocidad hasta la que trota (m/s): desde `runStartSpeed` el caminar pasa a trote (los parámetros `jog*`, donde los `run*` tienen una versión de trote); por encima, a carrera, completa en `runSpeed`. Un trote va a unos 2,5–3 m/s; una carrera, a 4–6 m/s. Si no es menor que runSpeed, solo trota. |
 | `runStartSpeed` | 1.7 | Velocidad a partir de la cual empieza la transición a correr (m/s). Una persona pasa a correr hacia los 2 m/s (número de Froude v²/(g·pierna) ≈ 0,5); por debajo camina, aunque sea a paso vivo. |
 | `runTransition` | 0.6 | Margen de velocidad (m/s) por encima de runStartSpeed en el que se pasa gradualmente de caminar a correr. |
 | `acceleration` | 1.5 | Aceleración al arrancar (m/s²). |
@@ -42,30 +43,42 @@ opcionales y se validan (nombre, número finito y rango).
 | `stanceKneeBend` | 12 | Flexión de la rodilla de apoyo al aterrizar y a mitad del apoyo, caminando a `walkSpeed` (grados). Crece con la velocidad (desde `standKneeBend` parado), como en las capturas de movimiento: a paso vivo las rodillas amortiguan más y las caderas suben y bajan menos. |
 | `loadingKneeBend` | 14 | Flexión extra de la rodilla al recibir el peso tras aterrizar (amortiguación), caminando a `walkSpeed` (grados; crece con la velocidad). |
 
+## Trote
+
+| Parámetro | Por defecto | Descripción |
+|---|---|---|
+| `jogStepFrequency` | 2.9 | Trote: pasos por segundo a jogSpeed (al trote, 160–175 pasos por minuto). |
+| `jogStepLength` ↔ | 1.2 | Trote: longitud máxima de paso (m). |
+| `jogDutyFactor` | 0.35 | Trote: fracción del ciclo con el pie apoyado (< 0,5: fase de vuelo, corta al trote). |
+| `jogStepHeight` ↔ | 0.15 | Trote: altura del pie en el aire (m). |
+| `jogLean` | 10 | Trote: inclinación del torso hacia delante (grados; más erguido que corriendo). |
+| `jogArmSwing` | 25 | Trote: balanceo máximo del brazo (grados; brazos relajados, menos que corriendo). |
+
 ## Correr
 
 | Parámetro | Por defecto | Descripción |
 |---|---|---|
-| `runStepFrequency` | 2.9 | Correr: pasos por segundo a runSpeed. |
-| `runStepLength` ↔ | 1.2 | Correr: longitud máxima de paso (m). |
-| `runDutyFactor` | 0.35 | Correr: fracción del ciclo con el pie apoyado (< 0,5: fase de vuelo). |
-| `runStepHeight` ↔ | 0.15 | Correr: altura del pie en el aire (m). |
+| `runStepFrequency` | 3.2 | Correr: pasos por segundo a runSpeed (corriendo, 175–200 pasos por minuto). |
+| `runStepLength` ↔ | 1.7 | Correr: longitud máxima de paso (m). |
+| `runDutyFactor` | 0.28 | Correr: fracción del ciclo con el pie apoyado (< 0,5: fase de vuelo, más larga que al trote). |
+| `runStepHeight` ↔ | 0.3 | Correr: altura del pie en el aire (m; el talón sube hacia el glúteo). |
 | `runHeelLiftAngle` | 45 | Correr: ángulo del talón al despegar (grados). |
 | `runHeelStrikeAngle` | 2 | Correr: ángulo de la punta al aterrizar (grados; pequeño = apoyo de medio pie). |
 | `runCrouch` ↔ | 0.08 | Correr: cuánto bajan las caderas en promedio (m). |
 | `runBounce` ↔ | 0.03 | Correr: amplitud del rebote vertical de las caderas (m). |
 | `runLandingLead` | 0.6 | Correr: fracción del adelanto normal con la que aterriza el pie (0–1). Al caminar el pie aterriza a medio apoyo por delante de la cadera; corriendo, más cerca del cuerpo (y despega más atrás, empujando). |
-| `runLean` | 10 | Correr: inclinación del torso hacia delante (grados). |
+| `runLean` | 14 | Correr: inclinación del torso hacia delante (grados). |
 | `runArmAbduction` | 9 | Correr: separación del brazo respecto a la vertical (grados). |
-| `runElbowBend` | 95 | Correr: flexión del codo (grados). |
-| `runArmSwing` | 25 | Correr: balanceo máximo del brazo (grados). |
+| `runElbowBend` | 100 | Correr: flexión del codo (grados). |
+| `runArmSwing` | 40 | Correr: balanceo máximo del brazo (grados; enérgico: adelante la mano llega al pecho y atrás va bien lejos). |
 | `runElbowSwingBend` | 10 | Correr: flexión extra del codo con el brazo hacia delante (grados). |
+| `runArmInward` | 30 | Correr: rotación interna del brazo (grados): con los codos doblados, los antebrazos apuntan hacia la línea media del cuerpo, más con el brazo adelante (atrás, una quinta parte). 0 = se balancean rectos, adelante y atrás. |
 
 ## Postura
 
 | Parámetro | Por defecto | Descripción |
 |---|---|---|
-| `walkLean` | 0 | Inclinación del torso hacia delante de pie y caminando (grados; al correr pasa a `runLean`). |
+| `walkLean` | 0 | Inclinación del torso hacia delante de pie y caminando (grados; al trote pasa a `jogLean` y corriendo a `runLean`). |
 | `ankleBack` ↔ | 0.03 | Cuánto queda el tobillo por detrás de la cadera en la posición neutra del pie (m): de pie, el peso cae sobre el medio del pie, por delante del tobillo. No se toma de la pose de reposo del modelo, que puede tener los pies adelantados o retrasados. |
 
 ## Agacharse
@@ -255,7 +268,7 @@ de `applyPreset` mandan sobre el estilo.
 
 - `tired`: Cansado: pasos cortos y bajos (arrastra los pies), tronco inclinado, brazos casi quietos, reacciona despacio.
 - `sneaky`: Sigiloso: lento, pasos cortos y altos con apoyo largo, tronco adelantado, brazos recogidos, cabeza muy estable.
-- `athletic`: Atlético: más rápido y reactivo, zancadas largas, carrera inclinada con mucho braceo, salta más y gira rápido.
+- `athletic`: Atlético: más rápido y reactivo, zancadas largas, carrera inclinada con mucho braceo, salta más y gira rápido. Trota algo más deprisa y corre hasta 6 m/s.
 - `heavy`: Pesado: postura ancha, balanceo lateral marcado, pasos lentos y bajos, brazos separados, arranca y frena despacio.
 
 Valores que cambia cada estilo (vacío = el de por defecto):
@@ -263,7 +276,8 @@ Valores que cambia cada estilo (vacío = el de por defecto):
 | Parámetro | Por defecto | `tired` | `sneaky` | `athletic` | `heavy` |
 |---|---|---|---|---|---|
 | `walkSpeed` | 1.4 | 0.8 | 0.7 | 1.3 | 0.9 |
-| `runSpeed` | 3.0 | 2.2 | 2.5 | 4.5 | 2.4 |
+| `runSpeed` | 5.0 | 2.2 | 2.5 | 6 | 2.4 |
+| `jogSpeed` | 3.0 |  |  | 3.3 |  |
 | `acceleration` | 1.5 | 0.8 | 1.2 | 3 | 0.9 |
 | `deceleration` | 2.5 | 1.8 | 3 | 4 | 1.5 |
 | `stepFrequency` | 1.9 | 1.7 | 1.5 | 2.1 | 1.6 |
@@ -272,13 +286,15 @@ Valores que cambia cada estilo (vacío = el de por defecto):
 | `stepWidth` | null |  |  |  | 0.3 |
 | `stepHeight` | 0.045 | 0.023 | 0.059 | 0.054 | 0.032 |
 | `dutyFactor` | 0.61 |  | 0.68 |  |  |
-| `runStepFrequency` | 2.9 |  |  | 3.2 |  |
-| `runStepHeight` | 0.15 |  |  | 0.28 |  |
-| `runLean` | 10 |  |  | 12 |  |
+| `jogArmSwing` | 25 |  |  | 30 |  |
+| `runStepFrequency` | 3.2 |  |  | 3.4 |  |
+| `runStepLength` | 1.7 |  |  | 1.9 |  |
+| `runStepHeight` | 0.3 |  |  | 0.32 |  |
+| `runLean` | 14 |  |  | 15 |  |
 | `walkLean` | 0 | 15 | 18 |  |  |
 | `idleArmAbduction` | 10 | 5 | 12 |  | 18 |
 | `idleElbowBend` | 14 | 6 | 40 |  |  |
-| `runArmSwing` | 25 |  |  | 45 |  |
+| `runArmSwing` | 40 |  |  | 45 |  |
 | `crouchDepth` | 0.32 |  | 0.4 |  |  |
 | `crouchMaxSpeed` | 0.8 |  |  | 1.2 |  |
 | `jumpSpeed` | 3.2 | 2.4 |  | 4 | 2.4 |

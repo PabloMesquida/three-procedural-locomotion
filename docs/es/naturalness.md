@@ -437,7 +437,24 @@ frame y vuelve).
   rango de la literatura (160–180), algo por encima de la del sujeto de CMU (160), porque con menos pasos
   las caderas caían de más al girar corriendo. El pie en el aire todavía se adelanta demasiado al cuerpo
   antes de aterrizar (muslo hasta ~65° hacia delante; en el mocap, ~38°): necesita rediseñar la
-  trayectoria del swing de carrera.
+  trayectoria del swing de carrera. Los brazos se compararon con las mismas tomas (`tests/tools/runArms.ts`):
+  iban ~58 ms detrás de la pierna contraria (en el mocap, 17 ms delante) y con las manos por fuera de los
+  hombros (en el mocap se acercan a la línea media, más adelante). Ahora, corriendo, se recupera el retraso del
+  péndulo del brazo (`lead`), el brazo gira hacia dentro (`runArmInward`) y las manos se cierran en puño: a
+  3 m/s, brazo −50…−1° (CMU −48…−8°), codo 87–119° (97–119°), muñeca 0,01–0,10 piernas hacia dentro del
+  hombro (0,01–0,11). Todo eso es trote (las tomas de CMU son de trote, a 3,1 m/s), ahora hasta `jogSpeed`. Por
+  encima, hasta `runSpeed` (5 m/s), una carrera, ajustada solo con la literatura (no hay tomas de carrera): 192
+  pasos/min, 44 % de vuelo, más inclinación y braceo (−56…+15°). Corriendo deprisa el pie en el aire ya no se
+  detiene tras despegar ni antes de aterrizar (a 5 m/s se quedaba ~30 cm atrás y adelante, y las caderas se hundían
+  ~0,4 piernas en el vuelo), y limita las caderas durante menos parte del vuelo. Queda pendiente: girando a toda
+  velocidad las caderas bajan más (hasta ~0,3 piernas a 5–6 m/s; con controles básicos extremos, más), así que las
+  pruebas de robustez de los controles básicos y de los estilos trotan; la carrera se prueba en `run.test.ts`.
+  El pie en el aire mantenía su orientación en el mundo mientras la rodilla se doblaba y la tibia subía por detrás:
+  quedaba horizontal, en línea con la tibia (tobillo hasta 67° fuera de neutro; CMU trotando: el pie apunta hacia
+  abajo, −56…−76°, con el tobillo a menos de 30°). Ahora, corriendo, sigue a la tibia en la mitad del vuelo
+  (`swingAnkle`), sin que la punta baje del suelo del recorrido planeado, y el arco llega antes a lo más alto
+  (38 % del vuelo, el talón subiendo hacia el glúteo justo tras despegar): inclinación del pie en el vuelo
+  −39…−54° (CMU −44…−76°).
 - **Brazo**: llega adelante algo tarde (58 % del ciclo; en el mocap, 51 %): su objetivo sale de la
   separación de los pies, que no cambia en el doble apoyo.
 - **Estilos**: las tomas del sujeto 17 (enojado, sigiloso, alegre, corpulento) sirven para ajustar los

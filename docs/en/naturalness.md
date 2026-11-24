@@ -441,7 +441,23 @@ and comes back).
   the literature (160–180), somewhat above that of the CMU subject (160), because with fewer steps the hips
   dropped too much when turning while running. The foot in the air still gets too far ahead of the body
   before landing (thigh up to ~65° forward; in the mocap, ~38°): the running swing trajectory needs a
-  redesign.
+  redesign. The arms were compared with the same takes (`tests/tools/runArms.ts`): they went ~58 ms behind
+  the opposite leg (in the mocap, 17 ms ahead), with the hands outside the shoulders (in the mocap they come in
+  towards the midline, more when forward). Now, running, the arm's pendulum lag is made up (`lead`), the upper
+  arm rotates inwards (`runArmInward`) and the hands close into a fist: at 3 m/s, arm −50…−1° (CMU −48…−8°),
+  elbow 87–119° (97–119°), wrist 0.01–0.10 leg lengths in from the shoulder (0.01–0.11).
+  All that is jogging (the CMU takes are jogs, at 3.1 m/s), now up to `jogSpeed`. Above it, up to `runSpeed`
+  (5 m/s), a full run, tuned with the literature only (there are no running takes): 192 steps/min, 44 % flight,
+  more lean and arm swing (−56…+15°). Running fast the foot in the air no longer pauses after toe-off and before
+  landing (at 5 m/s it was left ~30 cm behind and ahead, and the hips sank ~0.4 leg lengths in the flight), and it
+  limits the hips for less of the swing. Still pending: turning at full speed the hips drop more (up to ~0.3 leg
+  lengths at 5–6 m/s; with extreme basic controls, more), so the robustness tests of the basic controls and the
+  styles jog; the full run is tested in `run.test.ts`.
+  The foot in the air kept its orientation in the world while the knee bent and the shin rose behind: it stayed
+  horizontal, in line with the shin (ankle up to 67° away from neutral; CMU jogging: the foot points down, −56…−76°,
+  with the ankle within 30°). Now, running, it follows the shin in the middle of the swing (`swingAnkle`), with
+  the toes never below the ground of the planned swing, and the arc peaks earlier (38 % of the swing, the heel
+  rising towards the buttocks right after toe-off): foot pitch in the swing −39…−54° (CMU −44…−76°).
 - **Upper arm**: it reaches its forward point somewhat late (58 % of the cycle; in the mocap, 51 %): its
   target comes from the distance between the feet, which doesn't change in double support.
 - **Styles**: the takes of subject 17 (angry, sneaky, happy, heavyset) can be used to tune the predefined
