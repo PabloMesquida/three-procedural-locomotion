@@ -445,6 +445,11 @@ less than going up), up to 0.75 × jogSpeed forward; the free knee comes up in p
 Before it kept its speed and went up whatever it needed: walking over a 0.6 m gap, ~0.44 m up and 0.6 s in the air,
 a floating jump for less than a metre; now 0.36 s and a leap like a bounding stride.
 
+With a run-up it jumps farther (`maxGapJumpRun`, 1.5 m against 1 m walking) and, over one of those (wider than `maxGapJump`),
+in a leap of 0.4 s or more in the air, it takes a step in the air, like a long jumper's hitch-kick: between 20 % and 75 % of
+the flight the free leg goes back and the one it pushed off with comes forward, and it lands on this one; the arms
+swing through with them, against them. Without data from captures of it (CMU has no long jumps): a choice, kept small.
+
 Before, it jumped with both feet together always, the legs half as open, the feet in fixed poses near the ground
 instead of relative to the pelvis, the trunk fixed and the arms still: rigid. Then the arms went forward together
 (not against the legs, as in CMU) and the trailing foot kept the orientation of take-off: with the shin turned back,
@@ -522,6 +527,12 @@ apart); now arms up to ~7° and knees 9–23° apart. With `variation: 0`, a mir
 
 The push is shorter than in a person: here only the hips move the body, and going up the crouch to take off at the
 jump's speed takes `2 · crouch / vy`; a person also rises onto the toes and swings the arms, and pushes over 0.3–0.4 m.
+
+Whatever the config, it stays within what the legs can do: in the air the feet tuck at most half a leg (knees at
+~120°) and on landing the hips go down at most 0.35 legs (~100°, a deep squat); wanting to move on (`moveTo`, a speed),
+the cushioning lasts at most 0.7 s. Before, with `jumpTuck` 0.955, `landingAbsorb` 0.12, `maxLandingDip` 0.87 and
+`landingTime` 1.92, the feet went above the hips (knees at 180°) and, with a `moveTo` going, it walked for 2 s with
+the hips 0.34 m down, until it sat on the ground. With the defaults, nothing changes.
 
 ## Pose jumps
 

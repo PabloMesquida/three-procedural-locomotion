@@ -447,3 +447,36 @@ describe('saltar desde parado', () => {
     assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001);
   });
 });
+
+describe('con una configuración extrema', () => {
+  // La del Laboratorio con la que se sentaba en el suelo (test_03): recogida, hundimiento y amortiguación de 2–4 veces.
+  const config = { jumpToeOff: 16, jumpTuck: 0.955, jumpLandingPrep: 0.875, landingAbsorb: 0.12, maxLandingDip: 0.87, landingTime: 1.92 };
+
+  it('no pasa de lo que pueden las piernas: en el aire rodillas hasta ~120° y al caer hasta ~100° (antes 180° y 120°)', () => {
+    const { frames, land } = standingJump(undefined, 0, createWorld({ human: { config } }));
+    const air = Math.max(...frames.slice(0, land).filter((f) => f.phase === 'AIRBORNE').map((f) => f.knee));
+    const landing = frames.slice(land).filter((f) => f.phase === 'LANDING');
+    const knee = Math.max(...landing.map((f) => f.knee));
+    const leg = Math.min(...landing.map((f) => f.leg));
+    assert.ok(air < 130, `en el aire, rodillas a ${air.toFixed(0)}°`);
+    assert.ok(knee < 115 && leg > 0.55, `al caer, rodillas a ${knee.toFixed(0)}° y piernas al ${(leg * 100).toFixed(0)} %`);
+  });
+
+  it('queriendo seguir, se levanta mientras echa a andar (antes caminaba ~2 s agachado hasta sentarse)', () => {
+    const world = createWorld({ human: { config } });
+    const { human } = world;
+    let landing = 0;
+    let low = 1;
+    simulate(world, 4, [[0.5, (h) => assert.ok(h.jump())], [0.9, (h) => { h.targetSpeed = 1; }]], {
+      onFrame: () => {
+        if (human.jumpPhase !== 'LANDING') return;
+        landing += 1 / 60;
+        const m = humanLandmarks(human);
+        low = Math.min(low, (m.pelvis.distanceTo(m.ankle.left) + m.pelvis.distanceTo(m.ankle.right)) / (2 * human.legLength));
+      },
+    });
+    assert.ok(landing > 0.3 && landing < 0.75, `amortigua ${landing.toFixed(2)} s`);
+    assert.ok(low > 0.55, `piernas al ${(low * 100).toFixed(0)} %`);
+    assert.ok(human.speed > 0.5, `a ${human.speed.toFixed(2)} m/s`);
+  });
+});

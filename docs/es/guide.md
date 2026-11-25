@@ -467,7 +467,8 @@ hueco: en vez de pararse en el borde, el personaje lo cruza de un paso.
 - Con `maxGapStep: 0` no cruza ninguno de un paso.
 
 Un hueco más ancho, de hasta `maxGapJump` (1 m por defecto, escalado con el tamaño) en la dirección en que va, lo
-salta:
+salta; corriendo, hasta `maxGapJumpRun` (1,5 m: a `jogSpeed` o más, y entre medias en proporción a la velocidad), así
+que uno más ancho que `maxGapJump` solo lo salta tomando carrera, y `moveTo` solo lo cruza con `run`:
 
 - Caminando o corriendo, salta sin pararse, de un pie a otro, como la gente en las capturas de CMU de saltos en
   carrera (49_04, 49_05; ver [naturalidad](naturalness.md#saltar-huecos)). Despega con el pie de apoyo que cae más
@@ -475,9 +476,13 @@ salta:
   corriendo, el cuerpo llegaría antes al borde), con ese; si no, el paso siguiente apoya en el borde. La rodilla de
   delante sube al empujar, en el aire las piernas se abren (la de delante adelante y la de atrás detrás con el talón
   arriba; menos en un salto corto), el tronco se endereza y los brazos van adelante y luego atrás; cae sobre el pie
-  de delante, cerca del cuerpo, y el de atrás da el paso siguiente. Sube lo que necesita (al menos el 40 % de
-  `jumpSpeed`, como mucho todo) y avanza con la velocidad que lleva o, si necesita más, hasta el 75 % de `jogSpeed`
-  (el impulso suma velocidad). Si ni así le alcanza, se para en el borde.
+  de delante, cerca del cuerpo, y el de atrás da el paso siguiente. Sube y avanza con lo que menos le cuesta (ir más
+  deprisa hacia delante cuesta menos que subir): hacia arriba, al menos el 40 % de `jumpSpeed` y como mucho 1,25 veces;
+  hacia delante, la velocidad que lleva o hasta el 75 % de `jogSpeed` (el impulso suma velocidad). Si ni así le
+  alcanza, se para en el borde. Sobre uno que solo salta corriendo (más ancho que `maxGapJump`), en un salto de 0,4 s
+  o más en el aire da un paso en el aire, como un
+  saltador de longitud: la pierna libre va atrás, la otra viene adelante y cae sobre ella, y los brazos bracean contra
+  ellas.
 - Parado en el borde (o si en marcha no pudo saltarlo), salta con los dos pies, como la gente en las capturas de CMU
   de saltos hacia delante (16, 13, 83): se agacha, salta tanto hacia arriba como hacia delante (lo que necesita para
   caer con los pies enteros del otro lado, contando cuánto más alto o bajo está), recoge un poco los pies y cae con

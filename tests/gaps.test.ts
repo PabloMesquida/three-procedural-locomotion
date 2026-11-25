@@ -179,3 +179,58 @@ describe('huecos (maxGapStep)', () => {
     assert.ok(human.position.z < 0.6, `no se acercó al borde (z ${human.position.z.toFixed(2)})`);
   });
 });
+
+describe('huecos con carrera (maxGapJumpRun)', () => {
+  /** Pies al despegar y al caer del primer salto: el que despega (apoyado) y el que cae primero. */
+  const feet = (world: World) => {
+    const { human } = world;
+    const seen = { takeoff: '', landing: '' };
+    human.on('liftoff', () => { seen.takeoff ||= SIDES.find((s) => human.footPhase(s) !== 'SWING') ?? ''; });
+    human.on('land', () => { seen.landing ||= SIDES.find((s) => human.footPhase(s) !== 'SWING') ?? ''; });
+    return seen;
+  };
+
+  for (const speed of [3, 5]) {
+    it(`a ${speed} m/s salta un hueco de 1,3 m (más ancho que maxGapJump)${speed < 4 ? ' dando un paso en el aire: cae con el pie con el que despegó' : ''}`, () => {
+      const world = gapWorld(1.3, 10);
+      const seen = feet(world);
+      const r = cross(world, 1.3, 9, (h) => { h.targetHeading = 0; h.targetSpeed = speed; });
+      assert.ok(world.human.position.z < -1.3 - 0.5, `no cruzó (z ${world.human.position.z.toFixed(2)})`);
+      assert.ok(r.lowest > H - 0.01 && r.inGap === 0, 'cayó en el hueco o pisó en él');
+      // A 5 m/s el vuelo es corto (< AIR_STEP_FLIGHT): sin paso en el aire.
+      if (speed < 4) assert.ok(seen.takeoff !== '' && seen.takeoff === seen.landing, `despegó con ${seen.takeoff} y cayó con ${seen.landing} (sin paso en el aire, con el otro)`);
+    });
+  }
+
+  it('caminando, ante el mismo hueco se para en el borde (solo lo salta con carrera)', () => {
+    const world = gapWorld(1.3, 10);
+    const r = cross(world, 1.3, 12, (h) => { h.targetHeading = 0; h.targetSpeed = 1.4; });
+    assert.ok(world.human.position.z > 0 && r.lowest > H - 0.01, `cruzó o cayó (z ${world.human.position.z.toFixed(2)})`);
+  });
+
+  it('caminando, un salto de un pie a otro no da el paso en el aire: cae con el libre', () => {
+    const world = gapWorld(0.8, 10);
+    const seen = feet(world);
+    cross(world, 0.8, 10, (h) => { h.targetHeading = 0; h.targetSpeed = 1.4; });
+    assert.ok(seen.takeoff !== '' && seen.landing !== '' && seen.takeoff !== seen.landing, `despegó con ${seen.takeoff} y cayó con ${seen.landing}`);
+  });
+
+  it('moveTo al otro lado de uno de 1,3 m: con run lo salta y llega; sin run, se queda en el borde', () => {
+    const goal = new Vector3(0, H, -3.5);
+    const running = gapWorld(1.3, 10);
+    let arrived = false;
+    running.human.on('arrive', () => { arrived = true; });
+    const r = cross(running, 1.3, 12, (h) => h.moveTo(goal, { run: true }));
+    assert.ok(arrived && running.human.position.distanceTo(goal) < 0.3, `corriendo no llegó: (${running.human.position.x.toFixed(2)}, ${running.human.position.z.toFixed(2)})`);
+    assert.ok(r.lowest > H - 0.01 && r.inGap === 0, 'cayó en el hueco o pisó en él');
+    const walking = gapWorld(1.3, 10);
+    cross(walking, 1.3, 14, (h) => h.moveTo(goal));
+    assert.ok(walking.human.position.z > 0, `caminando cruzó (z ${walking.human.position.z.toFixed(2)})`);
+  });
+
+  it('con maxGapJumpRun igual a maxGapJump, corriendo tampoco lo salta', () => {
+    const world = gapWorld(1.3, 10, { maxGapJumpRun: 1 });
+    const r = cross(world, 1.3, 9, (h) => { h.targetHeading = 0; h.targetSpeed = 3; });
+    assert.ok(world.human.position.z > 0 && r.lowest > H - 0.01, `cruzó o cayó (z ${world.human.position.z.toFixed(2)})`);
+  });
+});

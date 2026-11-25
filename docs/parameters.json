@@ -765,8 +765,8 @@
       {
         "name": "jumpTuck",
         "doc": {
-          "en": "Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight).",
-          "es": "Salto: cuánto se recogen los pies en el aire (m), en el salto de referencia (en proporción al vuelo)."
+          "en": "Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight); at most half a leg length, whatever this says.",
+          "es": "Salto: cuánto se recogen los pies en el aire (m), en el salto de referencia (en proporción al vuelo); como mucho media pierna, diga lo que diga este."
         },
         "length": true,
         "constructionOnly": false
@@ -792,8 +792,8 @@
       {
         "name": "maxLandingDip",
         "doc": {
-          "en": "Landing: maximum hip drop (m).",
-          "es": "Aterrizaje: hundimiento máximo de caderas (m)."
+          "en": "Landing: maximum hip drop (m); at most 0.35 leg lengths (a deep squat), whatever this says.",
+          "es": "Aterrizaje: hundimiento máximo de caderas (m); como mucho 0,35 piernas (una sentadilla profunda), diga lo que diga este."
         },
         "length": true,
         "constructionOnly": false
@@ -801,8 +801,8 @@
       {
         "name": "landingTime",
         "doc": {
-          "en": "Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands).",
-          "es": "Aterrizaje: duración de la amortiguación (s), cayendo a `jumpSpeed` (más larga cuanto más fuerte cae)."
+          "en": "Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands); wanting to move on (moveTo, a speed), at most 0.7 s.",
+          "es": "Aterrizaje: duración de la amortiguación (s), cayendo a `jumpSpeed` (más larga cuanto más fuerte cae); queriendo seguir (moveTo, una velocidad), como mucho 0,7 s."
         },
         "length": false,
         "constructionOnly": false
@@ -1504,6 +1504,15 @@
         "doc": {
           "en": "Widest gap it jumps across (m; 0 = none): one wider than `maxGapStep` and no wider than this along the way it goes. Walking or running, without stopping, from one foot to the other (from the stance foot nearest the edge, landing on the other one); standing still at its edge, with both feet. From a wider one it stops at the edge.",
           "es": "Hueco más ancho que cruza de un salto (m; 0 = ninguno): uno más ancho que `maxGapStep` y no más que esto en la dirección en que va. Caminando o corriendo, sin pararse, de un pie a otro (desde el pie de apoyo más cercano al borde, cayendo sobre el otro); parado en su borde, con los dos pies. En uno más ancho se para en el borde."
+        },
+        "length": true,
+        "constructionOnly": false
+      },
+      {
+        "name": "maxGapJumpRun",
+        "doc": {
+          "en": "Widest gap it jumps across running (m): at jogSpeed or faster it reaches this one, in between from `maxGapJump` (walking or standing) in proportion to the speed; so one wider than `maxGapJump` it only jumps with a run-up (and moveTo only goes across it with `run`). Below `maxGapJump`, the same as it.",
+          "es": "Hueco más ancho que cruza de un salto corriendo (m): a jogSpeed o más llega a este, y entre medias desde `maxGapJump` (caminando o parado) en proporción a la velocidad; así que uno más ancho que `maxGapJump` solo lo salta tomando carrera (y moveTo solo lo cruza con `run`). Por debajo de `maxGapJump`, igual que este."
         },
         "length": true,
         "constructionOnly": false

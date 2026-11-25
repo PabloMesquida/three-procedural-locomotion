@@ -25,6 +25,11 @@ const STANDING_ARM_TURN = 0.7;
 const STANDING_ARM_HOLD = 0.2;
 /** On landing, the foot rolls flat (from the ball or the heel) in this share of the cushioning. */
 const LANDING_ROLL_SHARE = 0.25;
+/**
+ * Wanting to move on (moveTo, a speed), the cushioning lasts at most this (s): it stands up as it starts walking, and
+ * with a long `landingTime` it no longer walks crouched. Above the longest with the defaults (0.45 × 1.5).
+ */
+const LANDING_MOVING_ON = 0.7;
 const STANDING_TOE_START = 0.4;
 
 const smoothstep = (x: number): number => {
@@ -47,6 +52,11 @@ export class JumpController {
   liftoffElapsed = 0;
   /** How much the hips go down on landing, × the usual (landing on one foot, less: see LocomotionController). */
   dipScale = 1;
+  /**
+   * The lowest the hips go on landing (m): what the legs can take (LocomotionController sets it from their length), so
+   * that no `maxLandingDip` or `landingAbsorb` sits it on the ground.
+   */
+  maxDip = Number.POSITIVE_INFINITY;
   /** Landing stuck from a jump forward: the trunk goes forward this much more (rad; see LocomotionController.land). */
   stopLean = 0;
   /** How long this cushioning lasts (s): with the impact it really had (dropping lower than expected, more). */
@@ -102,8 +112,10 @@ export class JumpController {
    * Advances the state machine. Returns 'liftoff' in the frame in which it has to take off and 'landed' in
    * the one in which the body has touched the ground.
    */
-  update(dt: number, body: BodyState): JumpEvent {
-    this.time += dt;
+  update(dt: number, body: BodyState, movingOn = false): JumpEvent {
+    // Queriendo seguir, el resto de la amortiguación pasa más deprisa (sin saltos: cambia el ritmo, no la pose).
+    const rate = this.phase === 'LANDING' && movingOn ? Math.max(1, this.landingDuration / LANDING_MOVING_ON) : 1;
+    this.time += dt * rate;
     switch (this.phase) {
       case 'TAKEOFF':
         if (this.time >= this.takeoffTime()) {
@@ -148,7 +160,7 @@ export class JumpController {
       return -p.vy * this.takeoffTime() * u * u * (1 - u) * this.crouchScale + this.carried('hip');
     }
     if (this.phase === 'LANDING') {
-      const dip = Math.min(c.maxLandingDip, c.landingAbsorb * this.impactSpeed) * this.dipScale;
+      const dip = Math.min(c.maxLandingDip, c.landingAbsorb * this.impactSpeed, Math.max(this.maxDip - this.contactFlex, 0)) * this.dipScale;
       // Desde lo que ya había bajado al tocar el suelo (ver airFlex), sin saltos.
       return -dip * this.landingCurve() - this.contactFlex * (1 - smoothstep(this.progress(this.landingDuration)));
     }

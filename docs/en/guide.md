@@ -459,7 +459,9 @@ instead of stopping at the edge, the character steps across it.
   round it is not much longer, it goes round.
 - With `maxGapStep: 0` it never steps across one.
 
-A wider gap, up to `maxGapJump` (1 m by default, scaled with the size) along the way it goes, it jumps across:
+A wider gap, up to `maxGapJump` (1 m by default, scaled with the size) along the way it goes, it jumps across; running,
+up to `maxGapJumpRun` (1.5 m: at `jogSpeed` or faster, in between in proportion to the speed), so a gap wider than
+`maxGapJump` it only jumps with a run-up, and `moveTo` only goes across it with `run`:
 
 - Walking or running, it jumps without stopping, from one foot to the other, as people do in the CMU captures of
   running leaps (49_04, 49_05; see [naturalness](naturalness.md#jumping-across-gaps)). It takes off from the stance
@@ -468,8 +470,11 @@ A wider gap, up to `maxGapJump` (1 m by default, scaled with the size) along the
   the edge. The leading knee comes up as it pushes off, in the air the legs open (the leading one forward, the
   trailing one behind with the heel up; less in a short jump), the trunk straightens up and the arms go forward and
   then back; it lands on the leading foot, close under the body, and the trailing one takes the next step. It goes
-  up as much as it needs (at least 40 % of `jumpSpeed`, at most all of it) and forward with the speed it has or, if
-  it needs more, up to 75 % of `jogSpeed` (the push adds speed). If even so it can't, it stops at the edge.
+  up and forward with what costs it least (going forward faster costs less than going up): up, at least 40 % of
+  `jumpSpeed` and at most 1.25 times it; forward, the speed it has or up to 75 % of `jogSpeed` (the push adds speed).
+  If even so it can't, it stops at the edge. Over a gap it only jumps running (wider than `maxGapJump`), a leap of
+  0.4 s or more in the air takes a step in the air, like a long jumper: the free leg goes back, the other one comes forward and it lands on it, the arms swinging
+  against them.
 - Standing still at the edge (or if it couldn't jump it moving), it jumps with both feet, as people do in the CMU
   captures of forward jumps (16, 13, 83): it crouches, jumps as much up as forward (what it needs to land with the
   feet whole on the other side, counting how much higher or lower it is), tucks the feet a little and lands on both.

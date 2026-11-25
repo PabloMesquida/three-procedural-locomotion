@@ -443,6 +443,11 @@ hacia delante cuesta menos que subir), hasta 0,75 × jogSpeed hacia delante; la 
 largo del salto. Antes conservaba su velocidad y subía lo que hiciera falta: caminando sobre un hueco de 0,6 m, ~0,44 m
 hacia arriba y 0,6 s en el aire, un salto flotante para menos de un metro; ahora 0,36 s y una zancada saltada.
 
+Con carrera salta más lejos (`maxGapJumpRun`, 1,5 m frente a 1 m caminando) y, sobre uno de esos (más ancho que `maxGapJump`),
+en un salto de 0,4 s o más en el aire, da un paso en el aire, como el hitch-kick de un saltador de longitud: entre el 20 % y
+el 75 % del vuelo la pierna libre va atrás y la de impulso viene adelante, y cae sobre esta; los brazos bracean con ellas,
+contra ellas. Sin capturas que lo respalden (CMU no tiene saltos de longitud): una decisión, pequeña.
+
 Antes saltaba siempre con los dos pies juntos, las piernas la mitad de abiertas, los pies en poses fijas cerca del
 suelo en vez de respecto a la pelvis, el tronco fijo y los brazos quietos: rígido. Después los brazos iban juntos hacia
 delante (no contra las piernas, como en CMU) y el pie de atrás conservaba la orientación del despegue: con la tibia
@@ -522,6 +527,13 @@ diferencia); ahora los brazos hasta ~7° y las rodillas 9–23°. Con `variation
 El empuje es más corto que el de una persona: aquí solo las caderas mueven el cuerpo, y subir la flexión hasta despegar
 a la velocidad del salto lleva `2 · flexión / vy`; una persona además se pone de puntillas y balancea los brazos, y empuja
 a lo largo de 0,3–0,4 m.
+
+Sea cual sea la configuración, no pasa de lo que pueden las piernas: en el aire los pies se recogen como mucho media
+pierna (rodillas a ~120°) y al aterrizar las caderas bajan como mucho 0,35 piernas (~100°, una sentadilla profunda);
+queriendo seguir (`moveTo`, una velocidad), la amortiguación dura como mucho 0,7 s. Antes, con `jumpTuck` 0,955,
+`landingAbsorb` 0,12, `maxLandingDip` 0,87 y `landingTime` 1,92, los pies pasaban por encima de las caderas
+(rodillas a 180°) y, con un `moveTo` en marcha, caminaba 2 s con las caderas 0,34 m más abajo, hasta sentarse en el
+suelo. Con los valores por defecto, nada cambia.
 
 ## Saltos de pose
 

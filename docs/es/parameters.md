@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-154 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+155 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -132,11 +132,11 @@ opcionales y se validan (nombre, número finito y rango).
 | `jumpSpeed` | 3.2 | Salto: velocidad vertical al despegar (m/s) del salto de referencia (`jump()` sin intención); los demás van de 0,2 a 1,25 veces su esfuerzo (ver `computeJumpProfile`). |
 | `jumpCrouch` ↔ | 0.12 | Salto: cuánto se hunden las caderas al prepararse (m), en el salto de referencia: menos en uno más pequeño, más en uno más grande. La duración de la preparación se deriva de esto y de la velocidad de despegue: las caderas bajan desde parado y suben hasta despegar justo a esa velocidad. |
 | `jumpToeOff` | 30 | Salto: elevación de talones al final de la preparación (impulso con la punta, grados), en el salto de referencia (menos en uno más pequeño). |
-| `jumpTuck` ↔ | 0.22 | Salto: cuánto se recogen los pies en el aire (m), en el salto de referencia (en proporción al vuelo). |
+| `jumpTuck` ↔ | 0.22 | Salto: cuánto se recogen los pies en el aire (m), en el salto de referencia (en proporción al vuelo); como mucho media pierna, diga lo que diga este. |
 | `jumpLandingPrep` | 0.22 | Salto: tiempo antes de tocar el suelo en que las piernas se extienden hacia el aterrizaje (s), en el salto de referencia (en proporción al vuelo). |
 | `landingAbsorb` | 0.05 | Aterrizaje: hundimiento de caderas por cada m/s de velocidad de caída (m por m/s). |
-| `maxLandingDip` ↔ | 0.25 | Aterrizaje: hundimiento máximo de caderas (m). |
-| `landingTime` | 0.45 | Aterrizaje: duración de la amortiguación (s), cayendo a `jumpSpeed` (más larga cuanto más fuerte cae). |
+| `maxLandingDip` ↔ | 0.25 | Aterrizaje: hundimiento máximo de caderas (m); como mucho 0,35 piernas (una sentadilla profunda), diga lo que diga este. |
+| `landingTime` | 0.45 | Aterrizaje: duración de la amortiguación (s), cayendo a `jumpSpeed` (más larga cuanto más fuerte cae); queriendo seguir (moveTo, una velocidad), como mucho 0,7 s. |
 
 ## Pararse
 
@@ -256,6 +256,7 @@ opcionales y se validan (nombre, número finito y rango).
 | `maxStepDown` ↔ | 0.35 | Escalón más hondo que baja (m): de un desnivel más hondo no baja, se para en el borde. |
 | `maxGapStep` ↔ | 0.5 | Hueco más ancho que cruza de un paso (m; 0 = ninguno): un desnivel más hondo que `maxStepDown` con suelo que puede pisar otra vez del otro lado, a no más de esto en la dirección en que va. No se para en él: si hace falta, apoya el pie justo antes del borde y lo cruza con un paso largo. En uno más ancho se para en el borde, como ante un desnivel. |
 | `maxGapJump` ↔ | 1 | Hueco más ancho que cruza de un salto (m; 0 = ninguno): uno más ancho que `maxGapStep` y no más que esto en la dirección en que va. Caminando o corriendo, sin pararse, de un pie a otro (desde el pie de apoyo más cercano al borde, cayendo sobre el otro); parado en su borde, con los dos pies. En uno más ancho se para en el borde. |
+| `maxGapJumpRun` ↔ | 1.5 | Hueco más ancho que cruza de un salto corriendo (m): a jogSpeed o más llega a este, y entre medias desde `maxGapJump` (caminando o parado) en proporción a la velocidad; así que uno más ancho que `maxGapJump` solo lo salta tomando carrera (y moveTo solo lo cruza con `run`). Por debajo de `maxGapJump`, igual que este. |
 | `groundProbeHeight` ↔ | 1.5 | Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m). Un bloque de suelo más alto sigue siendo una pared (ver `GroundDetector.castDown`). |
 | `groundProbeDepth` ↔ | 2.5 | Profundidad bajo la raíz hasta la que se busca el suelo al caminar (m). |
 | `footProbeHeight` ↔ | 0.5 | Altura sobre el tobillo deseado desde la que se busca el suelo bajo cada pie (m). |

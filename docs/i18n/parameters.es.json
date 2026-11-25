@@ -293,8 +293,8 @@
       "es": "Salto: elevación de talones al final de la preparación (impulso con la punta, grados), en el salto de referencia (menos en uno más pequeño)."
     },
     "jumpTuck": {
-      "en": "Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight).",
-      "es": "Salto: cuánto se recogen los pies en el aire (m), en el salto de referencia (en proporción al vuelo)."
+      "en": "Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight); at most half a leg length, whatever this says.",
+      "es": "Salto: cuánto se recogen los pies en el aire (m), en el salto de referencia (en proporción al vuelo); como mucho media pierna, diga lo que diga este."
     },
     "jumpLandingPrep": {
       "en": "Jump: time before touching the ground in which the legs extend towards the landing (s), in the reference jump (in proportion to the flight).",
@@ -305,12 +305,12 @@
       "es": "Aterrizaje: hundimiento de caderas por cada m/s de velocidad de caída (m por m/s)."
     },
     "maxLandingDip": {
-      "en": "Landing: maximum hip drop (m).",
-      "es": "Aterrizaje: hundimiento máximo de caderas (m)."
+      "en": "Landing: maximum hip drop (m); at most 0.35 leg lengths (a deep squat), whatever this says.",
+      "es": "Aterrizaje: hundimiento máximo de caderas (m); como mucho 0,35 piernas (una sentadilla profunda), diga lo que diga este."
     },
     "landingTime": {
-      "en": "Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands).",
-      "es": "Aterrizaje: duración de la amortiguación (s), cayendo a `jumpSpeed` (más larga cuanto más fuerte cae)."
+      "en": "Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands); wanting to move on (moveTo, a speed), at most 0.7 s.",
+      "es": "Aterrizaje: duración de la amortiguación (s), cayendo a `jumpSpeed` (más larga cuanto más fuerte cae); queriendo seguir (moveTo, una velocidad), como mucho 0,7 s."
     },
     "liftFraction": {
       "en": "Fraction of the cycle, at the end of the stance, in which the heel rises (LIFT; at most 30 % of the stance). It starts before the other foot lands, as in real walking.",
@@ -399,6 +399,10 @@
     "maxGapStep": {
       "en": "Widest gap it steps across (m; 0 = none): a drop deeper than `maxStepDown` with ground it can step on again on the other side, no farther than this along the way it goes. It doesn't stop at it: if it has to, it puts the foot just before the edge, and crosses it with a long step. From a wider one it stops at the edge, as from a drop.",
       "es": "Hueco más ancho que cruza de un paso (m; 0 = ninguno): un desnivel más hondo que `maxStepDown` con suelo que puede pisar otra vez del otro lado, a no más de esto en la dirección en que va. No se para en él: si hace falta, apoya el pie justo antes del borde y lo cruza con un paso largo. En uno más ancho se para en el borde, como ante un desnivel."
+    },
+    "maxGapJumpRun": {
+      "en": "Widest gap it jumps across running (m): at jogSpeed or faster it reaches this one, in between from `maxGapJump` (walking or standing) in proportion to the speed; so one wider than `maxGapJump` it only jumps with a run-up (and moveTo only goes across it with `run`). Below `maxGapJump`, the same as it.",
+      "es": "Hueco más ancho que cruza de un salto corriendo (m): a jogSpeed o más llega a este, y entre medias desde `maxGapJump` (caminando o parado) en proporción a la velocidad; así que uno más ancho que `maxGapJump` solo lo salta tomando carrera (y moveTo solo lo cruza con `run`). Por debajo de `maxGapJump`, igual que este."
     },
     "maxGapJump": {
       "en": "Widest gap it jumps across (m; 0 = none): one wider than `maxGapStep` and no wider than this along the way it goes. Walking or running, without stopping, from one foot to the other (from the stance foot nearest the edge, landing on the other one); standing still at its edge, with both feet. From a wider one it stops at the edge.",

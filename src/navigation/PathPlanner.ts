@@ -152,6 +152,8 @@ interface Cell {
   gaps?: number[];
   /** In each direction of NEIGHBORS, whether that gap is jumped across (wider than `maxGapStep`, see `maxGapJump`). */
   jumps?: boolean[];
+  /** In each direction of NEIGHBORS, how wide that gap is (m). */
+  widths?: number[];
   /** Route cost from the start; parent cell (key) and whether it is closed (A*). */
   cost: number;
   parent: number;
@@ -184,6 +186,8 @@ interface Cell {
 export class PathPlanner {
   /** Raycasts of the last plan (to measure its cost). */
   raycasts = 0;
+  /** Planning a route to go running (moveTo with `run`): it may jump across gaps up to `maxGapJumpRun`. */
+  private run = false;
   /**
    * The last route ends on a narrow path got on from its side (see SIDE_APPROACH): the direction (world,
    * horizontal, unit) to turn to there, along the path. NaN (x) otherwise.
@@ -228,7 +232,8 @@ export class PathPlanner {
    * reached, the reachable point closest to it). Returns false if it found no route out of where it is
    * (`out` empty). In `narrow`, for each point, whether the stretch that ends at it goes along a narrow path.
    */
-  plan(start: Vector3, target: Vector3, out: Vector3[], narrow: boolean[] = []): boolean {
+  plan(start: Vector3, target: Vector3, out: Vector3[], narrow: boolean[] = [], run = false): boolean {
+    this.run = run;
     this.arrival.x = Number.NaN;
     this.raycasts = 0;
     const found = this.route(start, target, out, narrow);
@@ -445,6 +450,9 @@ export class PathPlanner {
           const k = this.gapLink(i, j, d - NEIGHBORS.length, hard);
           if (k === 0) continue;
           const jump = c.jumps?.[d - NEIGHBORS.length] ?? false;
+          // Uno más ancho que maxGapJump, solo yendo a correr (ver maxGapJumpRun).
+          const walkable = GAP_SHARE * Math.max(this.config().maxGapStep, this.config().maxGapJump);
+          if (!this.run && (c.widths?.[d - NEIGHBORS.length] ?? 0) > walkable) continue;
           ni = i + k * di;
           nj = j + k * dj;
           if (Math.abs(ni) > limit + Math.abs(ti) || Math.abs(nj) > limit + Math.abs(tj)) continue;
@@ -866,11 +874,12 @@ export class PathPlanner {
    */
   private gapLink(i: number, j: number, d: number, hard: number): number {
     const config = this.config();
-    const widest = GAP_SHARE * Math.max(config.maxGapStep, config.maxGapJump);
+    const widest = GAP_SHARE * Math.max(config.maxGapStep, config.maxGapJump, config.maxGapJumpRun);
     if (!(widest > 0)) return 0;
     const c = this.cell(i, j, 0);
     c.gaps ??= [];
     c.jumps ??= [];
+    c.widths ??= [];
     const known = c.gaps[d];
     if (known !== undefined) return known;
     c.gaps[d] = 0;
@@ -898,6 +907,7 @@ export class PathPlanner {
       if (width <= widest) {
         c.gaps[d] = k;
         c.jumps[d] = width > GAP_SHARE * config.maxGapStep;
+        c.widths[d] = width;
       }
       return c.gaps[d];
     }

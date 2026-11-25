@@ -276,9 +276,15 @@ export class StairPlanner {
     return GAP_WAIT_SPEED * this.config.walkSpeed;
   }
 
-  /** Widest gap it jumps across (m): `maxGapJump`, and what the edges are located to (GAP_TOLERANCE); 0 if none. */
+  /**
+   * Widest gap it jumps across (m): `maxGapJump`, up to `maxGapJumpRun` running (in proportion to the speed, from
+   * walkSpeed to jogSpeed), and what the edges are located to (GAP_TOLERANCE); 0 if none.
+   */
   get jumpWidth(): number {
-    const max = this.config.maxGapJump;
+    const c = this.config;
+    const run = Math.max(c.maxGapJumpRun, c.maxGapJump);
+    const k = Math.min(Math.max((this.speed - c.walkSpeed) / Math.max(c.jogSpeed - c.walkSpeed, 1e-6), 0), 1);
+    const max = c.maxGapJump + (run - c.maxGapJump) * k;
     return max > 0 ? max + GAP_TOLERANCE * this.footLength : 0;
   }
 

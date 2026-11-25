@@ -229,7 +229,10 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
    * a smaller one).
    */
   jumpToeOff: number;
-  /** Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight). */
+  /**
+   * Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight);
+   * at most half a leg length, whatever this says.
+   */
   jumpTuck: number;
   /**
    * Jump: time before touching the ground in which the legs extend towards the landing (s), in the reference jump (in
@@ -238,9 +241,12 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   jumpLandingPrep: number;
   /** Landing: hip drop for each m/s of falling speed (m per m/s). */
   landingAbsorb: number;
-  /** Landing: maximum hip drop (m). */
+  /** Landing: maximum hip drop (m); at most 0.35 leg lengths (a deep squat), whatever this says. */
   maxLandingDip: number;
-  /** Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands). */
+  /**
+   * Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands);
+   * wanting to move on (moveTo, a speed), at most 0.7 s.
+   */
   landingTime: number;
   /**
    * Fraction of the cycle, at the end of the stance, in which the heel rises (LIFT; at most 30 % of the
@@ -327,6 +333,12 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
    * landing on the other one); standing still at its edge, with both feet. From a wider one it stops at the edge.
    */
   maxGapJump: number;
+  /**
+   * Widest gap it jumps across running (m): at jogSpeed or faster it reaches this one, in between from `maxGapJump`
+   * (walking or standing) in proportion to the speed; so one wider than `maxGapJump` it only jumps with a run-up (and
+   * moveTo only goes across it with `run`). Below `maxGapJump`, the same as it.
+   */
+  maxGapJumpRun: number;
   /**
    * Height above the root from which the ground under the body is searched (m). A block of ground taller than
    * this is still a wall (see `GroundDetector.castDown`).
@@ -460,6 +472,7 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   maxStepDown: 0.35,
   maxGapStep: 0.5,
   maxGapJump: 1,
+  maxGapJumpRun: 1.5,
   groundProbeHeight: 1.5,
   groundProbeDepth: 2.5,
   footProbeHeight: 0.5,

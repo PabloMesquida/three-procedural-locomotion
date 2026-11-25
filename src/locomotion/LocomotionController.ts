@@ -22,7 +22,7 @@ import { FootRoll } from './FootRoll.ts';
 import { FootstepPlanner } from './FootstepPlanner.ts';
 import { GaitController } from './GaitController.ts';
 import { JumpController } from './JumpController.ts';
-import { computeJumpProfile, JUMP_FORWARD_COST, type JumpIntent, type JumpProfile, standingSpeed } from './JumpProfile.ts';
+import { computeJumpProfile, JUMP_FORWARD_COST, JUMP_MAX_EFFORT, type JumpIntent, type JumpProfile, standingSpeed } from './JumpProfile.ts';
 import { StairPlanner } from './StairPlanner.ts';
 import { SmoothNoise } from '../core/noise.ts';
 import { createFootTarget, effectiveSwingEnd, evaluateSwing, type FootTarget, swingArc } from './FootTarget.ts';
@@ -197,6 +197,12 @@ const GAP_TWO_MIN_UP = 0.5;
 const GAP_TWO_TUCK = 0.35;
 const GAP_TWO_DIP = 0.3;
 /**
+ * What the legs can take, whatever the config: in the air the feet tuck at most TUCK_LIMIT leg lengths (knees at ~120°;
+ * with more they went above the hips) and on landing the hips go down at most LANDING_DIP_LIMIT (~100°, a deep squat).
+ */
+const TUCK_LIMIT = 0.5;
+const LANDING_DIP_LIMIT = 0.35;
+/**
  * Moving (faster than GAP_MOVING × walkSpeed), it jumps from one foot to the other without stopping (CMU 49_04, 49_05):
  * from the stance foot that lands nearest the edge, the one in front of which the other would have to take a step
  * shorter than LEAP_SHORT of the one it takes (to land at the edge, with its toes LEAP_EDGE_ROOM × the length of the
@@ -329,6 +335,14 @@ const STRIDE_WAIT = 1.5;
 const GAP_LEAP_MIN_UP = 0.4;
 /** Speeds tried looking for the leap that costs least (see leapFor). */
 const LEAP_SEARCH = 32;
+/**
+ * Running (from AIR_STEP_SPEED × jogSpeed) over a gap it only jumps with a run-up (wider than maxGapJump), a long leap
+ * (AIR_STEP_FLIGHT s or more) takes a step in the air, like a long jumper's hitch-kick: between AIR_STEP[0] and AIR_STEP[1] of the flight the free leg goes back and the one it pushed
+ * off with comes forward, and it lands on this one; the arms swing with them, against them.
+ */
+const AIR_STEP_SPEED = 0.9;
+const AIR_STEP_FLIGHT = 0.4;
+const AIR_STEP = [0.2, 0.75] as const;
 /**
  * In a short leap the free knee comes up less: its ankle goes forward LEAP_DRIVE[0] × reach and down from LEAP_DRIVE[1]
  * towards LEAP_DRIVE_LOW below the hip (reach: the leap against LEAP_FULL, from 0.5 to 1).
@@ -656,7 +670,7 @@ export class LocomotionController {
    * A jump across a gap (see updateGapJump): requested (`pending`, until take-off) with its horizontal speed and
    * heading, and the height of the other side (NaN when not jumping one): where it will land.
    */
-  private readonly leap = { pending: false, oneFoot: false, up: 0, speed: 0, heading: 0, ground: Number.NaN, lead: 'left' as Side, split: 1, time: 0, stride: false, reach: 1 };
+  private readonly leap = { pending: false, oneFoot: false, up: 0, speed: 0, heading: 0, ground: Number.NaN, lead: 'left' as Side, split: 1, time: 0, stride: false, reach: 1, airStep: false };
   /** It found it couldn't jump across the gap ahead moving: it brakes for it and, stopped, jumps with both feet. */
   private leapRefused = false;
   /** How many jumps across gaps so far, and this one's variation (see rollLeap; offsets in leg lengths and degrees). */
@@ -1257,7 +1271,7 @@ export class LocomotionController {
     //     el cuerpo empieza a subir desde el siguiente.
     this.updateGapJump();
     this.updateStrideJump(dt);
-    const jumpEvent = this.jumping.update(dt, this.body.state);
+    const jumpEvent = this.jumping.update(dt, this.body.state, this.targetSpeed > 0 && this.body.speedLimit > 0);
     this.pushForward(jumpEvent === 'liftoff');
     this.poseSpeed = this.jumpPoseSpeed();
     if (jumpEvent === 'liftoff') {
@@ -2731,7 +2745,7 @@ export class LocomotionController {
     if (this.leap.pending || this.jumping.phase !== 'GROUNDED' || s.airborne) return;
     this.stairs.leaping = false;
     if (s.speed <= GAP_JUMP_STILL * cfg.walkSpeed) this.leapRefused = false;
-    if (!(cfg.maxGapJump > 0) || !(this.targetSpeed > 0)) return;
+    if (!(cfg.maxGapJump > 0 || cfg.maxGapJumpRun > 0) || !(this.targetSpeed > 0)) return;
     if (this.ledgeBlend > 0 || this.balance > 0 || this.crouch > 0) return;
     const ground = Number.isFinite(s.groundHeight) ? s.groundHeight : s.position.y;
     const gap = this.gapAhead;
@@ -2778,7 +2792,8 @@ export class LocomotionController {
   private leapFor(distance: number, rise: number, speed: number): boolean {
     const cfg = this.config;
     const g = cfg.gravity;
-    const top = cfg.jumpSpeed;
+    // Hasta el esfuerzo máximo de un salto (ver JUMP_MAX_EFFORT): corriendo sobre uno ancho (maxGapJumpRun) lo necesita.
+    const top = cfg.jumpSpeed * JUMP_MAX_EFFORT;
     const root = top * top - 2 * g * rise;
     if (!(root > 0)) return false;
     const longest = (top + Math.sqrt(root)) / g;
@@ -2790,7 +2805,7 @@ export class LocomotionController {
     // un hueco de 0,6 m, 0,44 m hacia arriba y 0,6 s en el aire, para un salto de menos de un metro.
     const upFor = (forward: number): number => {
       const t = distance / forward;
-      return Math.min(Math.max(rise / t + (g * t) / 2, GAP_LEAP_MIN_UP * top), top);
+      return Math.min(Math.max(rise / t + (g * t) / 2, GAP_LEAP_MIN_UP * cfg.jumpSpeed), top);
     };
     let forward = lo;
     let best = Number.POSITIVE_INFINITY;
@@ -2877,10 +2892,12 @@ export class LocomotionController {
     this.leap.pending = true;
     this.leap.oneFoot = true;
     this.leap.stride = true;
-    this.leap.lead = side === 'left' ? 'right' : 'left';
-    // Caminando, el de delante aún apoya (doble apoyo): despega ya, para subir la rodilla antes del salto. Si ya está
+    this.leap.airStep = false;
+    // El que cae: el libre, o, dando un paso en el aire (ver AIR_STEP), el de impulso.
+    this.leap.lead = this.leap.airStep ? side : side === 'left' ? 'right' : 'left';
+    // Caminando, el libre aún apoya (doble apoyo): despega ya, para subir la rodilla antes del salto. Si ya está
     // despegando el talón (LIFT), sale solo enseguida: forzarlo saltaba de pose (la rodilla, ~30° en un frame).
-    const lead = this.leap.lead;
+    const lead = this.leapFree();
     if (this.gait.isStance(lead) && this.feet[lead].phase !== 'LIFT') this.gait.duty[lead] = Math.min(this.gait.duty[lead], this.gait.footPhase(lead) + 1e-3);
     this.leap.heading = s.heading;
     this.leap.up = profile.vy;
@@ -2938,9 +2955,12 @@ export class LocomotionController {
     this.leap.pending = true;
     this.leap.oneFoot = true;
     this.leap.stride = false;
-    this.leap.lead = side === 'left' ? 'right' : 'left';
-    // Caminando, el de delante aún apoya (doble apoyo): despega ya, para subir la rodilla antes del salto (ver leapDrive).
-    const lead = this.leap.lead;
+    // Solo en uno que solo salta con carrera (más ancho que maxGapJump).
+    this.leap.airStep = gap.width > this.config.maxGapJump && s.speed >= AIR_STEP_SPEED * this.config.jogSpeed && this.leap.time >= AIR_STEP_FLIGHT;
+    // El que cae: el libre, o, dando un paso en el aire (ver AIR_STEP), el de impulso.
+    this.leap.lead = this.leap.airStep ? side : side === 'left' ? 'right' : 'left';
+    // Caminando, el libre aún apoya (doble apoyo): despega ya, para subir la rodilla antes del salto (ver leapDrive).
+    const lead = this.leapFree();
     if (this.gait.isStance(lead)) this.gait.duty[lead] = Math.min(this.gait.duty[lead], this.gait.footPhase(lead) + 1e-3);
     this.leap.heading = s.heading;
     this.leap.ground = gap.far;
@@ -3005,7 +3025,8 @@ export class LocomotionController {
 
       // Recogido: posición neutra (sigue a la raíz) elevada.
       this.planner.homePosition(side, this.tmp);
-      this.tmp.y += profile.tuck * (Number.isNaN(this.leap.ground) ? 1 : GAP_TWO_TUCK * this.leapVary.tuck) * (this.leap.oneFoot ? 1 : 1 + this.leapVary.tuckSide[side]);
+      const tuck = profile.tuck * (Number.isNaN(this.leap.ground) ? 1 : GAP_TWO_TUCK * this.leapVary.tuck) * (this.leap.oneFoot ? 1 : 1 + this.leapVary.tuckSide[side]);
+      this.tmp.y += Math.min(tuck, TUCK_LIMIT * this.pelvis.maxLegReach(side, 1));
       // Desde el despegue: sigue con su velocidad, que se desvanece mientras se recoge
       // (desplazamiento = v · ∫(1 − smoothstep)), para no frenar en seco.
       const x = Math.min(this.airTime / tuckTime, 1);
@@ -3025,9 +3046,14 @@ export class LocomotionController {
         const reach = this.leap.stride ? smoothstep(this.leapProgress()) : 1;
         const leadA = (LEAP_LEAD[0] + v.lead[0]) * (this.leap.stride ? 1 - STRIDE_LEAD_REACH[0] * (1 - reach) : 1);
         const leadB = (LEAP_LEAD[1] + v.lead[1]) * (this.leap.stride ? 1 + STRIDE_LEAD_REACH[1] * (reach - 0.5) : 1);
-        const a = (leads ? leadA : trailA + (LEAP_TRAIL_LANDING[0] + v.trailLanding - trailA) * p) * this.leap.split;
+        // Cuánto va delante (1) o detrás (0): dando un paso en el aire, se cambian (ver leapFront).
+        const front = this.leapFront(side);
+        const trailNow = trailA + (LEAP_TRAIL_LANDING[0] + v.trailLanding - trailA) * p;
+        const mix = (behind: number, ahead: number): number => (front === 1 ? ahead : front === 0 ? behind : behind + (ahead - behind) * front);
+        const a = mix(trailNow, leadA) * this.leap.split;
         const trailB = LEAP_TRAIL[1] + v.trail[1];
-        const b = leads ? leadB : trailB + (LEAP_TRAIL_LANDING[1] - trailB) * p;
+        const trailBNow = trailB + (LEAP_TRAIL_LANDING[1] - trailB) * p;
+        const b = mix(trailBNow, leadB);
         const along = (hip.x - this.tmp.x) * body.forward.x + (hip.z - this.tmp.z) * body.forward.z + a * L;
         this.tmp.addScaledVector(body.forward, along);
         this.tmp.y = hip.y - b * L;
@@ -3072,6 +3098,7 @@ export class LocomotionController {
   private land(): void {
     this.landingPrep = 0;
     this.jumping.dipScale = Number.isNaN(this.leap.ground) ? 1 : GAP_TWO_DIP;
+    this.jumping.maxDip = LANDING_DIP_LIMIT * Math.min(this.pelvis.maxLegReach('left', 1), this.pelvis.maxLegReach('right', 1));
     for (const side of SIDES) {
       const foot = this.feet[side];
       // El que llega tarde aún no ha tocado el suelo: va desde donde está (ver LANDING_LATE).
@@ -3123,7 +3150,7 @@ export class LocomotionController {
    * ahead of the hip (LEAP_DRIVE) as the preparation goes on.
    */
   private leapDrive(progress: number): void {
-    const side = this.leap.lead;
+    const side = this.leapFree();
     const foot = this.feet[side];
     if (foot.phase !== 'SWING') {
       this.driveFrom = Number.NaN;
@@ -3141,6 +3168,24 @@ export class LocomotionController {
     const below = LEAP_DRIVE[1] + (LEAP_DRIVE_LOW - LEAP_DRIVE[1]) * 2 * (1 - reach) + this.leapVary.drive[1];
     target.y = Math.max(hip.y - below * L, foot.position.y);
     foot.position.lerp(target, k);
+  }
+
+  /** Jumping from one foot to the other: the free leg, the one whose knee comes up at take-off. */
+  private leapFree(): Side {
+    const lead = this.leap.lead;
+    return this.leap.airStep ? (lead === 'left' ? 'right' : 'left') : lead;
+  }
+
+  /**
+   * Jumping from one foot to the other: how much the leg `side` goes in front (1) or behind (0). The free one in front;
+   * with a step in the air (AIR_STEP), they swap during the flight and it lands on the one it pushed off with.
+   */
+  private leapFront(side: Side): number {
+    const free = side === this.leapFree() ? 1 : 0;
+    if (!this.leap.airStep) return free;
+    const p = this.leapProgress();
+    const swap = Number.isNaN(p) ? 0 : smoothstep((p - AIR_STEP[0]) / (AIR_STEP[1] - AIR_STEP[0]));
+    return free + (1 - 2 * free) * swap;
   }
 
   /** Jumping across a gap from one foot to the other, in the air: how far into the flight (0–1); NaN if not. */
@@ -3184,6 +3229,7 @@ export class LocomotionController {
     const lead = this.leap.lead;
     const trail: Side = lead === 'left' ? 'right' : 'left';
     this.jumping.dipScale = LEAP_LANDING_DIP;
+    this.jumping.maxDip = LANDING_DIP_LIMIT * Math.min(this.pelvis.maxLegReach('left', 1), this.pelvis.maxLegReach('right', 1));
     const leading = this.feet[lead];
     leading.planted.copy(leading.swing.landing);
     leading.plantedRotation.copy(leading.swing.landingRotation);
@@ -3244,7 +3290,9 @@ export class LocomotionController {
     const limbs = this.leapLimbs;
     this.leapLimbs = 1;
     for (const side of SIDES) {
-      const oppose = side === this.leap.lead ? -back : 1;
+      // Contra las piernas: el del lado de la que va delante, atrás (dando un paso en el aire, se cambian: braceo).
+      const front = this.leapFront(side);
+      const oppose = front === 1 ? -back : front === 0 ? 1 : 1 + (-back - 1) * front;
       if (!Number.isNaN(p) && this.leap.oneFoot) {
         arm[side] = amount * (LocomotionController.leapCurve(LEAP_ARM, p, 0.35) + oppose * LocomotionController.leapCurve(LEAP_ARM_OPPOSE, p, 0.35) + LocomotionController.leapCurve(v.arm[side], p, 0.35));
         elbow[side] = amount * (LocomotionController.leapCurve(LEAP_ELBOW, p, 0.35) - bend + v.elbow[side] * smoothstep(Math.min(p / 0.3, 1)));
