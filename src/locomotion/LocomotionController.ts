@@ -22,7 +22,7 @@ import { FootRoll } from './FootRoll.ts';
 import { FootstepPlanner } from './FootstepPlanner.ts';
 import { GaitController } from './GaitController.ts';
 import { JumpController } from './JumpController.ts';
-import { computeJumpProfile, type JumpIntent, type JumpProfile, standingSpeed } from './JumpProfile.ts';
+import { computeJumpProfile, JUMP_FORWARD_COST, type JumpIntent, type JumpProfile, standingSpeed } from './JumpProfile.ts';
 import { StairPlanner } from './StairPlanner.ts';
 import { SmoothNoise } from '../core/noise.ts';
 import { createFootTarget, effectiveSwingEnd, evaluateSwing, type FootTarget, swingArc } from './FootTarget.ts';
@@ -327,6 +327,13 @@ const STRIDE_PREP = 0.4;
 const STRIDE_LEAD_REACH = [0.25, 0.3] as const;
 const STRIDE_WAIT = 1.5;
 const GAP_LEAP_MIN_UP = 0.4;
+/** Speeds tried looking for the leap that costs least (see leapFor). */
+const LEAP_SEARCH = 32;
+/**
+ * In a short leap the free knee comes up less: its ankle goes forward LEAP_DRIVE[0] × reach and down from LEAP_DRIVE[1]
+ * towards LEAP_DRIVE_LOW below the hip (reach: the leap against LEAP_FULL, from 0.5 to 1).
+ */
+const LEAP_DRIVE_LOW = 0.8;
 /**
  * Stopped (below this speed) too close to a wall, it moves back from it at this speed (m/s × walkSpeed / 1.4: with
  * speedScale, speeds go with the size).
@@ -649,7 +656,7 @@ export class LocomotionController {
    * A jump across a gap (see updateGapJump): requested (`pending`, until take-off) with its horizontal speed and
    * heading, and the height of the other side (NaN when not jumping one): where it will land.
    */
-  private readonly leap = { pending: false, oneFoot: false, up: 0, speed: 0, heading: 0, ground: Number.NaN, lead: 'left' as Side, split: 1, time: 0, stride: false };
+  private readonly leap = { pending: false, oneFoot: false, up: 0, speed: 0, heading: 0, ground: Number.NaN, lead: 'left' as Side, split: 1, time: 0, stride: false, reach: 1 };
   /** It found it couldn't jump across the gap ahead moving: it brakes for it and, stopped, jumps with both feet. */
   private leapRefused = false;
   /** How many jumps across gaps so far, and this one's variation (see rollLeap; offsets in leg lengths and degrees). */
@@ -2775,12 +2782,31 @@ export class LocomotionController {
     const root = top * top - 2 * g * rise;
     if (!(root > 0)) return false;
     const longest = (top + Math.sqrt(root)) / g;
-    const forward = Math.max(speed, distance / longest);
-    if (forward > Math.max(speed, LEAP_MAX_SPEED * cfg.jogSpeed)) return false;
+    const lo = Math.max(speed, distance / longest);
+    const hi = Math.max(speed, LEAP_MAX_SPEED * cfg.jogSpeed);
+    if (lo > hi) return false;
+    // La que menos le cuesta (ver JumpProfile.effort): más deprisa hacia delante (lo que pasa de la que traía cuesta
+    // JUMP_FORWARD_COST) y menos hacia arriba. Antes conservaba la velocidad y subía lo que hiciera falta: caminando sobre
+    // un hueco de 0,6 m, 0,44 m hacia arriba y 0,6 s en el aire, para un salto de menos de un metro.
+    const upFor = (forward: number): number => {
+      const t = distance / forward;
+      return Math.min(Math.max(rise / t + (g * t) / 2, GAP_LEAP_MIN_UP * top), top);
+    };
+    let forward = lo;
+    let best = Number.POSITIVE_INFINITY;
+    for (let i = 0; i <= LEAP_SEARCH; i++) {
+      const v = lo + ((hi - lo) * i) / LEAP_SEARCH;
+      const effort = (JUMP_FORWARD_COST * (v - speed)) ** 2 + upFor(v) ** 2;
+      if (effort < best) {
+        best = effort;
+        forward = v;
+      }
+    }
     const time = distance / forward;
     this.leap.time = time;
-    this.leap.up = Math.min(Math.max(rise / time + (g * time) / 2, GAP_LEAP_MIN_UP * top), top);
+    this.leap.up = upFor(forward);
     this.leap.speed = forward;
+    this.leap.reach = Math.min(Math.max(distance / (LEAP_FULL * this.pelvis.maxLegReach('left', 1)), 0.5), 1);
     return true;
   }
 
@@ -2860,8 +2886,9 @@ export class LocomotionController {
     this.leap.up = profile.vy;
     this.leap.speed = Math.max(s.speed, profile.vx);
     this.leap.ground = ground + profile.rise;
-    // Para cuánto de la pose del salto llevan los brazos (ver LEAP_ARM_SHORT).
+    // Para cuánto de la pose del salto llevan los brazos (ver LEAP_ARM_SHORT) y la rodilla libre (ver LEAP_DRIVE_LOW).
     this.leap.time = profile.flight;
+    this.leap.reach = Math.min(Math.max(profile.distance / (LEAP_FULL * this.pelvis.maxLegReach('left', 1)), 0.5), 1);
   }
 
   /**
@@ -3109,8 +3136,10 @@ export class LocomotionController {
     const hip = worldPosition(this.rig[side].thigh, this.samplePos2);
     const L = this.pelvis.maxLegReach(side, 1);
     const target = this.samplePos.copy(foot.position);
-    target.addScaledVector(f, (hip.x - target.x) * f.x + (hip.z - target.z) * f.z + (LEAP_DRIVE[0] + this.leapVary.drive[0]) * L);
-    target.y = Math.max(hip.y - (LEAP_DRIVE[1] + this.leapVary.drive[1]) * L, foot.position.y);
+    const reach = this.leap.reach;
+    target.addScaledVector(f, (hip.x - target.x) * f.x + (hip.z - target.z) * f.z + (LEAP_DRIVE[0] + this.leapVary.drive[0]) * reach * L);
+    const below = LEAP_DRIVE[1] + (LEAP_DRIVE_LOW - LEAP_DRIVE[1]) * 2 * (1 - reach) + this.leapVary.drive[1];
+    target.y = Math.max(hip.y - below * L, foot.position.y);
     foot.position.lerp(target, k);
   }
 

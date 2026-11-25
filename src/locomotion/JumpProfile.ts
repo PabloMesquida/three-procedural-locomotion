@@ -106,7 +106,7 @@ const JUMP_MIN_UP = 0.2;
  * Horizontal speed costs this share of the vertical one: the legs push forward more easily than up (a standing long
  * jump of ~2 m, at ~4.6 m/s forward and ~2.1 up, is an effort of ~1.1).
  */
-const JUMP_FORWARD_COST = 0.6;
+export const JUMP_FORWARD_COST = 0.6;
 /** Take-off angle of a standing long jump (degrees above the horizontal; biomechanics: ~20–30°). */
 const STANDING_ANGLE = 25;
 /**

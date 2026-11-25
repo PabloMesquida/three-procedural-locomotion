@@ -438,6 +438,11 @@ tobillos respecto a la pelvis, tronco, brazos y pelvis (en largos de pierna, L).
 | Parado, vuelo | 0,38–0,45 s, pelvis +0,30–0,38 L | 0,40–0,44 s, +0,30–0,36 L |
 | Parado, rodillas en el aire | 32–53° | 51° |
 
+Lo rápido hacia delante y lo alto que salta: la combinación que menos le cuesta (como a una persona: ir más deprisa
+hacia delante cuesta menos que subir), hasta 0,75 × jogSpeed hacia delante; la rodilla libre sube en proporción a lo
+largo del salto. Antes conservaba su velocidad y subía lo que hiciera falta: caminando sobre un hueco de 0,6 m, ~0,44 m
+hacia arriba y 0,6 s en el aire, un salto flotante para menos de un metro; ahora 0,36 s y una zancada saltada.
+
 Antes saltaba siempre con los dos pies juntos, las piernas la mitad de abiertas, los pies en poses fijas cerca del
 suelo en vez de respecto a la pelvis, el tronco fijo y los brazos quietos: rígido. Después los brazos iban juntos hacia
 delante (no contra las piernas, como en CMU) y el pie de atrás conservaba la orientación del despegue: con la tibia

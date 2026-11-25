@@ -440,6 +440,11 @@ the pelvis, trunk, arms and pelvis (in leg lengths, L).
 | Standing, flight | 0.38–0.45 s, pelvis +0.30–0.38 L | 0.40–0.44 s, +0.30–0.36 L |
 | Standing, knees in the air | 32–53° | 51° |
 
+How fast forward and how high it leaps: the combination that costs least (like a person: going forward faster costs
+less than going up), up to 0.75 × jogSpeed forward; the free knee comes up in proportion to the length of the leap.
+Before it kept its speed and went up whatever it needed: walking over a 0.6 m gap, ~0.44 m up and 0.6 s in the air,
+a floating jump for less than a metre; now 0.36 s and a leap like a bounding stride.
+
 Before, it jumped with both feet together always, the legs half as open, the feet in fixed poses near the ground
 instead of relative to the pelvis, the trunk fixed and the arms still: rigid. Then the arms went forward together
 (not against the legs, as in CMU) and the trailing foot kept the orientation of take-off: with the shin turned back,
