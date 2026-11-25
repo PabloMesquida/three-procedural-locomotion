@@ -79,7 +79,12 @@ Two ways, which can be mixed:
 - **Along a route**: `followPath(points, { run })` (with `run`, jogging) follows the points given (e.g. from your own navmesh) with
   curves and stops on the last one; it doesn't check them.
 
-Also: `targetCrouch` (0 = standing, 1 = crouched), `jump()` (returns `false` if already jumping).
+Also: `targetCrouch` (0 = standing, 1 = crouched), `jump()` (returns `false` if already jumping). `jump()` alone jumps
+`jumpSpeed` up (moving, less the faster it goes: a long, low jump from one foot, from the next support, landing on the
+other one and going on); `jump({ height })` and `jump({ distance })` (m) jump as high or as far as that (from standing,
+a long jump, landing stuck), up to what the character can do. From standing, the crouch, the arms (back, then forward and up
+through their own pendulum), the trunk and the timings follow from it: a hop barely crouches, a high jump takes the
+arms above the head.
 
 **Heading**: `0` = the orientation of the model when it was created; positive = to the left (seen from above,
 counterclockwise). To turn towards a world direction `dir` (horizontal, normalized):
@@ -288,8 +293,9 @@ A custom detector (physics, BVH…) implements `SurfaceDetector` (`cast(origin, 
 
 A person never takes two identical steps. With `variation` (1 by default; 0 = all steps identical) the cadence,
 the lean of the trunk, the gaze and the swing of each arm change slightly and slowly, with smooth noise that
-depends on the character's `seed`. Each jump across a gap is a little different too: where each foot goes in the
-air and lands, the trunk, each arm and elbow, how fast the legs open. It is deterministic: the same seed repeats
+depends on the character's `seed`. Each jump is a little different too: across a gap or in stride, where each foot goes
+in the air and lands, the trunk, each arm and elbow, how fast the legs open; from standing, each arm, elbow and leg on
+its own and one foot landing 20–50 ms after the other. It is deterministic: the same seed repeats
 exactly the same motion (useful for tests or replays). For a crowd, give each character its own seed.
 
 ## Character size
@@ -610,6 +616,12 @@ measures it on your machine.
   Useful for debugging; their shape may change between versions.
 - The building blocks are exported too (`TwoBoneIK`, `LegIK`, `FootPlacement`, `mapHumanRig`,
   `inspectSkeleton`…).
+- `computeJumpProfile(config, { speed, intent, rise })`: the profile a jump comes from. From the speed it has, what is
+  asked of it (`intent`: `distance`, `height`) and the height of the landing (`rise`), its physics (take-off velocity,
+  flight, impact, `effort`, `reachable`) and its pose and timings (crouch, preparation, arms, lean, tuck, landing).
+  `jumpSpeed`, `jumpCrouch`, `jumpTuck`, `jumpLandingPrep`, `jumpToeOff` and `landingTime` are those of the reference
+  jump (`jumpSpeed` straight up, `effort` 1); `jump()` makes that one, and `jump(intent)` the one of its profile. Pure: it
+  doesn't change anything.
 - `three-procedural-locomotion/debug`: visual helpers. Each one has a `group` (or, `GaitDiagram`, an HTML
   `element`) to add, and an `update()` to call after `human.update(dt)`:
 

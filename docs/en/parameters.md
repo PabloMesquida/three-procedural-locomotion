@@ -129,14 +129,14 @@ are optional and validated (name, finite number and range).
 | Parameter | Default | Description |
 |---|---|---|
 | `gravity` | 9.81 | Gravity (m/s²). |
-| `jumpSpeed` | 3.2 | Jump: vertical speed at takeoff (m/s). |
-| `jumpCrouch` ↔ | 0.12 | Jump: how far the hips sink while preparing (m). The duration of the preparation follows from this and jumpSpeed: the hips go down from rest and up again, taking off exactly at the jump speed. |
-| `jumpToeOff` | 30 | Jump: heel raise at the end of the preparation (pushing off with the toes, degrees). |
-| `jumpTuck` ↔ | 0.22 | Jump: how much the feet tuck up in the air (m). |
-| `jumpLandingPrep` | 0.22 | Jump: time before touching the ground in which the legs extend towards the landing (s). |
+| `jumpSpeed` | 3.2 | Jump: vertical speed at takeoff (m/s) of the reference jump (`jump()` without an intent); the others go from 0.2 to 1.25 times its effort (see `computeJumpProfile`). |
+| `jumpCrouch` ↔ | 0.12 | Jump: how far the hips sink while preparing (m), in the reference jump: less in a smaller one, more in a bigger one. The duration of the preparation follows from this and the take-off speed: the hips go down from rest and up again, taking off exactly at that speed. |
+| `jumpToeOff` | 30 | Jump: heel raise at the end of the preparation (pushing off with the toes, degrees), in the reference jump (less in a smaller one). |
+| `jumpTuck` ↔ | 0.22 | Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight). |
+| `jumpLandingPrep` | 0.22 | Jump: time before touching the ground in which the legs extend towards the landing (s), in the reference jump (in proportion to the flight). |
 | `landingAbsorb` | 0.05 | Landing: hip drop for each m/s of falling speed (m per m/s). |
 | `maxLandingDip` ↔ | 0.25 | Landing: maximum hip drop (m). |
-| `landingTime` | 0.45 | Landing: duration of the cushioning (s). |
+| `landingTime` | 0.45 | Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands). |
 
 ## Standing still
 
@@ -235,7 +235,7 @@ are optional and validated (name, finite number and range).
 
 | Parameter | Default | Description |
 |---|---|---|
-| `variation` | 1 | Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the swing of each arm change slightly and slowly, differently for each character (according to its `seed`); and no two jumps across a gap are the same. |
+| `variation` | 1 | Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the swing of each arm change slightly and slowly, differently for each character (according to its `seed`); and no two jumps are the same (and with both feet, left and right aren't a mirror). |
 
 ## Point and click (moveTo)
 

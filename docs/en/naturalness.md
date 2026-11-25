@@ -456,6 +456,64 @@ each arm does its own thing. So each jump draws its own variation (with `variati
 ±0.08 L in the air and ±0.04 L to the side and on landing, the trunk ±4° and each arm ±10° at each key, each elbow
 ±10°, the legs opening ±25 % faster or slower and, with both feet, ±35 % of tuck.
 
+## Jumping from standing
+
+`node .test-build/tests/tools/jumpDiag.js` records a jump frame by frame (still, walking, running, a hop, a long jump
+and a high one) and looks for what makes it robotic: plateaus, abrupt changes, parts that start together, left and
+right in a mirror, parameters that don't change. Each jump comes from its profile (`computeJumpProfile`): the effort
+it takes decides the crouch, the timings, the arms and the trunk. Biomechanics of the countermovement jump and the
+standing long jump, as ranges:
+
+| | biomechanics | library (hop 0.1 m / `jump()` / long 1.5 m / high 0.65 m) |
+|---|---|---|
+| Knees at the bottom of the preparation | ~30° in a hop, 90–100° in the hardest | 36° / 61° / 66° / 70° |
+| Arms back at the bottom | 40–60° behind the trunk (hard jumps) | 9° / 29° / 28° / 35° |
+| Arms at take-off | above the head jumping up, ~90° forward jumping far | 49° / 126° / 80° / 142° |
+| Take-off angle of a standing long jump | 20–30° | 25° |
+| Pushing up (concentric) | 0.2–0.25 s in the hardest | 0.06 / 0.07 / 0.11 / 0.09 s |
+
+The arms go back while going down and swing forward and up from there, overlapping with the push, and they go
+through the arm's pendulum: they follow the jump with weight and lag (they peak a little after take-off). Before,
+`armForward` wrote them straight onto the pose (0 frames of lag) and they went back during the whole preparation and
+were at rest at take-off. The trunk leans going down and straightens pushing (jumping far, it stays forward). Jumping
+forward, the body speeds up while pushing, with the feet on the ground (before, it went from still to ~4 m/s in one
+frame), and it lands stuck: it brakes with both feet on the ground, without steps.
+
+In the air everything goes with the flight, in shares of it: the legs stay extended for 3 % (the push isn't over at
+once), are tucked near the top (45 %) and from there go towards the landing, with no pause between them; the arms come
+down forward from 20 %; the trunk leans towards the landing in the second half (more jumping far) and the head looks
+down at it. Before, the feet were tucked at 0.15 s whatever the flight and held there until 0.22 s before landing: up
+to 16 frames with the knees still, and the trunk still for the whole flight (up to 33 frames). Now the knees are still
+at most 5 frames in the air and the trunk at most 10. Preparing the landing from the middle of the flight, the foot
+looked for the ground under it out of its ray's reach and jumped 0.26 m when it found it: now it looks as far below as
+the body still has to fall.
+
+Landing (drop landings, as ranges): the knees start bending just before contact (15–30° on contact), the peak
+grows with the falling speed (~30–45° in a hop, 70–90° dropping 30–50 cm) and so does the cushioning (0.15–0.4 s);
+jumping up it lands on the ball of the foot and then the heel, jumping far on the heels with the trunk going forward.
+Library: the knees touch the ground at 27–30° (before, 5–6°: straight, and they bent at once, 40–50°/frame²), with a
+peak of 45° in a hop, 72° in `jump()` and 76° in a high one; the cushioning lasts with the impact it really had (a hop
+0.30 s, `jump()` 0.47 s, longer dropping from a step, whose height it looks for with a ray when asked to jump); from
+standing it lands on the ball (8°) jumping up and on the heel (20°) jumping far, and rolls flat in a quarter of the
+cushioning; stopping a long jump, the trunk goes forward 5° for each m/s it stops; the arms go forward and open a
+little, through their pendulum. Jumping forward, the feet leave the ground with part of the body's speed and it
+doesn't take a step while pushing.
+
+Moving (walking or running, from 0.3 m/s), `jump()` takes off from one foot, like a long stride: the next foot to
+land is the one it pushes off with, the free knee comes up, the arms go against the legs, the legs split in the air and
+it lands on the free foot and goes on walking or running (the same as across a gap, see above, with the free leg
+extending towards the landing through the flight). Asked for while both feet are in the air (running), it waits for
+that support: before, it took off from the air 4 times out of 12. It keeps its speed and, without an intent, goes up
+less the faster it goes (× 1 − 0.5 · speed/runSpeed): at 3 m/s, 2.2 m/s up (0.33 m, 36°) against 3.1 standing still.
+
+From standing, with both feet, it isn't a mirror either (with `variation`, from the `seed`, different in each jump):
+one foot touches the ground 20–50 ms after the other (biomechanics: 20–50 ms), each leg tucks ±15 % on its own, each
+arm reaches ±10° and each elbow bends ±10° on its own. Before, left and right were identical (correlation 1.00, 0.0°
+apart); now arms up to ~7° and knees 9–23° apart. With `variation: 0`, a mirror again.
+
+The push is shorter than in a person: here only the hips move the body, and going up the crouch to take off at the
+jump's speed takes `2 · crouch / vy`; a person also rises onto the toes and swings the arms, and pushes over 0.3–0.4 m.
+
 ## Pose jumps
 
 `tests/tools/popProbe.ts` measures the angular acceleration of each bone (°/frame²) over a route with

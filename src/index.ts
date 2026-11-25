@@ -76,6 +76,7 @@ export { defaultMoveToConfig, type MoveToConfig, MoveToController } from './navi
 export type { FootPhase, FootTarget } from './locomotion/FootTarget.ts';
 export type { GaitMode } from './locomotion/GaitController.ts';
 export type { JumpPhase } from './locomotion/JumpController.ts';
+export { computeJumpProfile, JUMP_MAX_EFFORT, type JumpIntent, type JumpProfile, type JumpProfileInput } from './locomotion/JumpProfile.ts';
 export type { BodyState } from './body/BodyController.ts';
 export { LegIK } from './ik/LegIK.ts';
 export { TwoBoneIK, type TwoBoneIKInput, type TwoBoneIKResult } from './ik/TwoBoneIK.ts';

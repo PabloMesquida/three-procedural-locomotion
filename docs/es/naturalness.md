@@ -455,6 +455,65 @@ y cada brazo va a su aire. Así que cada salto tira su propia variación (con `v
 pie ±0,08 L en el aire y ±0,04 L de lado y al caer, el tronco ±4° y cada brazo ±10° en cada clave, cada codo ±10°,
 las piernas abriéndose un ±25 % más deprisa o más despacio y, con los dos pies, un ±35 % de recogida.
 
+## Saltar desde parado
+
+`node .test-build/tests/tools/jumpDiag.js` registra un salto frame a frame (quieto, caminando, corriendo, un saltito, un
+salto largo y uno alto) y busca lo que lo hace robótico: mesetas, cambios bruscos, partes que arrancan a la vez,
+izquierda y derecha en espejo, parámetros que no cambian. Cada salto sale de su perfil (`computeJumpProfile`): el
+esfuerzo que cuesta decide la flexión, los tiempos, los brazos y el tronco. Biomecánica del salto con contramovimiento
+y del salto de longitud desde parado, como rangos:
+
+| | biomecánica | librería (saltito 0,1 m / `jump()` / largo 1,5 m / alto 0,65 m) |
+|---|---|---|
+| Rodillas abajo en la preparación | ~30° en un saltito, 90–100° en el más fuerte | 36° / 61° / 66° / 70° |
+| Brazos atrás abajo | 40–60° detrás del tronco (saltos fuertes) | 9° / 29° / 28° / 35° |
+| Brazos al despegar | por encima de la cabeza saltando alto, ~90° adelante saltando lejos | 49° / 126° / 80° / 142° |
+| Ángulo de despegue del salto de longitud desde parado | 20–30° | 25° |
+| Empuje (concéntrico) | 0,2–0,25 s en el más fuerte | 0,06 / 0,07 / 0,11 / 0,09 s |
+
+Los brazos van atrás al bajar y desde ahí se balancean adelante y arriba, solapándose con el empuje, y pasan por el
+péndulo del brazo: siguen al salto con peso y retraso (llegan arriba un poco después del despegue). Antes,
+`armForward` los escribía directo sobre la pose (0 frames de retraso), iban atrás durante toda la preparación y al
+despegar estaban en reposo. El tronco se inclina al bajar y se endereza al empujar (saltando lejos, se queda hacia
+delante). Saltando hacia delante, el cuerpo acelera al empujar, con los pies en el suelo (antes pasaba de quieto a
+~4 m/s en un frame), y cae clavado: frena con los dos pies en el suelo, sin dar pasos.
+
+En el aire todo va con el vuelo, en fracciones de él: las piernas se quedan estiradas el 3 % (el empuje no termina de
+golpe), se recogen hasta cerca de lo más alto (45 %) y desde ahí van hacia el aterrizaje, sin pausa entre las dos; los
+brazos bajan hacia delante desde el 20 %; el tronco se inclina hacia el aterrizaje en la segunda mitad (más saltando
+lejos) y la cabeza mira hacia él. Antes, los pies se recogían a los 0,15 s fuera cual fuera el vuelo y se quedaban así
+hasta 0,22 s antes de caer: hasta 16 frames con las rodillas quietas, y el tronco quieto todo el vuelo (hasta 33
+frames). Ahora las rodillas quedan quietas como mucho 5 frames en el aire y el tronco 10. Preparando el aterrizaje desde
+mitad del vuelo, el pie buscaba el suelo debajo fuera del alcance de su rayo y saltaba 0,26 m al encontrarlo: ahora
+busca tan abajo como lo que al cuerpo le queda por caer.
+
+Aterrizaje (caídas, como rangos): las rodillas empiezan a doblarse justo antes del contacto (15–30° al tocar), el pico
+crece con la velocidad de caída (~30–45° en un saltito, 70–90° cayendo 30–50 cm) y también la amortiguación
+(0,15–0,4 s); saltando hacia arriba cae con el antepié y luego el talón, saltando lejos con los talones y el tronco
+hacia delante. Librería: las rodillas tocan el suelo a 27–30° (antes, 5–6°: rectas, y se doblaban de golpe,
+40–50°/frame²), con un pico de 45° en un saltito, 72° en `jump()` y 76° en uno alto; la amortiguación dura según el
+impacto que tuvo de verdad (un saltito 0,30 s, `jump()` 0,47 s, más cayendo de un escalón, cuya altura busca con un
+rayo al pedirle el salto); desde parado cae con la punta (8°) saltando alto y con el talón (20°) saltando lejos, y
+apoya plano en un cuarto de la amortiguación; frenando un salto largo, el tronco va hacia delante 5° por cada m/s que
+frena; los brazos van hacia delante y se abren un poco, por su péndulo. Saltando hacia delante, los pies salen del
+suelo con parte de la velocidad del cuerpo y no da un paso al empujar.
+
+En movimiento (caminando o corriendo, desde 0,3 m/s), `jump()` despega de un pie, como una zancada larga: el próximo pie
+en apoyar es el de impulso, la rodilla libre sube, los brazos van contra las piernas, las piernas se abren en el aire y
+cae sobre el pie libre y sigue caminando o corriendo (igual que sobre un hueco, ver arriba, con la pierna libre
+estirándose hacia el aterrizaje durante el vuelo). Pedido con los dos pies en el aire (corriendo), espera a ese apoyo:
+antes despegaba desde el aire 4 de cada 12 veces. Conserva su velocidad y, sin intención, sube menos cuanto más rápido
+va (× 1 − 0,5 · velocidad/runSpeed): a 3 m/s, 2,2 m/s hacia arriba (0,33 m, 36°) frente a 3,1 parado.
+
+Desde parado, con los dos pies, tampoco es un espejo (con `variation`, según la `seed`, distinto en cada salto): un pie
+toca el suelo 20–50 ms después que el otro (biomecánica: 20–50 ms), cada pierna se recoge ±15 % a su manera, cada brazo
+llega ±10° y cada codo se dobla ±10° por su cuenta. Antes izquierda y derecha eran idénticas (correlación 1,00, 0,0° de
+diferencia); ahora los brazos hasta ~7° y las rodillas 9–23°. Con `variation: 0`, de nuevo en espejo.
+
+El empuje es más corto que el de una persona: aquí solo las caderas mueven el cuerpo, y subir la flexión hasta despegar
+a la velocidad del salto lleva `2 · flexión / vy`; una persona además se pone de puntillas y balancea los brazos, y empuja
+a lo largo de 0,3–0,4 m.
+
 ## Saltos de pose
 
 `tests/tools/popProbe.ts` mide la aceleración angular de cada hueso (°/frame²) en un recorrido con

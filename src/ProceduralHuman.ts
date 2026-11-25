@@ -14,6 +14,7 @@ import {
 import type { FootPhase } from './locomotion/FootTarget.ts';
 import type { GaitMode } from './locomotion/GaitController.ts';
 import type { JumpPhase } from './locomotion/JumpController.ts';
+import type { JumpIntent } from './locomotion/JumpProfile.ts';
 import { LocomotionController } from './locomotion/LocomotionController.ts';
 import { defaultMoveToConfig, type MoveToConfig, MoveToController } from './navigation/MoveToController.ts';
 import { PathPlanner } from './navigation/PathPlanner.ts';
@@ -406,9 +407,14 @@ export class ProceduralHuman {
     return this.locomotion.touch.phase(side);
   }
 
-  /** Jump. Returns false if it isn't possible right now (already in the air or preparing a jump). */
-  jump(): boolean {
-    return this.locomotion.requestJump();
+  /**
+   * Jump. Without `intent`, `jumpSpeed` up, keeping its speed; with `{ distance }` and/or `{ height }` (m), as far
+   * (from standing, a long jump) or as high as that, up to what it can (see `computeJumpProfile`). The crouch, the
+   * arms, the trunk and the timings follow from it. Returns false if it isn't possible right now (already in the air or
+   * preparing a jump).
+   */
+  jump(intent?: JumpIntent): boolean {
+    return this.locomotion.requestJump(intent);
   }
 
   /**

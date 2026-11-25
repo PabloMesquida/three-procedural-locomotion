@@ -281,24 +281,24 @@
       "es": "Gravedad (m/s²)."
     },
     "jumpSpeed": {
-      "en": "Jump: vertical speed at takeoff (m/s).",
-      "es": "Salto: velocidad vertical al despegar (m/s)."
+      "en": "Jump: vertical speed at takeoff (m/s) of the reference jump (`jump()` without an intent); the others go from 0.2 to 1.25 times its effort (see `computeJumpProfile`).",
+      "es": "Salto: velocidad vertical al despegar (m/s) del salto de referencia (`jump()` sin intención); los demás van de 0,2 a 1,25 veces su esfuerzo (ver `computeJumpProfile`)."
     },
     "jumpCrouch": {
-      "en": "Jump: how far the hips sink while preparing (m). The duration of the preparation follows from this and jumpSpeed: the hips go down from rest and up again, taking off exactly at the jump speed.",
-      "es": "Salto: cuánto se hunden las caderas al prepararse (m). La duración de la preparación se deriva de esto y de jumpSpeed: las caderas bajan desde parado y suben hasta despegar justo a la velocidad del salto."
+      "en": "Jump: how far the hips sink while preparing (m), in the reference jump: less in a smaller one, more in a bigger one. The duration of the preparation follows from this and the take-off speed: the hips go down from rest and up again, taking off exactly at that speed.",
+      "es": "Salto: cuánto se hunden las caderas al prepararse (m), en el salto de referencia: menos en uno más pequeño, más en uno más grande. La duración de la preparación se deriva de esto y de la velocidad de despegue: las caderas bajan desde parado y suben hasta despegar justo a esa velocidad."
     },
     "jumpToeOff": {
-      "en": "Jump: heel raise at the end of the preparation (pushing off with the toes, degrees).",
-      "es": "Salto: elevación de talones al final de la preparación (impulso con la punta, grados)."
+      "en": "Jump: heel raise at the end of the preparation (pushing off with the toes, degrees), in the reference jump (less in a smaller one).",
+      "es": "Salto: elevación de talones al final de la preparación (impulso con la punta, grados), en el salto de referencia (menos en uno más pequeño)."
     },
     "jumpTuck": {
-      "en": "Jump: how much the feet tuck up in the air (m).",
-      "es": "Salto: cuánto se recogen los pies en el aire (m)."
+      "en": "Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight).",
+      "es": "Salto: cuánto se recogen los pies en el aire (m), en el salto de referencia (en proporción al vuelo)."
     },
     "jumpLandingPrep": {
-      "en": "Jump: time before touching the ground in which the legs extend towards the landing (s).",
-      "es": "Salto: tiempo antes de tocar el suelo en que las piernas se extienden hacia el aterrizaje (s)."
+      "en": "Jump: time before touching the ground in which the legs extend towards the landing (s), in the reference jump (in proportion to the flight).",
+      "es": "Salto: tiempo antes de tocar el suelo en que las piernas se extienden hacia el aterrizaje (s), en el salto de referencia (en proporción al vuelo)."
     },
     "landingAbsorb": {
       "en": "Landing: hip drop for each m/s of falling speed (m per m/s).",
@@ -309,8 +309,8 @@
       "es": "Aterrizaje: hundimiento máximo de caderas (m)."
     },
     "landingTime": {
-      "en": "Landing: duration of the cushioning (s).",
-      "es": "Aterrizaje: duración de la amortiguación (s)."
+      "en": "Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands).",
+      "es": "Aterrizaje: duración de la amortiguación (s), cayendo a `jumpSpeed` (más larga cuanto más fuerte cae)."
     },
     "liftFraction": {
       "en": "Fraction of the cycle, at the end of the stance, in which the heel rises (LIFT; at most 30 % of the stance). It starts before the other foot lands, as in real walking.",
@@ -329,8 +329,8 @@
       "es": "Ángulo de la punta levantada al aterrizar de talón (grados)."
     },
     "variation": {
-      "en": "Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the swing of each arm change slightly and slowly, differently for each character (according to its `seed`); and no two jumps across a gap are the same.",
-      "es": "Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`); y no hay dos saltos sobre un hueco iguales."
+      "en": "Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the swing of each arm change slightly and slowly, differently for each character (according to its `seed`); and no two jumps are the same (and with both feet, left and right aren't a mirror).",
+      "es": "Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`); y no hay dos saltos iguales (y con los dos pies, izquierda y derecha no van en espejo)."
     },
     "standKneeBend": {
       "en": "Knee bend when standing (degrees; if the model has its knees more bent at rest, the rest bend).",

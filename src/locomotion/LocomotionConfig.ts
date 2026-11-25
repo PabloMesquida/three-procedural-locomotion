@@ -213,24 +213,34 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
 
   /** Gravity (m/s²). */
   gravity: number;
-  /** Jump: vertical speed at takeoff (m/s). */
+  /**
+   * Jump: vertical speed at takeoff (m/s) of the reference jump (`jump()` without an intent); the others go from 0.2 to
+   * 1.25 times its effort (see `computeJumpProfile`).
+   */
   jumpSpeed: number;
   /**
-   * Jump: how far the hips sink while preparing (m). The duration of the preparation follows from this and
-   * jumpSpeed: the hips go down from rest and up again, taking off exactly at the jump speed.
+   * Jump: how far the hips sink while preparing (m), in the reference jump: less in a smaller one, more in a bigger
+   * one. The duration of the preparation follows from this and the take-off speed: the hips go down from rest and up
+   * again, taking off exactly at that speed.
    */
   jumpCrouch: number;
-  /** Jump: heel raise at the end of the preparation (pushing off with the toes, degrees). */
+  /**
+   * Jump: heel raise at the end of the preparation (pushing off with the toes, degrees), in the reference jump (less in
+   * a smaller one).
+   */
   jumpToeOff: number;
-  /** Jump: how much the feet tuck up in the air (m). */
+  /** Jump: how much the feet tuck up in the air (m), in the reference jump (in proportion to the flight). */
   jumpTuck: number;
-  /** Jump: time before touching the ground in which the legs extend towards the landing (s). */
+  /**
+   * Jump: time before touching the ground in which the legs extend towards the landing (s), in the reference jump (in
+   * proportion to the flight).
+   */
   jumpLandingPrep: number;
   /** Landing: hip drop for each m/s of falling speed (m per m/s). */
   landingAbsorb: number;
   /** Landing: maximum hip drop (m). */
   maxLandingDip: number;
-  /** Landing: duration of the cushioning (s). */
+  /** Landing: duration of the cushioning (s), falling at `jumpSpeed` (longer the harder it lands). */
   landingTime: number;
   /**
    * Fraction of the cycle, at the end of the stance, in which the heel rises (LIFT; at most 30 % of the
@@ -246,7 +256,7 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   /**
    * Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the
    * swing of each arm change slightly and slowly, differently for each character (according to its `seed`); and
-   * no two jumps across a gap are the same.
+   * no two jumps are the same (and with both feet, left and right aren't a mirror).
    */
   variation: number;
   /** Knee bend when standing (degrees; if the model has its knees more bent at rest, the rest bend). */

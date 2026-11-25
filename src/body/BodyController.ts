@@ -101,6 +101,8 @@ export class BodyController {
    * e.g. when braking to turn around (set by MoveToController). 1 = the configuration.
    */
   brakeScale = 1;
+  /** At least this multiplier of the braking, whatever `brakeScale` says (e.g. landing stuck from a long jump). */
+  brakeBoost = 1;
   /**
    * Same for the acceleration (`acceleration`, and it lengthens or shortens its ramp), e.g. when coming out
    * of a turn.
@@ -550,7 +552,7 @@ export class BodyController {
    */
   private nextSpeed(speed: number, rate: number, dt: number, target = this.cappedTargetSpeed()): { speed: number; rate: number } {
     const dv = target - speed;
-    const scale = dv > 0 ? this.accelerationScale : this.brakeScale;
+    const scale = dv > 0 ? this.accelerationScale : Math.max(this.brakeScale, this.brakeBoost);
     const maxRate = (dv > 0 ? this.config.acceleration : this.config.deceleration) * scale;
     // Con más (o menos) aceleración, la rampa también es más corta (o más larga): misma forma.
     const easing = this.config.speedEasing / scale;

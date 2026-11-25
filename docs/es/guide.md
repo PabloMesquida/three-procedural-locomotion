@@ -79,7 +79,12 @@ Dos formas, que se pueden mezclar:
 - **Por una ruta**: `followPath(puntos, { run })` (con `run`, trotando) sigue los puntos que le das (por ejemplo, de tu navmesh) con
   curvas y se para en el último; no los comprueba.
 
-Además: `targetCrouch` (0 = de pie, 1 = agachado), `jump()` (devuelve `false` si ya está saltando).
+Además: `targetCrouch` (0 = de pie, 1 = agachado), `jump()` (devuelve `false` si ya está saltando). `jump()` solo salta
+`jumpSpeed` hacia arriba (en movimiento, menos cuanto más rápido va: un salto largo y bajo de un pie, desde el próximo
+apoyo, cayendo sobre el otro y siguiendo); `jump({ height })` y `jump({ distance })` (m) saltan así de alto o así de
+lejos (desde parado, un salto de longitud, cayendo clavado), hasta lo que el personaje puede. Desde parado, la flexión, los brazos (atrás y
+luego adelante y arriba, por su propio péndulo), el tronco y los tiempos salen de eso: un saltito casi no se agacha, un
+salto alto lleva los brazos por encima de la cabeza.
 
 **Rumbo**: `0` = la orientación del modelo al crearlo; positivo = a la izquierda (visto desde arriba, sentido
 antihorario). Para girar hacia una dirección del mundo `dir` (horizontal, normalizada):
@@ -289,9 +294,10 @@ Un detector propio (física, BVH…) implementa `SurfaceDetector` (`cast(origen,
 
 Una persona nunca da dos pasos iguales. Con `variation` (1 por defecto; 0 = todos los pasos idénticos)
 la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio,
-con un ruido suave que depende de la semilla (`seed`) del personaje. Cada salto sobre un hueco también es
-un poco distinto: dónde va cada pie en el aire y dónde cae, el tronco, cada brazo y cada codo, lo rápido que se
-abren las piernas. Es determinista: la misma semilla repite exactamente el mismo movimiento (útil para tests o
+con un ruido suave que depende de la semilla (`seed`) del personaje. Cada salto también es un poco distinto:
+sobre un hueco o en carrera, dónde va cada pie en el aire y dónde cae, el tronco, cada brazo y cada codo, lo rápido
+que se abren las piernas; desde parado, cada brazo, codo y pierna a su manera y un pie que cae 20–50 ms después que el
+otro. Es determinista: la misma semilla repite exactamente el mismo movimiento (útil para tests o
 repeticiones). Para una multitud, da a cada personaje su propia semilla.
 
 ## Tamaño del personaje
@@ -617,6 +623,12 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
 - `human.locomotion` y `human.navigation`: controladores internos (gait, pies, pelvis, cuerpo, point and
   click). Útiles para depurar; su forma puede cambiar entre versiones.
 - Se exportan también los bloques (`TwoBoneIK`, `LegIK`, `FootPlacement`, `mapHumanRig`, `inspectSkeleton`…).
+- `computeJumpProfile(config, { speed, intent, rise })`: el perfil del que sale un salto. Con la velocidad que lleva,
+  lo que se le pide (`intent`: `distance`, `height`) y la altura del aterrizaje (`rise`), su física (velocidad de
+  despegue, vuelo, impacto, `effort`, `reachable`) y su pose y sus tiempos (flexión, preparación, brazos, inclinación,
+  tuck, aterrizaje). `jumpSpeed`, `jumpCrouch`, `jumpTuck`, `jumpLandingPrep`, `jumpToeOff` y `landingTime` son los del
+  salto de referencia (`jumpSpeed` hacia arriba, `effort` 1); `jump()` hace ese, y `jump(intent)` el de su perfil. Puro:
+  no cambia nada.
 - `three-procedural-locomotion/debug`: ayudas visuales. Cada una tiene un `group` (o, `GaitDiagram`, un `element`
   HTML) que añadir, y un `update()` que llamar después de `human.update(dt)`:
 

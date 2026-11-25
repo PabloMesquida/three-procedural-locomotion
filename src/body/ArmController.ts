@@ -74,6 +74,13 @@ export interface ArmPose {
   elbowSwingBend: number;
   /** Adelanto fijo de ambos brazos (grados), p. ej. al agacharse. */
   armForward?: number;
+  /**
+   * Adelanto de ambos brazos al que van por su péndulo (grados; p. ej. saltando): lo siguen con su peso y su retraso
+   * (armSwingFrequency, armSwingDamping), no de golpe como `armForward`.
+   */
+  armReach?: number;
+  /** Además, de cada brazo (grados, también por su péndulo). */
+  armReachSide?: { left: number; right: number };
   /** Además, de cada brazo (grados; p. ej. saltando, cada uno a su manera). */
   armForwardSide?: { left: number; right: number };
   /** Flexión de codo de más de cada brazo (grados). */
@@ -149,6 +156,8 @@ interface ArmRuntime {
   /** Fingers (if the rig has them) and their absolute angle in the swing plane (rad). */
   fingers?: HandFingers;
   fingerSwing: Spring;
+  /** Forward reach of the arm through its pendulum (rad; see ArmPose.armReach). */
+  reach: Spring;
 }
 
 /** Joint limits (rad): the elbow doesn't hyperextend and the wrist doesn't bend too far. */
@@ -239,6 +248,7 @@ export class ArmController {
         restHand: bones.hand.quaternion.clone(),
         fingers: bones.fingers ? new HandFingers(bones.hand, bones.fingers, sign) : undefined,
         fingerSwing: createSpring(),
+        reach: createSpring(),
       });
     };
     add(rig.leftArm, -1);
@@ -333,7 +343,10 @@ export class ArmController {
       const curl = c.fingerCurl ?? cfg.fingerCurl;
       arm.fingers?.pose(curl + (TOUCH_FINGER_CURL - curl) * touch);
       const side = arm.sign > 0 ? 'right' : 'left';
-      const forward = ((c.armForward ?? 0) + (c.armForwardSide?.[side] ?? 0)) * DEG;
+      arm.reach.target = ((c.armReach ?? 0) + (c.armReachSide?.[side] ?? 0)) * DEG;
+      if (dynamic) stepSpring(arm.reach, 2 * Math.PI * cfg.armSwingFrequency, cfg.armSwingDamping, motion.dt!);
+      else snapSpring(arm.reach);
+      const forward = ((c.armForward ?? 0) + (c.armForwardSide?.[side] ?? 0)) * DEG + arm.reach.value;
       const armAbduction = c.armAbduction + (c.abductionTilt ?? 0) * arm.sign;
 
       // 0. Hombro: en su sitio (shoulderForward), sigue la intención del balanceo (más rápido que el brazo:

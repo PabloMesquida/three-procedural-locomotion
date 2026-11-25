@@ -129,14 +129,14 @@ opcionales y se validan (nombre, número finito y rango).
 | Parámetro | Por defecto | Descripción |
 |---|---|---|
 | `gravity` | 9.81 | Gravedad (m/s²). |
-| `jumpSpeed` | 3.2 | Salto: velocidad vertical al despegar (m/s). |
-| `jumpCrouch` ↔ | 0.12 | Salto: cuánto se hunden las caderas al prepararse (m). La duración de la preparación se deriva de esto y de jumpSpeed: las caderas bajan desde parado y suben hasta despegar justo a la velocidad del salto. |
-| `jumpToeOff` | 30 | Salto: elevación de talones al final de la preparación (impulso con la punta, grados). |
-| `jumpTuck` ↔ | 0.22 | Salto: cuánto se recogen los pies en el aire (m). |
-| `jumpLandingPrep` | 0.22 | Salto: tiempo antes de tocar el suelo en que las piernas se extienden hacia el aterrizaje (s). |
+| `jumpSpeed` | 3.2 | Salto: velocidad vertical al despegar (m/s) del salto de referencia (`jump()` sin intención); los demás van de 0,2 a 1,25 veces su esfuerzo (ver `computeJumpProfile`). |
+| `jumpCrouch` ↔ | 0.12 | Salto: cuánto se hunden las caderas al prepararse (m), en el salto de referencia: menos en uno más pequeño, más en uno más grande. La duración de la preparación se deriva de esto y de la velocidad de despegue: las caderas bajan desde parado y suben hasta despegar justo a esa velocidad. |
+| `jumpToeOff` | 30 | Salto: elevación de talones al final de la preparación (impulso con la punta, grados), en el salto de referencia (menos en uno más pequeño). |
+| `jumpTuck` ↔ | 0.22 | Salto: cuánto se recogen los pies en el aire (m), en el salto de referencia (en proporción al vuelo). |
+| `jumpLandingPrep` | 0.22 | Salto: tiempo antes de tocar el suelo en que las piernas se extienden hacia el aterrizaje (s), en el salto de referencia (en proporción al vuelo). |
 | `landingAbsorb` | 0.05 | Aterrizaje: hundimiento de caderas por cada m/s de velocidad de caída (m por m/s). |
 | `maxLandingDip` ↔ | 0.25 | Aterrizaje: hundimiento máximo de caderas (m). |
-| `landingTime` | 0.45 | Aterrizaje: duración de la amortiguación (s). |
+| `landingTime` | 0.45 | Aterrizaje: duración de la amortiguación (s), cayendo a `jumpSpeed` (más larga cuanto más fuerte cae). |
 
 ## Pararse
 
@@ -235,7 +235,7 @@ opcionales y se validan (nombre, número finito y rango).
 
 | Parámetro | Por defecto | Descripción |
 |---|---|---|
-| `variation` | 1 | Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`); y no hay dos saltos sobre un hueco iguales. |
+| `variation` | 1 | Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`); y no hay dos saltos iguales (y con los dos pies, izquierda y derecha no van en espejo). |
 
 ## Point and click (moveTo)
 
