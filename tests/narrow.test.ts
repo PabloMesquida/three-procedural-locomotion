@@ -567,3 +567,50 @@ describe('caminos angostos', () => {
     assert.ok(maxOff < 0.04, `un pie apoyado a ${(maxOff * 100).toFixed(1)} cm del medio`);
   });
 });
+
+// Antes, un tramo a lo largo del muro que acababa fuera de él (en el pedestal o en la plataforma, a un lado de su eje)
+// iba en diagonal: al dejar el muro, por su borde, y en el Laboratorio se le caía una pierna.
+describe('caminos angostos: salir de ellos', () => {
+  const wallWorld = () => worldOn((terrain) => {
+    block(terrain, 3.5, 1.02, 6, 4.75, 1);
+    block(terrain, 0.25, 1.02, 3.6, 4.75, -3.8);
+    block(terrain, 1.4, 1.02, 1.4, 4.75, -6.3);
+  }, 0);
+  /** Lo más lejos del eje del muro (x = 4,75) que pasa la ruta mientras va sobre él (z de −2 a −5,6). */
+  const offAxis = (from: Vector3, route: readonly Vector3[]): number => {
+    let worst = 0;
+    let a = from;
+    for (const b of route) {
+      for (let n = 0; n <= 40; n++) {
+        const x = a.x + ((b.x - a.x) * n) / 40;
+        const z = a.z + ((b.z - a.z) * n) / 40;
+        if (z < -2.05 && z > -5.55) worst = Math.max(worst, Math.abs(x - 4.75));
+      }
+      a = b;
+    }
+    return worst;
+  };
+
+  for (const [from, to] of [
+    [[6.2, 1.02, 1], [5.3, 1.02, -6.3]],
+    [[6.2, 1.02, 1], [4.2, 1.02, -5.8]],
+    [[4.75, 1.02, -5], [6.3, 1.02, -1.2]],
+    [[4.75, 1.02, -5], [3.2, 1.02, -1.4]],
+  ] as const) {
+    it(`de (${from[0]}, ${from[2]}) a (${to[0]}, ${to[2]}), a un lado del eje: la ruta sigue el medio del muro hasta dejarlo`, () => {
+      const world = wallWorld();
+      const { human } = world;
+      world.model.position.set(from[0], from[1], from[2]);
+      world.model.updateMatrixWorld(true);
+      human.reset();
+      const start = human.position.clone();
+      const target = new Vector3(to[0], to[1], to[2]);
+      human.moveTo(target);
+      const off = offAxis(start, human.movePath ?? []);
+      assert.ok(off < 0.03, `la ruta pasa a ${(off * 100).toFixed(1)} cm del medio del muro`);
+      simulate(world, 16, []);
+      assert.ok(human.position.distanceTo(target) < 0.15, `no llegó: ${human.position.toArray().map((v) => v.toFixed(2))}`);
+      assert.ok(human.position.y > 1, 'se cayó del muro');
+    });
+  }
+});

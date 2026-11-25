@@ -80,6 +80,14 @@ const NARROW_SIDE_COS = 0.5;
  * it (× stepLength): the character gets on straight. Less if there isn't room.
  */
 const NARROW_APPROACH = 1;
+/**
+ * Getting off a narrow path at an angle, the route first goes on along it to a point this far past where it leaves
+ * its cells (× stepLength; less if the next point is closer): the character gets off straight. Before, the stretch went
+ * from the middle of the path straight to the next point, across it: off the middle, by the edge (with a foot off it).
+ */
+const NARROW_DEPART = 0.5;
+/** Getting off a narrow path, a stretch this close to its middle where it leaves it (m) needs no point in line. */
+const NARROW_DEPART_IN_LINE = 0.03;
 /** A route already in line with the narrow path (closer than this to its line, × stepLength) needs no approach. */
 const NARROW_IN_LINE = 0.15;
 /** A stretch of the route within this angle of a narrow path (cosine; 30°) comes in line with it. */
@@ -515,6 +523,7 @@ export class PathPlanner {
     this.round(start.x, start.z, start0.height, hard + ROUND_MARGIN * config.stepLength, out);
     this.markNarrow(start, out, narrow);
     this.approachNarrow(start, out, narrow);
+    this.departNarrow(start, out, narrow);
     this.centerNarrow(out, narrow);
     this.alongWall(out);
     this.approachLedge(start, out);
@@ -639,6 +648,67 @@ export class PathPlanner {
       const move = (inside + outside) / 2 - LEDGE_LINE * config.stepLength;
       p.x += ax * move;
       p.z += az * move;
+    }
+  }
+
+  /**
+   * Where the route gets off a narrow path at an angle (a stretch along it to a point off its cells, and the next one
+   * not along it), it adds a point in line with the path past where it leaves it (NARROW_DEPART), if it can walk there
+   * and from there on.
+   */
+  private departNarrow(start: Vector3, points: Vector3[], narrow: boolean[]): void {
+    const s = this.size;
+    const step = this.config().stepLength;
+    for (let k = 0; k < points.length; k++) {
+      if (!narrow[k] || (k + 1 < points.length && narrow[k + 1])) continue;
+      const a = k === 0 ? start : points[k - 1];
+      const b = points[k];
+      // Acaba en el camino (el destino está en él): nada.
+      if (this.isNarrow(Math.round((b.x - this.x0) / s), Math.round((b.z - this.z0) / s))) continue;
+      // Por donde lo deja: la última celda del camino en el tramo.
+      const length = Math.hypot(b.x - a.x, b.z - a.z);
+      const samples = Math.max(Math.ceil(length / (s / 2)), 1);
+      let found = false;
+      let ei = 0;
+      let ej = 0;
+      for (let n = samples; n >= 0 && !found; n--) {
+        ei = Math.round((a.x + ((b.x - a.x) * n) / samples - this.x0) / s);
+        ej = Math.round((a.z + ((b.z - a.z) * n) / samples - this.z0) / s);
+        this.cell(ei, ej, b.y);
+        found = this.isNarrow(ei, ej);
+      }
+      if (!found) continue;
+      const exit = this.cell(ei, ej, b.y);
+      const [di, dj] = ACROSS[exit.across!];
+      const middle = this.narrowMiddle(this.x0 + ei * s, this.z0 + ej * s, ei, ej, new Vector3());
+      // A lo largo del camino, hacia `b`.
+      let ux = -dj;
+      let uz = di;
+      const u = Math.hypot(ux, uz);
+      ux /= u;
+      uz /= u;
+      const along = (b.x - middle.x) * ux + (b.z - middle.z) * uz;
+      if (along < 0) {
+        ux = -ux;
+        uz = -uz;
+      }
+      const ahead = Math.abs(along);
+      // Lo que se aparta el tramo del medio del camino donde lo deja.
+      const off = Math.abs((middle.x - a.x) * (b.z - a.z) - (middle.z - a.z) * (b.x - a.x)) / Math.max(length, 1e-6);
+      if (off < NARROW_DEPART_IN_LINE || ahead < 1e-3) continue;
+      for (const out of [NARROW_DEPART * step, (NARROW_DEPART * step) / 2]) {
+        const d = Math.min(out, ahead);
+        const px = middle.x + ux * d;
+        const pz = middle.z + uz * d;
+        const pc = this.cell(Math.round((px - this.x0) / s), Math.round((pz - this.z0) / s), b.y);
+        if (!Number.isFinite(pc.height) || Math.abs(pc.height - exit.height) >= this.narrowDrop()) continue;
+        if (!this.lineClear(a.x, a.z, a.y, px, pz, 0, false) || !this.lineClear(px, pz, pc.height, b.x, b.z, 0, false)) continue;
+        points.splice(k, 0, new Vector3(px, pc.height, pz));
+        narrow.splice(k, 0, true);
+        narrow[k + 1] = false;
+        k++;
+        break;
+      }
     }
   }
 

@@ -534,7 +534,9 @@ en el punto exacto del destino; o por su extremo, si por ahí es más corto. A u
 solo por su extremo, en línea con él: si llega en ángulo, la ruta pasa antes por un punto delante del extremo. De
 camino frena hasta `narrowMaxSpeed`, apunta a
 un punto más cercano de la ruta y se corrige de lado hacia su línea, así que entra recto y por el medio aunque
-acabe de dar la vuelta.
+acabe de dar la vuelta. Baja igual: si sigue hacia un punto a un lado de su extremo (en el pedestal, de vuelta en la
+plataforma), la ruta va por su medio hasta un poco pasado el extremo y gira ahí, en vez de cruzarlo en diagonal por su
+borde.
 
 ### Cornisas
 

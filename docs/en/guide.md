@@ -526,7 +526,9 @@ beam it can step onto) it crosses over. If the destination is on a low one, it g
 destination itself; or at its end, if that way is shorter. On a higher one (the top of a wall) it gets on only at
 its end, in line with it: if it comes at an angle, the route first goes to a point before the end. On the way there it slows down to
 `narrowMaxSpeed`, heads for a closer point on the route and steps sideways towards its line, so it gets on
-straight and along the middle even if it had to turn round just before.
+straight and along the middle even if it had to turn round just before. It gets off the same way: going on to a
+point at a side of its end (on the pedestal, back on the platform), the route follows its middle to a little past
+the end and turns there, instead of crossing it at an angle by its edge.
 
 ### Ledges
 
