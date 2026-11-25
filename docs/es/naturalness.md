@@ -505,6 +505,10 @@ estirándose hacia el aterrizaje durante el vuelo). Pedido con los dos pies en e
 antes despegaba desde el aire 4 de cada 12 veces. Conserva su velocidad y, sin intención, sube menos cuanto más rápido
 va (× 1 − 0,5 · velocidad/runSpeed): a 3 m/s, 2,2 m/s hacia arriba (0,33 m, 36°) frente a 3,1 parado.
 
+Llevando los brazos por encima de la cabeza, la bisagra del codo gira con el brazo (antes era antebrazo × adelante,
+que con el brazo hacia delante se anulaba y cambiaba de signo: la mano iba de ~28 a ~9 cm del centro, cruzando el pecho,
+y volvía, sacudiéndose 15–30°/frame²; ahora se queda a ~27 cm y por debajo de 5°/frame²).
+
 Desde parado, con los dos pies, tampoco es un espejo (con `variation`, según la `seed`, distinto en cada salto): un pie
 toca el suelo 20–50 ms después que el otro (biomecánica: 20–50 ms), cada pierna se recoge ±15 % a su manera, cada brazo
 llega ±10° y cada codo se dobla ±10° por su cuenta. Antes izquierda y derecha eran idénticas (correlación 1,00, 0,0° de

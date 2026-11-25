@@ -367,6 +367,35 @@ describe('variación y asimetría', () => {
 });
 
 describe('saltar desde parado', () => {
+  it('con los brazos por encima de la cabeza, las manos no cruzan por delante del pecho ni se sacuden', () => {
+    const world = createWorld();
+    const { human } = world;
+    const arm = human.rig.rightArm!;
+    const lateral: number[] = [];
+    const turns: number[] = [];
+    let previous: Quaternion | null = null;
+    let rate: Quaternion | null = null;
+    simulate(world, 2, [[0.5, (h) => assert.ok(h.jump({ height: 0.65 }))]], {
+      onFrame: () => {
+        if (!human.airborne) return;
+        const m = humanLandmarks(human);
+        lateral.push(Math.abs(m.wrist.right.x - m.pelvis.x));
+        const q = arm.hand.getWorldQuaternion(new Quaternion());
+        if (previous) {
+          const w = previous.clone().invert().premultiply(q);
+          if (rate) turns.push(w.angleTo(rate) / DEG);
+          rate = w;
+        }
+        previous = q;
+      },
+    });
+    // Antes, al pasar el brazo por la horizontal la bisagra del codo cambiaba de signo: la mano iba de ~28 a ~9 cm
+    // del centro y volvía (15–30°/frame² de sacudida).
+    assert.ok(lateral.length > 20, `${lateral.length} frames en el aire`);
+    assert.ok(Math.min(...lateral) > 0.7 * lateral[0], `la mano se acercó al centro: ${(Math.min(...lateral) * 100).toFixed(1)} cm (al despegar, ${(lateral[0] * 100).toFixed(1)})`);
+    assert.ok(Math.max(...turns) < 8, `la mano se sacudió ${Math.max(...turns).toFixed(1)}°/frame²`);
+  });
+
   it('más alto: más flexión de rodillas al prepararse y los brazos más arriba al despegar', () => {
     const measure = (height?: number) => {
       const { frames, liftoff } = standingJump(height === undefined ? undefined : { height });

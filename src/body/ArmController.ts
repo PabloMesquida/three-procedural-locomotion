@@ -226,6 +226,7 @@ export class ArmController {
   private readonly side = new Vector3();
   private readonly right = new Vector3();
   private readonly axis = new Vector3();
+  private readonly lateral = new Vector3();
   private readonly q = new Quaternion();
   private readonly qWorld = new Quaternion();
 
@@ -386,9 +387,12 @@ export class ArmController {
         .addScaledVector(this.side, Math.sin(abduction));
       this.q.setFromUnitVectors(this.dir, this.target);
       this.rotateWorld(upperArm, this.q);
+      // Bisagra del codo: la del brazo colgando (perpendicular a él y hacia delante), que gira con él.
+      this.lateral.crossVectors(this.target, F).normalize();
 
       // …y balanceo hacia delante/atrás sobre el eje lateral (ángulo positivo = hacia delante).
       this.rotateWorld(upperArm, this.q.setFromAxisAngle(R, swing + forward));
+      this.lateral.applyAxisAngle(R, swing + forward);
 
       // …y rotación interna sobre su propio eje (corriendo): al doblar el codo, el antebrazo va hacia la línea media
       // (en el mocap de trote la muñeca se acerca a ella al ir adelante). Toda con el brazo adelante; atrás, una parte.
@@ -418,10 +422,12 @@ export class ArmController {
       this.boneDirection(upperArm, forearm, this.target);
       this.boneDirection(forearm, hand, this.dir);
       this.rotateWorld(forearm, this.q.setFromUnitVectors(this.dir, this.target));
-      // Eje de bisagra del codo: perpendicular al plano del balanceo, calculado con el antebrazo aún
-      // alineado con el brazo (que cuelga), así que está bien definido. Lo usan también muñeca y dedos.
+      // Eje de bisagra del codo (lo usan también muñeca y dedos).
       this.boneDirection(forearm, hand, this.dir);
-      this.axis.crossVectors(this.dir, F);
+      // La del brazo colgando girada con el balanceo (ver arriba). Antes, antebrazo × adelante: con el brazo hacia delante
+      // (saltando, a 90° o más) se anulaba y cambiaba de signo, el codo se doblaba de golpe hacia dentro y la mano cruzaba
+      // delante del pecho.
+      this.axis.copy(this.lateral);
       const hinge = this.axis.lengthSq() > 1e-8;
       if (hinge) {
         // Con la rotación interna, la bisagra gira con el brazo (sobre su eje, que es el del antebrazo aún recto).

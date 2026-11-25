@@ -506,6 +506,10 @@ extending towards the landing through the flight). Asked for while both feet are
 that support: before, it took off from the air 4 times out of 12. It keeps its speed and, without an intent, goes up
 less the faster it goes (× 1 − 0.5 · speed/runSpeed): at 3 m/s, 2.2 m/s up (0.33 m, 36°) against 3.1 standing still.
 
+Taking the arms above the head, the elbow's hinge turns with the arm (before it was forearm × forward, which vanished
+and changed sign with the arm forward: the hand went from ~28 to ~9 cm from the middle, across the chest, and back,
+shaking 15–30°/frame²; now it stays at ~27 cm and under 5°/frame²).
+
 From standing, with both feet, it isn't a mirror either (with `variation`, from the `seed`, different in each jump):
 one foot touches the ground 20–50 ms after the other (biomechanics: 20–50 ms), each leg tucks ±15 % on its own, each
 arm reaches ±10° and each elbow bends ±10° on its own. Before, left and right were identical (correlation 1.00, 0.0°
