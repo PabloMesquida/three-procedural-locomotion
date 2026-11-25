@@ -4,14 +4,15 @@ import type { Side } from '../../src/index.ts';
 import { createWorld, simulate } from '../helpers/sim.ts';
 
 // La pasarela con huecos del Laboratorio (human/lab/terrains.ts, gapWalkway): sube la escalera y va hacia −Z, cruzando
-// los huecos de 20, 35 y 50 cm; en el de 65 cm se para. node walkwayLab.js [v | moveTo z]
+// los huecos de 20, 30 y 40 cm de un paso y saltando los de 60 y 80 cm. SCALE=0.88: del tamaño de los modelos del
+// Laboratorio (bodyScale 0,88–0,91: maxGapJump 0,88–0,91 m). node walkwayLab.js [v | moveTo z]
 const RISE = 0.17;
 const RUN = 0.28;
 const STEPS = 6;
 const X = 10;
 const WIDTH = 1.6;
 const Z0 = 1.7;
-const SIZES = [0.2, 0.35, 0.5, 0.65];
+const SIZES = [0.2, 0.3, 0.4, 0.6, 0.8];
 const STRETCH = 1.6;
 function box(parent: Object3D, w: number, h: number, d: number, x: number, y: number, z: number): void {
   const mesh = new Mesh(new BoxGeometry(w, h, d), new MeshBasicMaterial());
@@ -20,6 +21,7 @@ function box(parent: Object3D, w: number, h: number, d: number, x: number, y: nu
 }
 const edges: [number, number][] = [];
 const world = createWorld({
+  modelScale: Number(process.env.SCALE ?? 1),
   buildTerrain: (g) => {
     for (let k = 1; k < STEPS; k++) box(g, WIDTH, RISE * k, RUN, X, 0, Z0 - RUN * (k - 0.5));
     let z = Z0 - RUN * (STEPS - 1);
@@ -34,7 +36,8 @@ const world = createWorld({
   },
 });
 const { human } = world;
-world.model.position.set(X, 0, Z0 + 1.5);
+const [fromX, fromZ] = (process.env.FROM ?? `${X},${Z0 + 1.5}`).split(",").map(Number);
+world.model.position.set(fromX, 0, fromZ);
 world.model.updateMatrixWorld(true);
 world.human.reset();
 const mode = process.argv[2] ?? '1.4';
@@ -44,7 +47,7 @@ let longest = 0;
 let lowest = Infinity;
 let inGap = 0;
 const p = (o: Object3D): Vector3 => o.getWorldPosition(new Vector3());
-simulate(world, 20, [[0, order]], {
+simulate(world, Number(process.env.TIME ?? 20), [[0, order]], {
   onFrame: () => {
     const s = human.locomotion.body.state;
     if (process.env.TRACE && Math.round(s.position.z * 20) % 5 === 0) console.log(`  z ${s.position.z.toFixed(2)} y ${s.position.y.toFixed(2)} x ${s.position.x.toFixed(2)} ruta ${human.movePath?.map((q) => `(${q.x.toFixed(1)},${q.y.toFixed(1)},${q.z.toFixed(1)})`).join(" ") ?? "-"}`);

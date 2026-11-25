@@ -40,6 +40,7 @@ Las capturas no se versionan (licencia de terceros). Se descargan a `recursos/mo
 | 69 | `69.asf`, `69_06.amc`, `69_07.amc`, `69_08.amc`, `69_13.amc` | caminar y dar la vuelta (repetido); girar en el sitio |
 | 144, 13, 14, 81, 22 | `144.asf`, `144_22.amc`–`144_25.amc`, `13.asf`, `13_10.amc`, `13_12.amc`, `14.asf`, `14_07.amc`–`14_09.amc`, `81.asf`, `81_10.amc`, `22.asf`, `22_18.amc` | alcanzar a los lados y arriba; empujar algo alto; apoyar las manos (para tocar al pasar) |
 | 83, 111, 113, 114, 143 | `83.asf`, `83_27.amc`–`83_32.amc`, `83_34.amc`, `83_35.amc`, `111.asf`, `111_27.amc`, `113.asf`, `113_19.amc`, `113_20.amc`, `114.asf`, `114_07.amc`–`114_09.amc`, `143.asf`, `143_17.amc` | escaleras: subir (83); subir y bajar (el resto; 111, 113 y 114 son mujeres embarazadas o recién paridas) |
+| 49, 127, 75, 16, 13, 83 | `49.asf`, `49_04.amc`, `49_05.amc`, `127.asf`, `127_25.amc`–`127_28.amc`, `75.asf` (60 fps), `75_01.amc`–`75_03.amc`, `16_05.amc`, `16_06.amc`, `16_09.amc`, `16_10.amc`, `13_11.amc`, `13_13.amc`, `83_42.amc`, `83_43.amc` | saltos: de un pie a otro corriendo (49); saltar un obstáculo corriendo (127, 75); hacia delante con los dos pies (16, 13, 83) |
 
 ```bash
 npm run mocap                  # caminar normal: mocap frente a librería, curva a curva
@@ -407,6 +408,52 @@ Lo que sigue distinto: en escaleras la cabeza se ladea menos que el sujeto 83 (0
 también (1,1° frente a 1,7°); subiendo, los hombros giran contra las caderas la mitad (los brazos se balancean
 menos); en llano el tronco cabecea menos con los pasos (±0,46° frente a ±0,97°) y se balancea más de lado (±1,15°
 frente a ±0,79°).
+
+## Saltar huecos
+
+`node .test-build/tests/tools/jumpReport.js [tomas]` (con `LIB=ancho:velocidad,…` para la librería sobre un hueco)
+busca el vuelo más largo de cada toma y mide el despegue, lo más alto y la caída: muslo y rodilla de cada pierna,
+tobillos respecto a la pelvis, tronco, brazos y pelvis (en largos de pierna, L).
+
+- **De un pie a otro, corriendo (49_04, 49_05, a ~3 m/s)**: vuelo de 0,48–0,53 s y 1,8–1,9 L, la pelvis 0,45–0,55 L
+  más arriba. Al despegar el muslo de delante está a 78–84° (la rodilla sube al empujar) y el tobillo que empuja,
+  0,15–0,18 L detrás de la pelvis. En lo más alto las piernas se abren mucho: el tobillo de delante 0,73–0,78 L por
+  delante (muslo a 70°, rodilla a ~38°) y el de atrás 0,79–0,86 L por detrás (muslo a −40°). El tronco pasa de 19° a 7°
+  y a −4° al caer; los brazos van adelante y arriba y luego atrás. Cae sobre el pie de delante 0–0,2 L por delante de
+  la pelvis, con la rodilla a 38–46°. (Son saltos de danza: la librería abre las piernas algo menos, y en proporción a
+  lo largo del salto.) Las tomas de 127, sobre un obstáculo, caen con el mismo pie y las dos piernas recogidas: no es
+  un hueco.
+- **Hacia delante con los dos pies, desde parado (16_05–16_10, 13_11, 13_13, 83_42)**: no hay ninguno de un pie sin
+  carrera. Vuelo de 0,38–0,45 s, la pelvis 0,30–0,38 L más arriba; las rodillas a 32–53° en el aire (sin recoger);
+  cae con los dos pies 0,24–0,31 L por delante de la pelvis, con las rodillas a 61–83° 0,15 s después.
+
+| | CMU | librería |
+|---|---|---|
+| Corriendo, muslo de delante al despegar | 78–84° | 81–92° |
+| Corriendo, tobillos en lo más alto (delante / atrás) | +0,73–0,78 / −0,79–0,86 L | +0,69 / −0,76 L (3 m/s, 0,9 m) |
+| Corriendo, pie de delante al caer | 0–0,2 L por delante, rodilla 38–46° | 0,1–0,14 L, rodilla 17–51° |
+| Corriendo, brazos en lo más alto (lado de la pierna de delante / el otro) | 62 / 119°, −60 / 53° | −52 / 51° (1,4 m/s), −64 / 42° (3 m/s) |
+| Corriendo, codos (despegue / arriba / caída) | 66–88 / 31–39 / 22–34° | 58–88 / 67–78 / 61–70° |
+| Corriendo, tobillos en lo más alto (delante / atrás; − = en punta) | −23 a −28 / −30 a −44° | −25 / −34° |
+| Parado, vuelo | 0,38–0,45 s, pelvis +0,30–0,38 L | 0,40–0,44 s, +0,30–0,36 L |
+| Parado, rodillas en el aire | 32–53° | 51° |
+
+Antes saltaba siempre con los dos pies juntos, las piernas la mitad de abiertas, los pies en poses fijas cerca del
+suelo en vez de respecto a la pelvis, el tronco fijo y los brazos quietos: rígido. Después los brazos iban juntos hacia
+delante (no contra las piernas, como en CMU) y el pie de atrás conservaba la orientación del despegue: con la tibia
+girada hacia atrás, el tobillo quedaba doblado 40–70° hacia arriba. Y el brazo saltaba ~45° en un frame al despegar y
+al caer: el codo y la mano, que lo siguen con retraso, daban latigazos (`tests/tools/leapProbe.ts` lo mide, frame a
+frame). Corriendo deprisa sobre un hueco estrecho (un vuelo de un cuarto de segundo, casi una zancada larga) el brazo
+subía y bajaba 160° en él. Y con los brazos de CMU 49 (saltos de danza: arriba, los codos abiertos), cruzando un hueco
+parecía que iba a agarrar algo, con la mano doblada hacia atrás. Así que los brazos no son los de CMU: los de una
+zancada larga de carrera, el contrario a la pierna de delante adelante y el otro atrás, los codos doblados (65–75°), y
+el antebrazo y la mano siguiendo al brazo tres veces más deprisa (`limbStiffness`). Y todo eso en un vuelo de 0,6 s o
+más; en uno de 0,3 s o menos, los de correr.
+
+Las dos tomas de 49 no son el mismo salto: los tobillos difieren ~0,05 L en lo más alto, los brazos decenas de grados,
+y cada brazo va a su aire. Así que cada salto tira su propia variación (con `variation` 1; según la `seed`): cada
+pie ±0,08 L en el aire y ±0,04 L de lado y al caer, el tronco ±4° y cada brazo ±10° en cada clave, cada codo ±10°,
+las piernas abriéndose un ±25 % más deprisa o más despacio y, con los dos pies, un ±35 % de recogida.
 
 ## Saltos de pose
 

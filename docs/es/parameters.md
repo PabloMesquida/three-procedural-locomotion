@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-153 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+154 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -235,7 +235,7 @@ opcionales y se validan (nombre, número finito y rango).
 
 | Parámetro | Por defecto | Descripción |
 |---|---|---|
-| `variation` | 1 | Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`). |
+| `variation` | 1 | Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`); y no hay dos saltos sobre un hueco iguales. |
 
 ## Point and click (moveTo)
 
@@ -255,6 +255,7 @@ opcionales y se validan (nombre, número finito y rango).
 | `maxStepUp` ↔ | 0.35 | Escalón más alto que sube (m): una contrahuella más alta es una pared, y el personaje se para delante. |
 | `maxStepDown` ↔ | 0.35 | Escalón más hondo que baja (m): de un desnivel más hondo no baja, se para en el borde. |
 | `maxGapStep` ↔ | 0.5 | Hueco más ancho que cruza de un paso (m; 0 = ninguno): un desnivel más hondo que `maxStepDown` con suelo que puede pisar otra vez del otro lado, a no más de esto en la dirección en que va. No se para en él: si hace falta, apoya el pie justo antes del borde y lo cruza con un paso largo. En uno más ancho se para en el borde, como ante un desnivel. |
+| `maxGapJump` ↔ | 1 | Hueco más ancho que cruza de un salto (m; 0 = ninguno): uno más ancho que `maxGapStep` y no más que esto en la dirección en que va. Caminando o corriendo, sin pararse, de un pie a otro (desde el pie de apoyo más cercano al borde, cayendo sobre el otro); parado en su borde, con los dos pies. En uno más ancho se para en el borde. |
 | `groundProbeHeight` ↔ | 1.5 | Altura sobre la raíz desde la que se busca el suelo bajo el cuerpo (m). Un bloque de suelo más alto sigue siendo una pared (ver `GroundDetector.castDown`). |
 | `groundProbeDepth` ↔ | 2.5 | Profundidad bajo la raíz hasta la que se busca el suelo al caminar (m). |
 | `footProbeHeight` ↔ | 0.5 | Altura sobre el tobillo deseado desde la que se busca el suelo bajo cada pie (m). |

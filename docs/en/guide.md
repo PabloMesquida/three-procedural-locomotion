@@ -67,8 +67,8 @@ Two ways, which can be mixed:
   (±5–10 cm). Emits `arrive`. Setting `targetSpeed` or `targetHeading` by hand cancels it; so does `stop()`.
   If something it can't step is in the way (a riser higher than `maxStepUp`, a drop deeper than
   `maxStepDown`, a hole), it plans a route round it when it is given the destination and follows it from the
-  start, turning along curves, without going up to it first; it goes up a platform by its stairs, and steps across
-  a [gap](#gaps) if going round it is much longer. If the point
+  start, turning along curves, without going up to it first; it goes up a platform by its stairs, and steps or
+  jumps across a [gap](#gaps) if going round it is much longer. If the point
   can't be reached, it goes to the reachable one closest to it (`moveTarget`). It plans on the ground it walks
   on, with the same rules as the steps, and goes round the `colliders` (a tree trunk, columns, walls) keeping
   its body clear of them. With `avoid: false`, in a straight line.
@@ -171,7 +171,7 @@ parameters and pass it as `config` or with `setConfig`.
 
 ## Basic controls
 
-To change how it walks without going into the 153 parameters: thirteen high-level controls (`basicControls`),
+To change how it walks without going into the 154 parameters: thirteen high-level controls (`basicControls`),
 each of which moves several parameters at once. They are a layer on top of the configuration, like the presets:
 `applyBasicControls(base, values)` returns the resulting parameters for `setConfig`.
 
@@ -288,8 +288,9 @@ A custom detector (physics, BVH…) implements `SurfaceDetector` (`cast(origin, 
 
 A person never takes two identical steps. With `variation` (1 by default; 0 = all steps identical) the cadence,
 the lean of the trunk, the gaze and the swing of each arm change slightly and slowly, with smooth noise that
-depends on the character's `seed`. It is deterministic: the same seed repeats exactly the same motion (useful
-for tests or replays). For a crowd, give each character its own seed.
+depends on the character's `seed`. Each jump across a gap is a little different too: where each foot goes in the
+air and lands, the trunk, each arm and elbow, how fast the legs open. It is deterministic: the same seed repeats
+exactly the same motion (useful for tests or replays). For a crowd, give each character its own seed.
 
 ## Character size
 
@@ -416,7 +417,8 @@ Stairs without risers (separate treads with a gap between them) also work, with 
 the void: a gap shorter than the foot, lower than the treads on both sides, is stepped over, and the step is
 measured from tread to tread. Where there is no ground under the root (over a gap), the body follows the line
 over the treads. A wider gap is a drop deeper than `maxStepDown`: it crosses it with a long step if it is no wider
-than `maxGapStep` (see [Gaps](#gaps)); if not, it stops at the edge.
+than `maxGapStep`, and jumps across it if it is no wider than `maxGapJump` (see [Gaps](#gaps)); if not, it stops at
+the edge.
 
 Curved and spiral stairs work too, going up and down either way: while the body turns, the ground is sampled
 along the arc the foot follows (around the center of the turn) instead of in a straight line, the landing
@@ -441,7 +443,7 @@ instead of stopping at the edge, the character steps across it.
   past the gap, whichever is closer to that step. Past it, the step can be as long as the widest gap plus the foot
   and a little more (about 80 cm for an adult) or, running, up to 35 % longer than its step.
 - If it has to put the foot just before the edge with a short step, it slows down (to 40 % of `walkSpeed`) until
-  the step that crosses; while that step crosses it doesn't speed up, and then it speeds up again gradually.
+  the step that crosses; from then until it has crossed it doesn't speed up, and then it speeds up again gradually.
   Walking, the long step lowers the hips a little (about 10 cm at most).
 - Over the gap, the body follows the line between both sides.
 - The other side may be higher or lower, within `maxStepUp` and `maxStepDown`.
@@ -449,11 +451,32 @@ instead of stopping at the edge, the character steps across it.
   is wider than 50 cm from about 30° off square on, and it stops at the edge.
 - `moveTo` plans routes across gaps, square on, but crossing one costs as much as walking twice as far: if going
   round it is not much longer, it goes round.
-- With `maxGapStep: 0` it never crosses one: it stops at the edge, as at any drop.
+- With `maxGapStep: 0` it never steps across one.
 
-Running, it crosses with a longer stride, and at the widest gaps the hips go down more (it doesn't leap yet). Ground
-queries: about 10 more the first time it finds the edge of a gap (to measure its other side), and a few per gap a
-route could cross when planning it.
+A wider gap, up to `maxGapJump` (1 m by default, scaled with the size) along the way it goes, it jumps across:
+
+- Walking or running, it jumps without stopping, from one foot to the other, as people do in the CMU captures of
+  running leaps (49_04, 49_05; see [naturalness](naturalness.md#jumping-across-gaps)). It takes off from the stance
+  foot that lands nearest the edge: if the other one would have to take a step much shorter than usual to land before
+  the edge (or running, where the body would get to the edge first), from that one; if not, the next step lands at
+  the edge. The leading knee comes up as it pushes off, in the air the legs open (the leading one forward, the
+  trailing one behind with the heel up; less in a short jump), the trunk straightens up and the arms go forward and
+  then back; it lands on the leading foot, close under the body, and the trailing one takes the next step. It goes
+  up as much as it needs (at least 40 % of `jumpSpeed`, at most all of it) and forward with the speed it has or, if
+  it needs more, up to 75 % of `jogSpeed` (the push adds speed). If even so it can't, it stops at the edge.
+- Standing still at the edge (or if it couldn't jump it moving), it jumps with both feet, as people do in the CMU
+  captures of forward jumps (16, 13, 83): it crouches, jumps as much up as forward (what it needs to land with the
+  feet whole on the other side, counting how much higher or lower it is), tucks the feet a little and lands on both.
+  Then it walks on.
+- Faster than `walkSpeed`, to see the gap in time it also looks at the ground every `maxGapStep` along the way it
+  goes (about 2 more ground queries per step).
+- It emits `liftoff` and `land`, like `jump()`.
+- It jumps only coming at it within 35° of square on.
+- `moveTo` plans routes that jump across gaps, square on, but jumping costs as much as walking four times as far.
+- With `maxGapJump: 0` it never jumps one: it stops at the edge.
+
+Ground queries: about 10–20 more the first time it finds the edge of a gap (to measure its other side), and a few per
+gap a route could cross when planning it.
 
 ### Narrow paths
 
@@ -622,6 +645,6 @@ measures it on your machine.
   reached), only if the straight line isn't clear: with `StaticGroundDetector`, a few milliseconds.
 - Stairs: walking only (not running yet). Going down, the leading leg lands almost straight (a person
   lands with the knee bent; see [naturalness](naturalness.md#stairs)). No planned jumps to a different height
-  either, nor across gaps wider than `maxGapStep` (it stops at their edge).
+  either, nor across gaps wider than `maxGapJump` (it stops at their edge).
 - Tested rigs: Mixamo and the Rigify metarig. Other rigs should work with their mapping, but they are not
   verified (see [skeletons](skeletons.md)).

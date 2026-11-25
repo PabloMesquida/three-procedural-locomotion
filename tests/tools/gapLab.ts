@@ -17,6 +17,7 @@ function box(parent: Object3D, w: number, h: number, d: number, x: number, y: nu
 }
 export function gapWorld(width: number, start = 1.6, x = 0): ReturnType<typeof createWorld> {
   const world = createWorld({
+    human: { config: JSON.parse(process.env.CONFIG ?? "{}") },
     buildTerrain: (g) => {
       box(g, 6, H, 12, 0, 0, 6);
       box(g, 6, H + FAR, 6, 0, 0, -width - 3);
@@ -63,8 +64,11 @@ if (process.argv[1]?.endsWith('gapLab.js')) {
       // Cerca del hueco (no al frenar al final de la plataforma).
       if (s.position.z < 1.5 && s.position.z > -width - 1.5) lowHips = Math.min(lowHips, (p(human.rig.hips).y - H) / human.legLength);
       else farHips = Math.min(farHips, (p(human.rig.hips).y - H) / human.legLength);
+      const [ff, ft] = (process.env.FEET ?? "-1,-1").split(",").map(Number);
+      if (t >= ff && t <= ft) { const feet = (human.locomotion as unknown as { feet: Record<Side, { phase: string; planted: Vector3; position: Vector3; swing: { start: Vector3; landing: Vector3; t: number } }> }).feet; const g = (human.locomotion as unknown as { gait: { phase: number; duty: Record<Side, number>; mode: string } }).gait; console.log(`  ${t.toFixed(2)} cuerpo ${s.position.z.toFixed(2)} gait ${g.mode} fase ${g.phase.toFixed(2)} duty ${g.duty.left.toFixed(2)}/${g.duty.right.toFixed(2)} | ` + (["left", "right"] as const).map((sd) => { const q = feet[sd]; return `${sd[0]} ${q.phase} pos ${q.position.z.toFixed(2)} planted ${q.planted.z.toFixed(2)} start ${q.swing.start.z.toFixed(2)} land ${q.swing.landing.z.toFixed(2)} t ${q.swing.t.toFixed(2)}`; }).join(" | ")); }
       for (const side of ['left', 'right'] as const) {
         const r = (human.locomotion as unknown as { legs: Record<Side, { result: { error: number } | null }> }).legs[side].result;
+        if (r && r.error > 0.01 && process.env.IKTRACE) console.log(`  IK ${side} ${(r.error * 100).toFixed(1)} cm t ${t.toFixed(2)} fase ${human.footPhase(side)} aterrizaje ${(() => { const l = (human.locomotion as unknown as { feet: Record<Side, { swing: { landing: Vector3 }; position: Vector3 }> }).feet[side]; return `(${l.swing.landing.z.toFixed(2)}, ${l.swing.landing.y.toFixed(2)}) pie (${l.position.z.toFixed(2)}, ${l.position.y.toFixed(2)})`; })()} cuerpo z ${s.position.z.toFixed(2)} y ${s.position.y.toFixed(2)} aire ${s.airborne}`);
         if (r) ik = Math.max(ik, r.error);
         const air = human.footPhase(side) === 'SWING';
         if (was[side] && !air) {

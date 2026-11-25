@@ -329,8 +329,8 @@
       "es": "Ángulo de la punta levantada al aterrizar de talón (grados)."
     },
     "variation": {
-      "en": "Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the swing of each arm change slightly and slowly, differently for each character (according to its `seed`).",
-      "es": "Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`)."
+      "en": "Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the swing of each arm change slightly and slowly, differently for each character (according to its `seed`); and no two jumps across a gap are the same.",
+      "es": "Variación natural (0 = todos los pasos idénticos; 1 = la de una persona): la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio, de forma distinta en cada personaje (según su `seed`); y no hay dos saltos sobre un hueco iguales."
     },
     "standKneeBend": {
       "en": "Knee bend when standing (degrees; if the model has its knees more bent at rest, the rest bend).",
@@ -399,6 +399,10 @@
     "maxGapStep": {
       "en": "Widest gap it steps across (m; 0 = none): a drop deeper than `maxStepDown` with ground it can step on again on the other side, no farther than this along the way it goes. It doesn't stop at it: if it has to, it puts the foot just before the edge, and crosses it with a long step. From a wider one it stops at the edge, as from a drop.",
       "es": "Hueco más ancho que cruza de un paso (m; 0 = ninguno): un desnivel más hondo que `maxStepDown` con suelo que puede pisar otra vez del otro lado, a no más de esto en la dirección en que va. No se para en él: si hace falta, apoya el pie justo antes del borde y lo cruza con un paso largo. En uno más ancho se para en el borde, como ante un desnivel."
+    },
+    "maxGapJump": {
+      "en": "Widest gap it jumps across (m; 0 = none): one wider than `maxGapStep` and no wider than this along the way it goes. Walking or running, without stopping, from one foot to the other (from the stance foot nearest the edge, landing on the other one); standing still at its edge, with both feet. From a wider one it stops at the edge.",
+      "es": "Hueco más ancho que cruza de un salto (m; 0 = ninguno): uno más ancho que `maxGapStep` y no más que esto en la dirección en que va. Caminando o corriendo, sin pararse, de un pie a otro (desde el pie de apoyo más cercano al borde, cayendo sobre el otro); parado en su borde, con los dos pies. En uno más ancho se para en el borde."
     },
     "groundProbeHeight": {
       "en": "Height above the root from which the ground under the body is searched (m). A block of ground taller than this is still a wall (see `GroundDetector.castDown`).",

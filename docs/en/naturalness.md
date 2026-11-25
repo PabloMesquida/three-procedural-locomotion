@@ -40,6 +40,7 @@ The captures are not versioned (third-party license). They are downloaded to `re
 | 69 | `69.asf`, `69_06.amc`, `69_07.amc`, `69_08.amc`, `69_13.amc` | walking and turning around (repeated); turning in place |
 | 144, 13, 14, 81, 22 | `144.asf`, `144_22.amc`–`144_25.amc`, `13.asf`, `13_10.amc`, `13_12.amc`, `14.asf`, `14_07.amc`–`14_09.amc`, `81.asf`, `81_10.amc`, `22.asf`, `22_18.amc` | reaching to the sides and up; pushing something high; resting the hands (for touching in passing) |
 | 83, 111, 113, 114, 143 | `83.asf`, `83_27.amc`–`83_32.amc`, `83_34.amc`, `83_35.amc`, `111.asf`, `111_27.amc`, `113.asf`, `113_19.amc`, `113_20.amc`, `114.asf`, `114_07.amc`–`114_09.amc`, `143.asf`, `143_17.amc` | stairs: going up (83); going up and down (the rest; 111, 113 and 114 are pregnant or postpartum women) |
+| 49, 127, 75, 16, 13, 83 | `49.asf`, `49_04.amc`, `49_05.amc`, `127.asf`, `127_25.amc`–`127_28.amc`, `75.asf` (60 fps), `75_01.amc`–`75_03.amc`, `16_05.amc`, `16_06.amc`, `16_09.amc`, `16_10.amc`, `13_11.amc`, `13_13.amc`, `83_42.amc`, `83_43.amc` | jumps: running leap from one foot to the other (49); running jump over an obstacle (127, 75); forward jumps with both feet (16, 13, 83) |
 
 ```bash
 npm run mocap                  # normal walking: mocap vs library, curve by curve
@@ -410,6 +411,50 @@ What is still different: on stairs the head tilts sideways less than subject 83 
 shoulders too (1.1° against 1.7°); going up, the shoulders turn against the hips half as much (the arms swing
 less); on the flat the trunk nods less with the steps (±0.46° against ±0.97°) and sways more sideways (±1.15°
 against ±0.79°).
+
+## Jumping across gaps
+
+`node .test-build/tests/tools/jumpReport.js [takes]` (with `LIB=width:speed,…` for the library over a gap) finds the
+longest flight of each take and measures take-off, top and landing: thigh and knee of each leg, ankles relative to
+the pelvis, trunk, arms and pelvis (in leg lengths, L).
+
+- **From one foot to the other, running (49_04, 49_05, at ~3 m/s)**: flight 0.48–0.53 s and 1.8–1.9 L, the pelvis
+  0.45–0.55 L higher. At take-off the leading thigh is at 78–84° (the knee comes up as it pushes off) and the pushing
+  ankle 0.15–0.18 L behind the pelvis. At the top the legs open wide: the leading ankle 0.73–0.78 L ahead (thigh 70°,
+  knee ~38°) and the trailing one 0.79–0.86 L behind (thigh −40°). The trunk goes from 19° to 7° and to −4° on
+  landing; the arms go forward and up and then back. It lands on the leading foot 0–0.2 L ahead of the pelvis, with
+  the knee at 38–46°. (They are dance leaps: the library opens the legs somewhat less, and in proportion to the length
+  of the jump.) The 127 takes, over an obstacle, land on the same foot with both legs tucked: not a gap.
+- **Forward jumps with both feet, from standing (16_05–16_10, 13_11, 13_13, 83_42)**: there is none from one foot
+  without a run-up. Flight 0.38–0.45 s, the pelvis 0.30–0.38 L higher; the knees at 32–53° in the air (not tucked);
+  landing with both feet 0.24–0.31 L ahead of the pelvis, the knees at 61–83° 0.15 s later.
+
+| | CMU | library |
+|---|---|---|
+| Running, leading thigh at take-off | 78–84° | 81–92° |
+| Running, ankles at the top (leading / trailing) | +0.73–0.78 / −0.79–0.86 L | +0.69 / −0.76 L (3 m/s, 0.9 m) |
+| Running, leading foot on landing | 0–0.2 L ahead, knee 38–46° | 0.1–0.14 L, knee 17–51° |
+| Running, arms at the top (leading leg's side / the other) | 62 / 119°, −60 / 53° | −52 / 51° (1.4 m/s), −64 / 42° (3 m/s) |
+| Running, elbows (take-off / top / landing) | 66–88 / 31–39 / 22–34° | 58–88 / 67–78 / 61–70° |
+| Running, ankles at the top (leading / trailing; − = pointed) | −23 to −28 / −30 to −44° | −25 / −34° |
+| Standing, flight | 0.38–0.45 s, pelvis +0.30–0.38 L | 0.40–0.44 s, +0.30–0.36 L |
+| Standing, knees in the air | 32–53° | 51° |
+
+Before, it jumped with both feet together always, the legs half as open, the feet in fixed poses near the ground
+instead of relative to the pelvis, the trunk fixed and the arms still: rigid. Then the arms went forward together
+(not against the legs, as in CMU) and the trailing foot kept the orientation of take-off: with the shin turned back,
+the ankle ended up bent 40–70° up. And the arm jumped ~45° in one frame at take-off and on landing: the elbow and the
+hand, which follow it with a lag, lashed (`tests/tools/leapProbe.ts` measures it, frame by frame). Running fast over
+a narrow gap (a flight of a quarter of a second, almost a long stride) the arm went up and down 160° in it. And with
+the arms of CMU 49 (dance leaps: up, the elbows open), crossing a gap it looked like reaching for something, the hand
+bent back. So the arms aren't those of CMU: those of a long running stride, the one opposite the leading leg forward
+and the other back, the elbows bent (65–75°), and the forearm and the hand following the arm three times as fast
+(`limbStiffness`). And all of it in a flight of 0.6 s or more; in one of 0.3 s or less, those of running.
+
+The two takes of 49 aren't the same jump: the ankles differ by ~0.05 L at the top, the arms by tens of degrees, and
+each arm does its own thing. So each jump draws its own variation (with `variation` 1; from the `seed`): each foot
+±0.08 L in the air and ±0.04 L to the side and on landing, the trunk ±4° and each arm ±10° at each key, each elbow
+±10°, the legs opening ±25 % faster or slower and, with both feet, ±35 % of tuck.
 
 ## Pose jumps
 

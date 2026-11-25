@@ -91,6 +91,20 @@ const GAP_SAMPLE = 0.25;
 const GAP_REFINE_STEPS = 3;
 /** A gap this much wider than `maxGapStep` (× foot length) still counts: what the edges are located to. */
 const GAP_TOLERANCE = 0.1;
+/** Most rays it looks for the other side of a gap with, before locating it (wider gaps, more spaced). */
+const GAP_MAX_SAMPLES = 16;
+/**
+ * It jumps across a gap (`maxGapJump`) only going at it within this angle of square on (cosine; 35°), and stopped
+ * at most this far from its edge, beyond where it stops in front of it (× foot length).
+ */
+const JUMP_MIN_COS = Math.cos((35 * Math.PI) / 180);
+const JUMP_EDGE_SLACK = 1;
+/**
+ * Faster than walkSpeed, a gap it jumps across has to be seen in time to take off before it (or brake): between the
+ * point it looked at far ahead the step before and the one now, it also looks at the ground every `maxGapStep` (a gap
+ * wider than that falls between two of them; a narrower one, it steps across).
+ */
+const GAP_SCAN_SPEED = 1;
 /**
  * Across a gap, the longest step (ankle to ankle, along the way it goes): from the stance foot just before the edge
  * to the landing just past the other one, over the widest gap (`maxGapStep`), and this much more (× foot length).
@@ -163,16 +177,24 @@ export class StairPlanner {
    * none within `maxGapStep`): coming at it within that distance, it crosses it with a long step (see `gapAcross`).
    */
   wallGap = Number.POSITIVE_INFINITY;
+  /** Height of the ground on the other side of that gap (m; NaN if there is no gap within reach). */
+  wallFar = Number.NaN;
   /**
    * The last step stopped just before a gap it crosses, because the other side was out of reach: until the step that
    * crosses it, it slows down (see LocomotionController), or the body went on and the next step was very long.
    */
   gapWait = false;
   /**
-   * The last step crosses a gap (from the stance foot to the landing): meanwhile it doesn't speed up (see
-   * LocomotionController). Speeding up after a turn, the landing went further and further: a 1.1 m step.
+   * The last step crosses a gap (from the stance foot to the landing), or stops just before one to cross it with the
+   * next: meanwhile it doesn't speed up (see LocomotionController). Speeding up after a turn, the landing went further
+   * and further: a 1.1 m step.
    */
   gapCrossing = false;
+  /**
+   * It is going to jump across the gap ahead running, without stopping (set by LocomotionController, see
+   * `gapAhead`): the edge guard doesn't brake for gaps it jumps across.
+   */
+  leaping = false;
   /** How much longer than the step it would take it can make the one that crosses a gap (1 walking; see GAP_STRETCH). */
   gapStretch = 1;
   /** Speed of the body (m/s): whether it can slow down before a gap (see GAP_STRETCH). */
@@ -180,6 +202,8 @@ export class StairPlanner {
 
   private readonly config: LocomotionConfig;
   private readonly detector: GroundDetector;
+  /** Height of the other side found by the last `gapAcross` (NaN if none). */
+  private gapFar = Number.NaN;
   /** Length of the foot, from the heel under the ankle to the toe joint (m). */
   private readonly footLength: number;
   private readonly hit: GroundHit = createGroundHit();
@@ -196,9 +220,12 @@ export class StairPlanner {
     to: 0,
     beyond: Number.NEGATIVE_INFINITY,
     gap: Number.POSITIVE_INFINITY,
+    far: Number.NaN,
   }));
   /** Last point far ahead where it looked for a wall (world; NaN if none) and the direction it was going. */
   private readonly lookedAt = new Vector3(Number.NaN, 0, 0);
+  /** Up to where it looked for gaps along the way it goes (world; NaN if it didn't, see GAP_SCAN_SPEED). */
+  private readonly scannedAt = new Vector3(Number.NaN, 0, 0);
   private readonly lookedDirection = new Vector3();
 
   /** The foot measured on the model's mesh, if it could be (see measureFeet). */
@@ -249,6 +276,44 @@ export class StairPlanner {
     return GAP_WAIT_SPEED * this.config.walkSpeed;
   }
 
+  /** Widest gap it jumps across (m): `maxGapJump`, and what the edges are located to (GAP_TOLERANCE); 0 if none. */
+  get jumpWidth(): number {
+    const max = this.config.maxGapJump;
+    return max > 0 ? max + GAP_TOLERANCE * this.footLength : 0;
+  }
+
+  /**
+   * Stopped at `position` (world) on ground at `ground`, wanting to go in the horizontal unit direction `direction`:
+   * if just ahead there is the edge of a gap it jumps across (wider than `maxGapStep` and up to `maxGapJump` that way,
+   * see JUMP_MIN_COS), it fills `out` (the distance to its edge and its width, along `direction`, and the height of the
+   * other side) and returns true. Among the walls it remembers: no raycasts.
+   */
+  gapJump(position: Vector3, direction: Vector3, ground: number, out: { edge: number; width: number; far: number }): boolean {
+    return this.gapAhead(position, direction, ground, this.toeFront + this.heelBack + JUMP_EDGE_SLACK * this.footLength, out);
+  }
+
+  /** `gapJump` for the edge of a gap up to `within` m ahead (along `direction`). */
+  gapAhead(position: Vector3, direction: Vector3, ground: number, within: number, out: { edge: number; width: number; far: number }): boolean {
+    if (!(this.jumpWidth > 0)) return false;
+    for (let k = 0; k < MAX_WALLS; k++) {
+      if (!this.load(k) || !Number.isFinite(this.wallGap) || Number.isNaN(this.wallFar)) continue;
+      const n = this.wallNormal;
+      const c = direction.x * n.x + direction.z * n.z;
+      if (c < JUMP_MIN_COS) continue;
+      const perpendicular = (this.wall.x - position.x) * n.x + (this.wall.z - position.z) * n.z;
+      const edge = perpendicular / c;
+      if (perpendicular < -this.heelBack || edge > within) continue;
+      if (!this.alongWall(position.x + direction.x * edge, position.z + direction.z * edge)) continue;
+      const width = this.wallGap / c;
+      if (width <= this.gapWidth || width > this.jumpWidth || !this.passable(this.wallFar - ground)) continue;
+      out.edge = edge;
+      out.width = width;
+      out.far = this.wallFar;
+      return true;
+    }
+    return false;
+  }
+
   /** Widest gap it steps across (m): `maxGapStep`, and what the edges are located to (GAP_TOLERANCE); 0 if none. */
   private get gapWidth(): number {
     const max = this.config.maxGapStep;
@@ -262,8 +327,10 @@ export class StairPlanner {
     this.wall.x = Number.NaN;
     for (const w of this.walls) w.point.x = Number.NaN;
     this.lookedAt.x = Number.NaN;
+    this.scannedAt.x = Number.NaN;
     this.gapWait = false;
     this.gapCrossing = false;
+    this.leaping = false;
   }
 
   update(dt: number): void {
@@ -277,6 +344,7 @@ export class StairPlanner {
     this.wall.add(offset);
     for (const w of this.walls) w.point.add(offset);
     this.lookedAt.add(offset);
+    this.scannedAt.add(offset);
   }
 
   /**
@@ -375,6 +443,8 @@ export class StairPlanner {
     if (c < WALL_AHEAD_COS) return Number.POSITIVE_INFINITY;
     // Un hueco que cruza de un paso, yendo hacia él (en diagonal es más ancho): no frena.
     if (this.wallGap <= this.gapWidth * c) return Number.POSITIVE_INFINITY;
+    // Ni ante uno que va a saltar corriendo (ver `leaping`).
+    if (this.leaping && this.wallGap <= this.jumpWidth * c) return Number.POSITIVE_INFINITY;
     const perpendicular = (this.wall.x - position.x) * n.x + (this.wall.z - position.z) * n.z;
     // Ya del otro lado (el borde se acababa y lo rodeó): no es este borde.
     if (perpendicular < -this.heelBack) return Number.POSITIVE_INFINITY;
@@ -424,14 +494,15 @@ export class StairPlanner {
    * a few more if it finds it.
    */
   private gapAcross(x: number, z: number, dx: number, dz: number, ground: number): number {
-    const max = this.gapWidth;
+    this.gapFar = Number.NaN;
+    const max = Math.max(this.gapWidth, this.jumpWidth);
     if (!(max > 0)) return Number.POSITIVE_INFINITY;
     const ok = (d: number): boolean => this.passable(this.heightAt(x + dx * d, z + dz * d, ground) - ground);
     // Pasado el borde, el hueco (si ahí ya se puede pisar, es una grieta: la ve el perfil, como en una escalera sin
     // contrahuella).
     let lo = WALL_PROBE * this.footLength;
     if (lo > max || ok(lo)) return Number.POSITIVE_INFINITY;
-    const step = GAP_SAMPLE * this.footLength;
+    const step = Math.max(GAP_SAMPLE * this.footLength, max / GAP_MAX_SAMPLES);
     let hi = Number.NaN;
     for (let d = lo + step; ; d += step) {
       const at = Math.min(d, max);
@@ -448,7 +519,10 @@ export class StairPlanner {
       else lo = mid;
     }
     // Que quepa el pie entero del otro lado.
-    return ok(hi + this.heelBack + this.toeFront) ? hi : Number.POSITIVE_INFINITY;
+    const room = hi + this.heelBack + this.toeFront;
+    if (!ok(room)) return Number.POSITIVE_INFINITY;
+    this.gapFar = this.heightAt(x + dx * room, z + dz * room, ground);
+    return hi;
   }
 
   /** Puts the remembered wall `k` in `wall` (and the rest of its fields); false if that slot is empty. */
@@ -461,6 +535,7 @@ export class StairPlanner {
     this.wallTo = w.to;
     this.wallBeyond = w.beyond;
     this.wallGap = w.gap;
+    this.wallFar = w.far;
     return true;
   }
 
@@ -473,6 +548,7 @@ export class StairPlanner {
     w.to = this.wallTo;
     w.beyond = this.wallBeyond;
     w.gap = this.wallGap;
+    w.far = this.wallFar;
   }
 
   /** (`x`, `z`), seen from the edge of `wall`, is within its extent (`wallFrom`–`wallTo`). */
@@ -590,8 +666,18 @@ export class StairPlanner {
       const to = Math.max(Math.max(uLanding, uStance) + this.toeFront + LOOK_AHEAD * c.stepLength, uStance + sampleReach, gapEnd);
       profile.sample(this.detector, from, to, SAMPLE_SPACING * this.footLength, edge, start.y - ankleHeight, c.groundProbeHeight, c.groundProbeDepth);
       // Huecos (escaleras sin contrahuella): más cortos que lo que el pie necesita para apoyarse. Y huecos que cruza
-      // con un paso largo (`maxGapStep`).
+      // con un paso largo (`maxGapStep`). Por un arco, solo el que queda entre los dos pies (uno a cada lado): uno que
+      // sale de una plataforma por su borde y vuelve a entrar en ella parecía un hueco por delante (y la raíz salía de
+      // la plataforma por encima de él); esos los mira en línea recta (ver dropAhead).
       profile.markGaps(this.toeFront, this.gapWidth, c.maxStepUp, c.maxStepDown);
+      if (arc) {
+        const lo = Math.min(uStart, uStance);
+        const hi = Math.max(uStart, uStance);
+        for (let i = 0; i < profile.count; i++) {
+          const t = profile.treads[i];
+          if (t.cross && (t.start < lo || t.end > hi)) t.cross = t.gap = false;
+        }
+      }
     };
     sample(center);
     // Girando, si por el arco da con un desnivel que no puede bajar, mira también en línea recta: por el arco, un hueco
@@ -710,6 +796,7 @@ export class StairPlanner {
     }
     this.gapCrossing = false;
     for (let i = stanceTread + 1; i < bestTread; i++) if (profile.treads[i].cross) this.gapCrossing = true;
+    if (bestTread >= 0 && bestTread + 1 < profile.count && profile.treads[bestTread + 1].cross && best < uLanding) this.gapCrossing = true;
     // El cuerpo no sigue la línea hacia lo que no puede subir.
     if (end < profile.count) profile.truncate(end);
     // Profundidad de los escalones: la más corta por delante del apoyo (desde un descansillo, la de la escalera
@@ -838,7 +925,17 @@ export class StairPlanner {
     this.lookedAt.set(stance.x + dir.x * distance, stanceGround, stance.z + dir.z * distance);
     this.lookedDirection.copy(dir);
     const far = this.heightAt(this.lookedAt.x, this.lookedAt.z, stanceGround);
-    if (this.passable(far - stanceGround)) return;
+    // Desde donde miró antes por esta misma línea, si lo hizo (ver GAP_SCAN_SPEED); si no, desde el pie.
+    const scan = this.speed > GAP_SCAN_SPEED * this.config.walkSpeed && this.jumpWidth > 0;
+    const sx = this.scannedAt.x - stance.x;
+    const sz = this.scannedAt.z - stance.z;
+    const scanned = same && !Number.isNaN(sx) && Math.abs(sx * dir.z - sz * dir.x) < WALL_SIDE * this.footLength ? Math.max(sx * dir.x + sz * dir.z, this.toeFront) : this.toeFront;
+    if (scan) this.scannedAt.set(stance.x + dir.x * distance, stanceGround, stance.z + dir.z * distance);
+    else this.scannedAt.x = Number.NaN;
+    if (this.passable(far - stanceGround)) {
+      if (scan) this.scanForGap(stance, stanceGround, dir, scanned, distance);
+      return;
+    }
     let lo = 0;
     let hi = distance;
     let low = stanceGround;
@@ -862,8 +959,36 @@ export class StairPlanner {
     const before = this.heightAt(stance.x + dir.x * (at - this.toeFront), stance.z + dir.z * (at - this.toeFront), stanceGround);
     const after = this.heightAt(stance.x + dir.x * (at + this.toeFront), stance.z + dir.z * (at + this.toeFront), stanceGround);
     if (this.passable(after - before)) return;
+    // Hasta ese borde, también un hueco antes de él (la bisección puede dar con el más lejano de los dos).
+    if (scan) this.scanForGap(stance, stanceGround, dir, scanned, at - this.toeFront);
     this.foundAt.set(stance.x + dir.x * at, Number.isFinite(high) ? high : low, stance.z + dir.z * at);
     this.foundWall(this.foundAt, dir, low);
+  }
+
+  /**
+   * Looks at the ground every `maxGapStep` from `from` to `to` m ahead of the stance foot, in the direction `dir` (see
+   * GAP_SCAN_SPEED): at the first drop it can't step down, it finds the edge by bisection and remembers it (with the
+   * gap behind it, if there is one).
+   */
+  private scanForGap(stance: Vector3, ground: number, dir: Vector3, from: number, to: number): void {
+    const spacing = Math.max(this.config.maxGapStep, SAMPLE_SPACING * this.footLength);
+    let lo = from;
+    for (let t = from + spacing; t < to; t += spacing) {
+      if (this.passable(this.heightAt(stance.x + dir.x * t, stance.z + dir.z * t, ground) - ground)) {
+        lo = t;
+        continue;
+      }
+      let hi = t;
+      for (let k = 0; k < WALL_REFINE_STEPS; k++) {
+        const mid = (lo + hi) / 2;
+        if (this.passable(this.heightAt(stance.x + dir.x * mid, stance.z + dir.z * mid, ground) - ground)) lo = mid;
+        else hi = mid;
+      }
+      const at = (lo + hi) / 2;
+      this.foundAt.set(stance.x + dir.x * at, ground, stance.z + dir.z * at);
+      this.foundWall(this.foundAt, dir, ground);
+      return;
+    }
   }
 
   /**
@@ -900,6 +1025,7 @@ export class StairPlanner {
     this.measureWall(ground);
     this.wallBeyond = this.beyondWall(ground);
     this.wallGap = this.gapAcross(w.x, w.z, n.x, n.z, ground);
+    this.wallFar = this.gapFar;
     this.store(slot);
   }
 

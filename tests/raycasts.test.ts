@@ -39,8 +39,10 @@ describe('raycasts', () => {
   // corriendo se suman los del inicio de cada paso. Parado, la comprobación de si los pies
   // están recolocados (4 raycasts) se hacía cada frame: ahora solo si se mueve la raíz o cada 0,25 s.
   // La sonda de caminos angostos suma 1 cada 0,25 s en marcha (cada 1 s parado): ≈ +0,07 por frame; la de cornisas, otro tanto.
-  it('por frame: parado ≤ 1,3, caminando ≤ 1,62, corriendo ≤ 1,89', () => {
-    const budget = { parado: [0, 1.3], caminando: [1, 1.62], corriendo: [3, 1.89] } as const;
+  // Más rápido que walkSpeed, la búsqueda de huecos que saltar (maxGapJump) mira el suelo cada maxGapStep por delante:
+  // 2 por metro recorrido, ≈ +0,1 por frame a 3 m/s.
+  it('por frame: parado ≤ 1,3, caminando ≤ 1,62, corriendo ≤ 2', () => {
+    const budget = { parado: [0, 1.3], caminando: [1, 1.62], corriendo: [3, 2] } as const;
     for (const [mode, [speed, max]] of Object.entries(budget)) {
       const world = createWorld();
       const perFrame = raycastsPerFrame(world, () => { world.human.targetSpeed = speed; });

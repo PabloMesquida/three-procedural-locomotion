@@ -67,8 +67,8 @@ Dos formas, que se pueden mezclar:
   Dar `targetSpeed` o `targetHeading` a mano lo cancela; `stop()` también.
   Si en el camino hay algo que no puede pisar (una contrahuella más alta que `maxStepUp`, un desnivel más hondo
   que `maxStepDown`, un hueco), al recibir el destino planea una ruta que lo rodea y la sigue desde el principio,
-  girando en curvas, sin acercarse antes a chocar; a una plataforma sube por su escalera, y cruza un
-  [hueco](#huecos) de un paso si rodearlo es mucho más largo. Si no puede llegar al
+  girando en curvas, sin acercarse antes a chocar; a una plataforma sube por su escalera, y cruza o salta un
+  [hueco](#huecos) si rodearlo es mucho más largo. Si no puede llegar al
   punto, va al más cercano que alcanza (`moveTarget`). Planea sobre el suelo que pisa, con las mismas reglas que
   los pasos, y rodea los `colliders` (un tronco, columnas, paredes) con el cuerpo fuera de ellos. Con
   `avoid: false`, en línea recta.
@@ -172,7 +172,7 @@ parámetros y pásalo como `config` o con `setConfig`.
 
 ## Controles básicos
 
-Para cambiar cómo camina sin entrar en los 153 parámetros: trece controles de alto nivel (`basicControls`), cada
+Para cambiar cómo camina sin entrar en los 154 parámetros: trece controles de alto nivel (`basicControls`), cada
 uno mueve a la vez varios parámetros. Son una capa sobre la configuración, como los estilos:
 `applyBasicControls(base, valores)` devuelve los parámetros resultantes para `setConfig`.
 
@@ -289,9 +289,10 @@ Un detector propio (física, BVH…) implementa `SurfaceDetector` (`cast(origen,
 
 Una persona nunca da dos pasos iguales. Con `variation` (1 por defecto; 0 = todos los pasos idénticos)
 la cadencia, la inclinación del tronco, la mirada y el balanceo de cada brazo cambian un poco y despacio,
-con un ruido suave que depende de la semilla (`seed`) del personaje. Es determinista: la misma semilla
-repite exactamente el mismo movimiento (útil para tests o repeticiones). Para una multitud, da a cada
-personaje su propia semilla.
+con un ruido suave que depende de la semilla (`seed`) del personaje. Cada salto sobre un hueco también es
+un poco distinto: dónde va cada pie en el aire y dónde cae, el tronco, cada brazo y cada codo, lo rápido que se
+abren las piernas. Es determinista: la misma semilla repite exactamente el mismo movimiento (útil para tests o
+repeticiones). Para una multitud, da a cada personaje su propia semilla.
 
 ## Tamaño del personaje
 
@@ -422,7 +423,7 @@ También valen las escaleras sin contrahuella (huellas sueltas con un hueco entr
 el vacío: un hueco más corto que el pie, más bajo que las huellas de los dos lados, se salta, y el escalón se mide
 de huella a huella. Donde no hay suelo bajo la raíz (sobre un hueco), el cuerpo sigue la línea sobre las huellas.
 Un hueco más ancho es un desnivel más hondo que `maxStepDown`: lo cruza de un paso largo si no es más ancho que
-`maxGapStep` (ver [Huecos](#huecos)); si no, se para en el borde.
+`maxGapStep`, y lo salta si no es más ancho que `maxGapJump` (ver [Huecos](#huecos)); si no, se para en el borde.
 
 También valen las escaleras en curva y de caracol, subiendo y bajando, hacia los dos lados: mientras el cuerpo
 gira, el suelo se mide a lo largo del arco que sigue el pie (alrededor del centro del giro) en vez de en línea
@@ -449,7 +450,7 @@ hueco: en vez de pararse en el borde, el personaje lo cruza de un paso.
   que más se parezca a ese paso. Pasado el hueco, el paso puede ser tan largo como el hueco más ancho, el pie y un
   poco más (unos 80 cm en un adulto) o, corriendo, hasta un 35 % más largo que su paso.
 - Si tiene que apoyar el pie justo antes del borde con un paso corto, frena (al 40 % de `walkSpeed`) hasta el paso
-  que cruza; mientras ese paso cruza no acelera, y luego vuelve a acelerar poco a poco. Caminando, el paso largo
+  que cruza; desde ahí hasta haberlo cruzado no acelera, y luego vuelve a acelerar poco a poco. Caminando, el paso largo
   baja un poco las caderas (unos 10 cm como mucho).
 - Sobre el hueco, el cuerpo sigue la línea entre las dos orillas.
 - La otra orilla puede estar más alta o más baja, dentro de `maxStepUp` y `maxStepDown`.
@@ -457,10 +458,32 @@ hueco: en vez de pararse en el borde, el personaje lo cruza de un paso.
   mide más de 50 cm a partir de unos 30° de la perpendicular, y se para en el borde.
 - `moveTo` planea rutas que cruzan huecos, de frente, pero cruzar uno cuesta lo que caminar el doble: si rodearlo no
   es mucho más largo, lo rodea.
-- Con `maxGapStep: 0` no cruza ninguno: se para en el borde, como en cualquier desnivel.
+- Con `maxGapStep: 0` no cruza ninguno de un paso.
 
-Corriendo, cruza con una zancada más larga, y en los huecos más anchos las caderas bajan más (todavía no salta).
-Consultas al suelo: unas 10 más la primera vez que encuentra el borde de un hueco (para medir la otra orilla), y
+Un hueco más ancho, de hasta `maxGapJump` (1 m por defecto, escalado con el tamaño) en la dirección en que va, lo
+salta:
+
+- Caminando o corriendo, salta sin pararse, de un pie a otro, como la gente en las capturas de CMU de saltos en
+  carrera (49_04, 49_05; ver [naturalidad](naturalness.md#saltar-huecos)). Despega con el pie de apoyo que cae más
+  cerca del borde: si el otro tendría que dar un paso mucho más corto que el suyo para apoyar antes del borde (o,
+  corriendo, el cuerpo llegaría antes al borde), con ese; si no, el paso siguiente apoya en el borde. La rodilla de
+  delante sube al empujar, en el aire las piernas se abren (la de delante adelante y la de atrás detrás con el talón
+  arriba; menos en un salto corto), el tronco se endereza y los brazos van adelante y luego atrás; cae sobre el pie
+  de delante, cerca del cuerpo, y el de atrás da el paso siguiente. Sube lo que necesita (al menos el 40 % de
+  `jumpSpeed`, como mucho todo) y avanza con la velocidad que lleva o, si necesita más, hasta el 75 % de `jogSpeed`
+  (el impulso suma velocidad). Si ni así le alcanza, se para en el borde.
+- Parado en el borde (o si en marcha no pudo saltarlo), salta con los dos pies, como la gente en las capturas de CMU
+  de saltos hacia delante (16, 13, 83): se agacha, salta tanto hacia arriba como hacia delante (lo que necesita para
+  caer con los pies enteros del otro lado, contando cuánto más alto o bajo está), recoge un poco los pies y cae con
+  los dos. Luego sigue caminando.
+- Más rápido que `walkSpeed`, para ver el hueco a tiempo también mira el suelo cada `maxGapStep` en la dirección en
+  que va (unas 2 consultas al suelo más por paso).
+- Emite `liftoff` y `land`, como `jump()`.
+- Solo salta si llega a menos de 35° de la perpendicular.
+- `moveTo` planea rutas que saltan huecos, de frente, pero saltar cuesta lo que caminar cuatro veces la distancia.
+- Con `maxGapJump: 0` no salta ninguno: se para en el borde.
+
+Consultas al suelo: unas 10–20 más la primera vez que encuentra el borde de un hueco (para medir la otra orilla), y
 unas pocas por cada hueco que podría cruzar una ruta al planearla.
 
 ### Caminos angostos
@@ -629,6 +652,6 @@ mallas grandes); `npm run bench` lo mide en tu máquina.
   no está libre: con `StaticGroundDetector`, unos milisegundos.
 - Escaleras: solo caminando (todavía no corriendo). Al bajar, la pierna de delante apoya casi estirada
   (una persona apoya con la rodilla doblada; ver [naturalidad](naturalness.md#escaleras)). Tampoco saltos
-  planificados a otra altura, ni por encima de huecos más anchos que `maxGapStep` (se para en su borde).
+  planificados a otra altura, ni por encima de huecos más anchos que `maxGapJump` (se para en su borde).
 - Rigs probados: Mixamo y el metarig de Rigify. Otros rigs deben funcionar con su mapping, pero no están
   verificados (ver [esqueletos](skeletons.md)).

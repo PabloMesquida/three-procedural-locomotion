@@ -245,7 +245,8 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   heelStrikeAngle: number;
   /**
    * Natural variation (0 = every step identical; 1 = that of a person): cadence, trunk lean, gaze and the
-   * swing of each arm change slightly and slowly, differently for each character (according to its `seed`).
+   * swing of each arm change slightly and slowly, differently for each character (according to its `seed`); and
+   * no two jumps across a gap are the same.
    */
   variation: number;
   /** Knee bend when standing (degrees; if the model has its knees more bent at rest, the rest bend). */
@@ -310,6 +311,12 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
    * just before the edge, and crosses it with a long step. From a wider one it stops at the edge, as from a drop.
    */
   maxGapStep: number;
+  /**
+   * Widest gap it jumps across (m; 0 = none): one wider than `maxGapStep` and no wider than this along the way it
+   * goes. Walking or running, without stopping, from one foot to the other (from the stance foot nearest the edge,
+   * landing on the other one); standing still at its edge, with both feet. From a wider one it stops at the edge.
+   */
+  maxGapJump: number;
   /**
    * Height above the root from which the ground under the body is searched (m). A block of ground taller than
    * this is still a wall (see `GroundDetector.castDown`).
@@ -442,6 +449,7 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   maxStepUp: 0.35,
   maxStepDown: 0.35,
   maxGapStep: 0.5,
+  maxGapJump: 1,
   groundProbeHeight: 1.5,
   groundProbeDepth: 2.5,
   footProbeHeight: 0.5,

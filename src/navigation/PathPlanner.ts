@@ -44,6 +44,8 @@ const GOAL_SEARCH = 0.6;
  */
 const GAP_COST = 1;
 const GAP_SHARE = 1.03;
+/** Jumping across one (see `maxGapJump`, up to GAP_SHARE of it), this much more: only if going round is much longer. */
+const GAP_JUMP_COST = 3;
 /** Bisection steps to find each edge of a gap along a route (to ≈ 1 cm with cells of 15 cm). */
 const GAP_EDGE_STEPS = 4;
 /** Most cells it looks at for a route (then it goes to the reachable one closest to the destination). */
@@ -148,6 +150,8 @@ interface Cell {
    * `gapLink`). undefined: not known yet.
    */
   gaps?: number[];
+  /** In each direction of NEIGHBORS, whether that gap is jumped across (wider than `maxGapStep`, see `maxGapJump`). */
+  jumps?: boolean[];
   /** Route cost from the start; parent cell (key) and whether it is closed (A*). */
   cost: number;
   parent: number;
@@ -440,12 +444,13 @@ export class PathPlanner {
           // Por encima de un hueco que cruza de un paso (ver gapLink), a la celda del otro lado.
           const k = this.gapLink(i, j, d - NEIGHBORS.length, hard);
           if (k === 0) continue;
+          const jump = c.jumps?.[d - NEIGHBORS.length] ?? false;
           ni = i + k * di;
           nj = j + k * dj;
           if (Math.abs(ni) > limit + Math.abs(ti) || Math.abs(nj) > limit + Math.abs(tj)) continue;
           const n = this.cell(ni, nj, c.height);
           if (fromGoal ? !this.canStep(n, c) : !this.canStep(c, n)) continue;
-          cost = k * step * s * (1 + GAP_COST);
+          cost = k * step * s * (1 + (jump ? GAP_JUMP_COST : GAP_COST));
         }
         if (Number.isNaN(cost)) continue;
         const n = this.cells.get(key(ni, nj))!;
@@ -861,9 +866,11 @@ export class PathPlanner {
    */
   private gapLink(i: number, j: number, d: number, hard: number): number {
     const config = this.config();
-    if (!(config.maxGapStep > 0)) return 0;
+    const widest = GAP_SHARE * Math.max(config.maxGapStep, config.maxGapJump);
+    if (!(widest > 0)) return 0;
     const c = this.cell(i, j, 0);
     c.gaps ??= [];
+    c.jumps ??= [];
     const known = c.gaps[d];
     if (known !== undefined) return known;
     c.gaps[d] = 0;
@@ -871,7 +878,7 @@ export class PathPlanner {
     if (!Number.isFinite(c.height) || this.isEdge(i, j) || this.clearance(i, j) < hard) return 0;
     const [di, dj, step] = NEIGHBORS[d];
     const length = step * this.size;
-    const most = Math.ceil((config.maxGapStep + 2 * hard) / length) + 2;
+    const most = Math.ceil((widest / GAP_SHARE + 2 * hard) / length) + 2;
     let gapFrom = 0;
     let gapTo = 0;
     for (let k = 1; k <= most; k++) {
@@ -888,7 +895,10 @@ export class PathPlanner {
       const nj = j + k * dj;
       if (this.isEdge(ni, nj) || this.clearance(ni, nj) < hard || this.apart(ni, nj) < hard) continue;
       const width = this.gapWidth(i, j, di, dj, gapFrom, gapTo, c.height);
-      if (width <= GAP_SHARE * config.maxGapStep) c.gaps[d] = k;
+      if (width <= widest) {
+        c.gaps[d] = k;
+        c.jumps[d] = width > GAP_SHARE * config.maxGapStep;
+      }
       return c.gaps[d];
     }
     return 0;

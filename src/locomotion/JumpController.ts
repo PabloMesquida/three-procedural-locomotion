@@ -28,6 +28,10 @@ export class JumpController {
   impactSpeed = 0;
   /** In the take-off frame: time elapsed since take-off (s). */
   liftoffElapsed = 0;
+  /** How much the hips go down on landing, × the usual (landing on one foot, less: see LocomotionController). */
+  dipScale = 1;
+  /** How much they go down in the preparation, × the usual (running, a jump in stride: less). */
+  crouchScale = 1;
   /**
    * Pose of the previous jump when a new one is requested during the cushioning (hips, arms, torso): it
    * fades out during the take-off, without jumps.
@@ -49,9 +53,13 @@ export class JumpController {
     this.carry.lean = 0;
   }
 
-  /** Requests a jump. Only accepted if there isn't another one in progress. */
-  request(): boolean {
+  /**
+   * Requests a jump, with a preparation of `preparation` s (by default, the one of `jumpCrouch` and `jumpSpeed`). Only
+   * accepted if there isn't another one in progress.
+   */
+  request(preparation = Number.NaN): boolean {
     if (this.phase !== 'GROUNDED' && this.phase !== 'LANDING') return false;
+    this.preparation = preparation;
     this.carry.hip = this.hipOffset();
     this.carry.arm = this.armForward();
     this.carry.lean = this.lean();
@@ -97,10 +105,10 @@ export class JumpController {
       // −k·u²(1−u): parte en reposo, baja hasta jumpCrouch (en u = 2/3) y sube
       // terminando a la velocidad del salto (k = jumpSpeed · duración).
       const u = this.progress(this.takeoffTime());
-      return -c.jumpSpeed * this.takeoffTime() * u * u * (1 - u) + this.carried('hip');
+      return -c.jumpSpeed * this.takeoffTime() * u * u * (1 - u) * this.crouchScale + this.carried('hip');
     }
     if (this.phase === 'LANDING') {
-      const dip = Math.min(c.maxLandingDip, c.landingAbsorb * this.impactSpeed);
+      const dip = Math.min(c.maxLandingDip, c.landingAbsorb * this.impactSpeed) * this.dipScale;
       return -dip * this.landingCurve();
     }
     return 0;
@@ -141,6 +149,11 @@ export class JumpController {
     return 0;
   }
 
+  /** Progress of the preparation (0–1; 0 outside it). */
+  get takeoffProgress(): number {
+    return this.phase === 'TAKEOFF' ? this.progress(this.takeoffTime()) : 0;
+  }
+
   /** Cushioning curve: 0 when touching the ground, maximum around 30 %, 0 at the end. */
   private landingCurve(): number {
     return Math.sin(Math.PI * Math.pow(this.progress(this.config.landingTime), 0.6));
@@ -151,8 +164,12 @@ export class JumpController {
    * k = jumpSpeed · duration → duration = 27·jumpCrouch / (4·jumpSpeed).
    */
   takeoffTime(): number {
+    if (this.preparation > 0) return this.preparation;
     return (27 * this.config.jumpCrouch) / (4 * Math.max(this.config.jumpSpeed, 1e-6));
   }
+
+  /** Duration of the preparation of this jump (s; NaN: the usual one). */
+  private preparation = Number.NaN;
 
   /** Value carried over from the previous jump, fading out during the take-off. */
   private carried(key: 'hip' | 'arm' | 'lean'): number {

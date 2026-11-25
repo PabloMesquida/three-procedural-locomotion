@@ -90,7 +90,7 @@ describe('huecos (maxGapStep)', () => {
     });
   }
 
-  for (const [name, width, config] of [['más ancho que maxGapStep', 0.65, {}], ['con maxGapStep 0', 0.3, { maxGapStep: 0 }]] as const) {
+  for (const [name, width, config] of [['más ancho que maxGapJump', 1.2, {}], ['con maxGapStep y maxGapJump 0', 0.3, { maxGapStep: 0, maxGapJump: 0 }], ['de 80 cm con maxGapJump 0', 0.8, { maxGapJump: 0 }]] as const) {
     it(`${name}: se para en el borde, como ante un desnivel`, () => {
       const world = gapWorld(width, 1.6, config);
       const r = cross(world, width, 6, (h) => { h.targetHeading = 0; h.targetSpeed = 1.4; });
@@ -115,10 +115,66 @@ describe('huecos (maxGapStep)', () => {
     });
   }
 
-  it('moveTo al otro lado de un hueco más ancho que maxGapStep: no lo cruza, se queda en el borde más cercano', () => {
-    const world = gapWorld(0.65);
+  for (const [width, speed, start] of [[0.65, 1.4, 10], [1, 1.4, 10], [0.9, 3, 10], [1, 5, 10]] as const) {
+    it(`salta un hueco de ${width * 100} cm a ${speed} m/s sin pararse, de un pie a otro, y cae pasada la otra orilla`, () => {
+      const world = gapWorld(width, start);
+      const { human } = world;
+      let liftoffs = 0;
+      // Al caer, lo que el pie de delante adelanta al otro (de un pie a otro, no con los dos a la par).
+      let split = 0;
+      human.on('liftoff', () => { liftoffs++; });
+      human.on('land', () => {
+        const f = human.locomotion.body.state.forward;
+        const d = human.rig.right.foot.getWorldPosition(new Vector3()).sub(human.rig.left.foot.getWorldPosition(new Vector3()));
+        split = Math.abs(d.x * f.x + d.z * f.z);
+      });
+      const r = cross(world, width, start > 5 ? 9 + 10 / speed : 8, (h) => {
+        h.targetHeading = 0;
+        h.targetSpeed = speed;
+      });
+      assert.equal(liftoffs, 1, `saltó ${liftoffs} veces`);
+      assert.ok(split > 0.3, `cayó con los pies a ${(split * 100).toFixed(0)} cm uno del otro`);
+      assert.ok(human.position.z < -width - 0.5 && human.position.y > H - 0.01, `no cruzó: (${human.position.z.toFixed(2)}, ${human.position.y.toFixed(2)})`);
+      assert.ok(r.lowest > H - 0.01, `la raíz bajó a ${r.lowest.toFixed(2)} m`);
+      assert.equal(r.inGap, 0, 'un pie apoyado en el hueco');
+      assert.ok(r.ik < 0.03, `la IK no llegó por ${(r.ik * 100).toFixed(1)} cm`);
+      assert.ok(r.hips > 0.7, `las caderas bajaron a ${r.hips.toFixed(2)} piernas`);
+    });
+  }
+
+  it('casi parado (0,3 m/s), se para en el borde de un hueco de 90 cm y lo salta con los dos pies (CMU: saltos hacia delante sin carrera)', () => {
+    const world = gapWorld(0.9, 3);
     const { human } = world;
-    const r = cross(world, 0.65, 8, (h) => h.moveTo(new Vector3(0, H, -3)));
+    let split = Infinity;
+    let liftoffSpeed = Infinity;
+    human.on('liftoff', () => { liftoffSpeed = Math.min(liftoffSpeed, human.locomotion.body.state.speed); });
+    human.on('land', () => {
+      const f = human.locomotion.body.state.forward;
+      const d = human.rig.right.foot.getWorldPosition(new Vector3()).sub(human.rig.left.foot.getWorldPosition(new Vector3()));
+      split = Math.abs(d.x * f.x + d.z * f.z);
+    });
+    const r = cross(world, 0.9, 16, (h) => { h.targetHeading = 0; h.targetSpeed = 0.3; });
+    assert.ok(human.position.z < -1.4 && human.position.y > H - 0.01, `no cruzó: (${human.position.z.toFixed(2)}, ${human.position.y.toFixed(2)})`);
+    assert.ok(split < 0.1, `cayó con los pies a ${(split * 100).toFixed(0)} cm uno del otro`);
+    assert.ok(r.lowest > H - 0.01 && r.inGap === 0, 'cayó en el hueco o pisó en él');
+    assert.ok(r.ik < 0.03, `la IK no llegó por ${(r.ik * 100).toFixed(1)} cm`);
+  });
+
+  it('moveTo al otro lado de un hueco de 90 cm: salta y llega', () => {
+    const world = gapWorld(0.9);
+    const { human } = world;
+    let arrived = false;
+    human.on('arrive', () => { arrived = true; });
+    const goal = new Vector3(1.5, H, -2.5);
+    const r = cross(world, 0.9, 12, (h) => h.moveTo(goal));
+    assert.ok(arrived && human.position.distanceTo(goal) < 0.3, `no llegó: (${human.position.x.toFixed(2)}, ${human.position.z.toFixed(2)})`);
+    assert.ok(r.lowest > H - 0.01 && r.inGap === 0, 'cayó en el hueco o pisó en él');
+  });
+
+  it('moveTo al otro lado de un hueco más ancho que maxGapJump: no lo cruza, se queda en el borde más cercano', () => {
+    const world = gapWorld(1.2);
+    const { human } = world;
+    const r = cross(world, 1.2, 8, (h) => h.moveTo(new Vector3(0, H, -3)));
     assert.ok(human.position.z > 0 && r.lowest > H - 0.01, `cruzó o cayó: (${human.position.z.toFixed(2)}, ${human.position.y.toFixed(2)})`);
     assert.ok(human.position.z < 0.6, `no se acercó al borde (z ${human.position.z.toFixed(2)})`);
   });

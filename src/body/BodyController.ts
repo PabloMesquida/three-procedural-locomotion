@@ -272,12 +272,32 @@ export class BodyController {
     this.writeRoot();
   }
 
-  /** Time until touching the ground under the root (s); 0 if it isn't in the air. */
-  timeToLand(): number {
+  /**
+   * Takes off forward: in the direction of `heading` (rad, like `state.heading`; facing it), at `horizontal` m/s,
+   * with a vertical velocity (m/s). A jump across a gap.
+   */
+  leap(verticalVelocity: number, horizontal: number, heading: number, elapsed = 0): void {
+    if (this.state.airborne) return;
+    this.state.heading = heading;
+    this.state.facingOffset = 0;
+    this.headingOverride = Number.NaN;
+    this.facingTarget = 0;
+    this.state.speed = horizontal;
+    this.speedRate = 0;
+    this.applyHeading();
+    this.refreshState();
+    this.jump(verticalVelocity, elapsed);
+  }
+
+  /**
+   * Time until touching the ground under the root (s); 0 if it isn't in the air. With `ground`, until coming down to
+   * that height instead (over a gap, the other side: under the root there is the bottom of the gap, or nothing).
+   */
+  timeToLand(ground = Number.NaN): number {
     const s = this.state;
     if (!s.airborne) return 0;
     const g = this.config.gravity;
-    const height = Math.max(s.position.y - s.groundHeight, 0);
+    const height = Math.max(s.position.y - (Number.isNaN(ground) ? s.groundHeight : ground), 0);
     return (s.verticalVelocity + Math.sqrt(s.verticalVelocity ** 2 + 2 * g * height)) / g;
   }
 

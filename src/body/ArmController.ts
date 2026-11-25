@@ -74,6 +74,15 @@ export interface ArmPose {
   elbowSwingBend: number;
   /** Adelanto fijo de ambos brazos (grados), p. ej. al agacharse. */
   armForward?: number;
+  /** Además, de cada brazo (grados; p. ej. saltando, cada uno a su manera). */
+  armForwardSide?: { left: number; right: number };
+  /** Flexión de codo de más de cada brazo (grados). */
+  elbowBendSide?: { left: number; right: number };
+  /**
+   * Antebrazo y mano siguen al brazo tantas veces más deprisa (1 = forearmFrequency y handFrequency), y menos sueltos
+   * (p. ej. saltando, con el brazo moviéndose rápido: si no, el codo se estiraba y la mano se doblaba hacia atrás).
+   */
+  limbStiffness?: number;
   /** Raises the right arm and lowers the left one this much (degrees; negative = the other way), e.g. balancing. */
   abductionTilt?: number;
   /** How much the fingers close, instead of the configuration's `fingerCurl` (e.g. open hands balancing). */
@@ -323,7 +332,8 @@ export class ArmController {
       // Mano relajada (en el espacio local de los dedos: el brazo los lleva después); tocando, abierta.
       const curl = c.fingerCurl ?? cfg.fingerCurl;
       arm.fingers?.pose(curl + (TOUCH_FINGER_CURL - curl) * touch);
-      const forward = (c.armForward ?? 0) * DEG;
+      const side = arm.sign > 0 ? 'right' : 'left';
+      const forward = ((c.armForward ?? 0) + (c.armForwardSide?.[side] ?? 0)) * DEG;
       const armAbduction = c.armAbduction + (c.abductionTilt ?? 0) * arm.sign;
 
       // 0. Hombro: en su sitio (shoulderForward), sigue la intención del balanceo (más rápido que el brazo:
@@ -383,9 +393,11 @@ export class ArmController {
       // apaga con la velocidad mientras el brazo aún oscila: sin el mínimo, el cociente se disparaba (el
       // codo se doblaba de más) y al llegar a 0 caía de golpe (latigazo del antebrazo al quedar parado).
       const swingShare = clamp(swing / (Math.max(c.armSwing, MIN_SWING_FOR_BEND) * DEG), 0, 1);
-      const bendTarget = (c.elbowBend + c.elbowSwingBend * swingShare) * DEG;
+      const bendTarget = (c.elbowBend + (c.elbowBendSide?.[side] ?? 0) + c.elbowSwingBend * swingShare) * DEG;
       arm.forearm.target = upperAngle + bendTarget;
-      if (dynamic) stepSpring(arm.forearm, 2 * Math.PI * cfg.forearmFrequency, LIMB_DAMPING, motion.dt!);
+      const stiff = Math.max(c.limbStiffness ?? 1, 1);
+      const limbDamping = LIMB_DAMPING + (1 - LIMB_DAMPING) * (1 - 1 / stiff);
+      if (dynamic) stepSpring(arm.forearm, 2 * Math.PI * cfg.forearmFrequency * stiff, limbDamping, motion.dt!);
       else snapSpring(arm.forearm);
       const bend = clamp(arm.forearm.value - upperAngle, 0, MAX_ELBOW);
       // Antebrazo recto respecto al brazo antes de doblarlo: la flexión pedida es absoluta, aunque el
@@ -408,7 +420,7 @@ export class ArmController {
       // 3. Muñeca: la mano sigue al antebrazo con algo más de retraso.
       const forearmAngle = upperAngle + bend;
       arm.hand.target = forearmAngle;
-      if (dynamic) stepSpring(arm.hand, 2 * Math.PI * cfg.handFrequency, LIMB_DAMPING, motion.dt!);
+      if (dynamic) stepSpring(arm.hand, 2 * Math.PI * cfg.handFrequency * stiff, limbDamping, motion.dt!);
       else snapSpring(arm.hand);
       const wrist = clamp(arm.hand.value - forearmAngle, -MAX_WRIST, MAX_WRIST);
       // Mismo eje que el codo (sigue perpendicular al antebrazo tras doblarlo). Antes se calculaba como
