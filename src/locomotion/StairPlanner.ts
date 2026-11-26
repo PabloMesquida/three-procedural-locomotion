@@ -125,6 +125,16 @@ const GAP_STEP_SLACK = 0.4;
  * the body passed over the gap with both feet behind it.
  */
 const GAP_MIN_ADVANCE = 0.25;
+/**
+ * A dip no wider than `maxGapStep` and deeper than this below the ground on both sides (× stepLength; a crevice between
+ * two rocks, a trench) it also crosses with a long step, though it could step down into it: it stepped into it, with
+ * the body going down too.
+ */
+export const GAP_DIP = 0.1;
+/** A dip under the landing it crosses (see `crossDip`): the ground is looked at every 1 / DIP_SAMPLES of `maxGapStep`. */
+const DIP_SAMPLES = 8;
+/** Its sides, at most this much below the stance foot (× GAP_DIP; not the face of the dip, sloping up to the far one). */
+const DIP_RIM = 2;
 const GAP_STRETCH = 1.35;
 const GAP_WAIT_SPEED = 0.4;
 
@@ -194,6 +204,8 @@ export class StairPlanner {
    * and further: a 1.1 m step.
    */
   gapCrossing = false;
+  /** The last `crossDip` that moved the landing put it past the dip (not just before it). */
+  dipCrossed = false;
   /**
    * It is going to jump across the gap ahead running, without stopping (set by LocomotionController, see
    * `gapAhead`): the edge guard doesn't brake for gaps it jumps across.
@@ -729,7 +741,7 @@ export class StairPlanner {
       // con un paso largo (`maxGapStep`). Por un arco, solo el que queda entre los dos pies (uno a cada lado): uno que
       // sale de una plataforma por su borde y vuelve a entrar en ella parecía un hueco por delante (y la raíz salía de
       // la plataforma por encima de él); esos los mira en línea recta (ver dropAhead).
-      profile.markGaps(this.toeFront, this.gapWidth, c.maxStepUp, c.maxStepDown);
+      profile.markGaps(this.toeFront, this.gapWidth, c.maxStepUp, c.maxStepDown, GAP_DIP * c.stepLength);
       if (arc) {
         const lo = Math.min(uStart, uStance);
         const hi = Math.max(uStart, uStance);
@@ -888,6 +900,85 @@ export class StairPlanner {
     profile.dropFirst(first);
     if (this.keepOffWall(stance, moved ? out : landing, out, stanceGround)) moved = true;
     return moved;
+  }
+
+  /**
+   * The step (from `start`, the ankle of the foot that takes off) lands in a dip it crosses (see GAP_DIP) that the profile doesn't see: a crevice between two rocks whose
+   * near side slopes down into it (the profile sees treads between edges, and a face sloping down is not an edge). The
+   * landing (`landing`, world ankle, already placed) more than GAP_DIP below the stance foot (on ground at
+   * `stanceGround`); along `direction`, through the landing, its sides: ahead, the nearest ground more than GAP_DIP above
+   * it and no more than DIP_RIM × GAP_DIP below the stance foot, within a step of it; behind, the nearest ground more
+   * than GAP_DIP above it that can be stood on (not steeper than `maxSlope`), or the stance foot if there is none on
+   * that line, where the foot took off. Between them, no wider than `maxGapStep`, with room for the whole foot past it, the dip.
+   * Like a gap it crosses: the foot just before it or past it, whichever is closer in proportion to the step (past it,
+   * no farther than the longest step across a gap). Returns that landing in `out` (height: that of the stance foot;
+   * it is placed again) and true, or false. Only if the landing is that low: up to about DIP_SAMPLES raycasts if
+   * there is no side ahead (going down stairs), and up to about 2 × DIP_SAMPLES if there is.
+   */
+  crossDip(start: Vector3, stance: Vector3, stanceGround: number, landing: Vector3, ankleHeight: number, direction: Vector3, out: Vector3): boolean {
+    this.dipCrossed = false;
+    const width = this.gapWidth;
+    const c = this.config;
+    if (!(width > 0)) return false;
+    const depth = GAP_DIP * c.stepLength;
+    const sole = landing.y - ankleHeight;
+    if (!(stanceGround - sole > depth)) return false;
+    const d = this.horizontal(direction);
+    const dx = d.x;
+    const dz = d.z;
+    // Lo que avanza el pie desde donde despegó (alcanzando al otro, su paso cruza la grieta aunque no pase del apoyo).
+    const natural = (landing.x - start.x) * dx + (landing.z - start.z) * dz;
+    if (!(natural > GAP_MIN_ADVANCE * c.stepLength)) return false;
+    const behindStance = (stance.x - start.x) * dx + (stance.z - start.z) * dz;
+    const step = width / DIP_SAMPLES;
+    // Alturas a lo largo del paso, por la línea del aterrizaje, en s (m) desde él.
+    const at = (s: number): number => this.heightAt(landing.x + dx * s, landing.z + dz * s, stanceGround);
+    const rim = Math.max(sole + depth, stanceGround - DIP_RIM * depth);
+    const side = (h: number): boolean => h >= rim && this.passable(h - stanceGround);
+    const steepest = Math.tan((Math.min(c.maxSlope, 89) * Math.PI) / 180);
+    // La orilla de allá (si no la hay, baja de verdad: una escalera, una rampa).
+    let far = Number.NaN;
+    for (let k = 1; k * step <= width + step + 1e-9; k++) {
+      if (side(at(k * step))) {
+        far = k * step;
+        break;
+      }
+    }
+    if (Number.isNaN(far)) return false;
+    // La de acá: hacia atrás, el primer suelo más de `depth` por encima del aterrizaje en el que se puede estar (no más
+    // empinado que maxSlope). Si no lo hay en la línea del aterrizaje (una roca que cae hacia un lado), el pie de apoyo,
+    // que está en ella. Con una cuerda entre las dos, el labio inclinado de una roca contaba como parte de la grieta.
+    let near = -natural;
+    let previous = at(-step);
+    for (let k = 1; (k + 1) * step < natural; k++) {
+      const next = at(-(k + 1) * step);
+      if (previous >= sole + depth && Math.abs(next - previous) <= steepest * step) {
+        near = -k * step;
+        break;
+      }
+      previous = next;
+    }
+    const edgeNear = near + step / 2;
+    const edgeFar = far - step / 2;
+    if (edgeFar - edgeNear > width) return false;
+    const margin = EDGE_MARGIN * this.footLength;
+    if (!side(at(edgeFar + this.heelBack + this.toeFront + margin))) return false;
+    const before = natural + edgeNear - this.toeFront - margin;
+    const past = natural + edgeFar + this.heelBack + margin;
+    // Pasada ella, no más lejos del pie de apoyo que el paso más largo sobre un hueco.
+    const farthest = Math.max(this.gapReach, (natural - behindStance) * this.gapStretch);
+    const canBefore = before > GAP_MIN_ADVANCE * c.stepLength;
+    const canPast = past - behindStance <= farthest;
+    let u: number;
+    if (canBefore && canPast) u = Math.abs(Math.log(past / natural)) <= Math.abs(Math.log(before / natural)) ? past : before;
+    else if (canPast) u = past;
+    // Si no le da para ninguno de los dos, antes de ella con un paso corto (al menos a la altura del apoyo): el paso
+    // siguiente la cruza.
+    else if (before > 0) u = before;
+    else return false;
+    this.dipCrossed = u === past;
+    out.set(landing.x + dx * (u - natural), stanceGround + ankleHeight, landing.z + dz * (u - natural));
+    return true;
   }
 
   /**

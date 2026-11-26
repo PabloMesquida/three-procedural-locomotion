@@ -191,9 +191,10 @@ export class GroundProfile {
    * the gaps between the treads of stairs without risers, which are stepped over. Also, as gaps it crosses
    * (`cross`), those up to `crossLength` long more than `stepDown` below the tread before them, when it can step
    * from that tread to the next one (up to `stepUp` up and `stepDown` down): a gap in the ground with ground on
-   * the other side.
+   * the other side. And those up to `crossLength` long more than `dipDepth` below the treads on both sides (a crevice
+   * between two rocks, a trench), also if it could step down into them.
    */
-  markGaps(maxLength: number, crossLength = 0, stepUp = 0, stepDown = 0): void {
+  markGaps(maxLength: number, crossLength = 0, stepUp = 0, stepDown = 0, dipDepth = Number.POSITIVE_INFINITY): void {
     for (let i = 1; i < this.count - 1; i++) {
       const t = this.treads[i];
       const before = this.treads[i - 1].endHeight;
@@ -201,7 +202,8 @@ export class GroundProfile {
       const bottom = Math.max(t.startHeight, t.endHeight);
       const low = bottom + this.edgeHeight;
       t.gap = t.end - t.start < maxLength && before >= low && after >= low;
-      t.cross = !t.gap && t.end - t.start <= crossLength && before - bottom > stepDown && after - before <= stepUp && before - after <= stepDown;
+      const deep = before - bottom > stepDown || (before - bottom > dipDepth && after - bottom > dipDepth);
+      t.cross = !t.gap && t.end - t.start <= crossLength && deep && after - before <= stepUp && before - after <= stepDown;
       if (t.cross) t.gap = true;
     }
   }
@@ -321,8 +323,8 @@ export class GroundProfile {
 
   /**
    * Smooth line over the treads (world height at `u`; NaN outside the profile): through the middle of each
-   * tread shorter than 2·`reach` and, on longer ones, flat up to `reach` from each edge; over the gaps. It
-   * rises like the stairs on average, without steps.
+   * tread shorter than 2·`reach` and, on longer ones, flat up to `reach` from each edge; over the gaps and the
+   * stretches without ground. It rises like the stairs on average, without steps.
    */
   line(u: number, reach: number): number {
     if (this.count === 0 || u < this.treads[0].start || u > this.treads[this.count - 1].end) return Number.NaN;
@@ -331,7 +333,9 @@ export class GroundProfile {
     let previousH = Number.NaN;
     for (let i = 0; i < this.count; i++) {
       const t = this.treads[i];
-      if (t.gap) continue;
+      // Ni por donde no hay suelo: uno al final del perfil (en el fondo de una grieta entre dos rocas) no es un hueco
+      // (no tiene huella detrás), y la línea bajaba hacia la altura con que se apunta (la raíz, hasta 180 m).
+      if (t.gap || this.hole(t)) continue;
       const short = t.end - t.start < 2 * reach && t.startEdge && t.endEdge;
       const a = short ? (t.start + t.end) / 2 : t.startEdge ? Math.min(t.start + reach, t.end) : t.start;
       const b = short ? a : t.endEdge ? Math.max(t.end - reach, a) : t.end;
@@ -342,6 +346,11 @@ export class GroundProfile {
       previousH = treadHeight(t, b);
     }
     return previousH;
+  }
+
+  /** The tread is a stretch without ground (see `holeHeight`). */
+  private hole(t: Tread): boolean {
+    return t.startHeight <= this.holeHeight && t.endHeight <= this.holeHeight;
   }
 
   private addTread(start: number, height: number, edge: boolean): Tread {

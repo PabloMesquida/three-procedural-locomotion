@@ -5,6 +5,7 @@ import type { Colliders } from '../terrain/Colliders.ts';
 import { createGroundHit, type GroundDetector, type GroundHit } from '../terrain/GroundDetector.ts';
 import { NARROW_DROP } from '../terrain/NarrowPath.ts';
 import { LEDGE_WALL } from '../terrain/Ledge.ts';
+import { GAP_DIP } from '../locomotion/StairPlanner.ts';
 
 /** Side of the cells of the grid it searches on (× stepLength; 15 cm with the default one). */
 const CELL = 0.19;
@@ -1084,7 +1085,9 @@ export class PathPlanner {
    * direction `d` of NEIGHBORS: how many cells away there is one on the other side of a gap it steps across, also with
    * room for the feet; 0 if none. On the way, cells at its level (by the edge) and then
    * the gap (a drop it can't step down, or no ground), no wider than GAP_SHARE × `maxGapStep` along that direction
-   * (measured with a few raycasts, see `gapWidth`), and no wall.
+   * (measured with a few raycasts, see `gapWidth`), and no wall. If there is none, a dip it crosses as a gap (more than
+   * GAP_DIP × `stepLength` below, with the other side at its level; see StairPlanner): a crevice between two rocks
+   * with a steep face or a riser it can't climb, which the route went round, down and through it.
    */
   private gapLink(i: number, j: number, d: number, hard: number): number {
     const config = this.config();
@@ -1098,15 +1101,32 @@ export class PathPlanner {
     if (known !== undefined) return known;
     c.gaps[d] = 0;
     // Desde un camino angosto, no: junto a donde se une a una plataforma, veía un atajo en diagonal por encima del vacío.
-    if (!Number.isFinite(c.height) || this.isEdge(i, j) || this.clearance(i, j) < hard) return 0;
-    const [di, dj, step] = NEIGHBORS[d];
-    const length = step * this.size;
+    if (!Number.isFinite(c.height) || this.isEdge(i, j)) return 0;
+    // Una hondonada, también desde una celda junto a un borde (no de ella: el labio de una grieta suele ser empinado): la
+    // roca a cada lado de una grieta es a menudo así de estrecha, y no la cruzaba.
+    const room = this.clearance(i, j);
+    const length = NEIGHBORS[d][2] * this.size;
     const most = Math.ceil((widest / GAP_SHARE + 2 * hard) / length) + 2;
+    if (room >= hard && this.gapAcross(i, j, d, hard, config.maxStepDown, widest, most) > 0) return c.gaps[d];
+    const dip = GAP_DIP * config.stepLength;
+    const near = Math.min(hard, this.size);
+    if (room >= near && dip < config.maxStepDown && config.maxGapStep > 0) this.gapAcross(i, j, d, near, dip, GAP_SHARE * config.maxGapStep, most);
+    return c.gaps[d];
+  }
+
+  /**
+   * `gapLink` for a gap of ground more than `drop` below the cell (i, j), no wider than `widest`, within `most` cells:
+   * stores it (`gaps`, `jumps`, `widths` of the cell) and returns how many cells away the other side is; 0 if none.
+   */
+  private gapAcross(i: number, j: number, d: number, hard: number, drop: number, widest: number, most: number): number {
+    const config = this.config();
+    const c = this.cell(i, j, 0);
+    const [di, dj] = NEIGHBORS[d];
     let gapFrom = 0;
     let gapTo = 0;
     for (let k = 1; k <= most; k++) {
       const n = this.cell(i + k * di, j + k * dj, c.height);
-      if (!(n.height >= c.height - config.maxStepDown)) {
+      if (!(n.height >= c.height - drop)) {
         if (gapTo > 0) return 0; // otro desnivel pasado el hueco
         if (gapFrom === 0) gapFrom = k;
         continue;
@@ -1118,13 +1138,14 @@ export class PathPlanner {
       const ni = i + k * di;
       const nj = j + k * dj;
       if (this.isEdge(ni, nj) || this.clearance(ni, nj) < hard || this.apart(ni, nj) < hard) continue;
-      const width = this.gapWidth(i, j, di, dj, gapFrom, gapTo, c.height);
+      const width = this.gapWidth(i, j, di, dj, gapFrom, gapTo, c.height, drop);
+      const gaps = (c.gaps ??= []);
       if (width <= widest) {
-        c.gaps[d] = k;
-        c.jumps[d] = width > GAP_SHARE * config.maxGapStep;
-        c.widths[d] = width;
+        gaps[d] = k;
+        (c.jumps ??= [])[d] = width > GAP_SHARE * config.maxGapStep;
+        (c.widths ??= [])[d] = width;
       }
-      return c.gaps[d];
+      return gaps[d] ?? 0;
     }
     return 0;
   }
@@ -1133,7 +1154,7 @@ export class PathPlanner {
    * Width of the gap going from cell (i, j) in steps of (di, dj), coming from ground at `ground`: it starts between the
    * cells `from` − 1 and `from`, and ends between `to` − 1 and `to` (m, along that direction; by bisection).
    */
-  private gapWidth(i: number, j: number, di: number, dj: number, from: number, to: number, ground: number): number {
+  private gapWidth(i: number, j: number, di: number, dj: number, from: number, to: number, ground: number, drop: number): number {
     const config = this.config();
     const s = this.size;
     const x = this.x0 + i * s;
@@ -1145,7 +1166,7 @@ export class PathPlanner {
       this.origin.set(x + ux * t, ground + config.groundProbeHeight, z + uz * t);
       this.raycasts++;
       const found = this.detector.castDown(this.origin, config.groundProbeHeight + config.groundProbeDepth, this.hit);
-      return found && this.hit.point.y >= ground - config.maxStepDown;
+      return found && this.hit.point.y >= ground - drop;
     };
     const edge = (lo: number, hi: number, loLevel: boolean): number => {
       for (let k = 0; k < GAP_EDGE_STEPS; k++) {

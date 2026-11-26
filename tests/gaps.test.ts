@@ -234,3 +234,81 @@ describe('huecos con carrera (maxGapJumpRun)', () => {
     assert.ok(world.human.position.z > 0 && r.lowest > H - 0.01, `cruzó o cayó (z ${world.human.position.z.toFixed(2)})`);
   });
 });
+
+// Una zanja entre dos tarimas, menos honda que maxStepDown (podría bajar a ella): como una grieta entre dos rocas, la
+// cruza de un paso como un hueco, sin pisarla. Antes pisaba en ella (las de 25 a 45 cm), con la raíz bajando con el pie;
+// y sobre una angosta que cruzaba de un paso normal (15 cm), la raíz bajaba igual (hasta 21 cm).
+describe('zanjas que podría bajar (maxGapStep)', () => {
+  for (const [width, depth, speed] of [[0.25, 0.15, 0.6], [0.35, 0.25, 1.4], [0.45, 0.15, 1.4], [0.45, 0.3, 0.6], [0.15, 0.3, 1.4]] as const) {
+    it(`una zanja de ${width * 100} cm de ancho y ${depth * 100} cm de hondo a ${speed} m/s: la cruza sin pisarla ni bajar la raíz`, () => {
+      const world = createWorld({
+        buildTerrain: (g) => {
+          box(g, 6, H, 12, 0, 0, 6);
+          box(g, 6, H, 6, 0, 0, -width - 3);
+          box(g, 6, H - depth, width, 0, 0, -width / 2);
+        },
+      });
+      world.model.position.set(0, H, 1.6);
+      world.model.updateMatrixWorld(true);
+      world.human.reset();
+      const r = cross(world, width, 8, (h) => { h.targetHeading = 0; h.targetSpeed = speed; });
+      const { human } = world;
+      assert.ok(human.position.z < -width - 0.5, `no cruzó: z ${human.position.z.toFixed(2)}`);
+      assert.equal(r.inGap, 0, 'un pie apoyado en la zanja');
+      assert.ok(r.lowest > H - 0.04, `la raíz bajó a ${r.lowest.toFixed(2)} m`);
+    });
+  }
+});
+
+// Una grieta como las de entre dos rocas: de este lado una cara que baja en rampa (43°, más que maxSlope), del otro una
+// pared más alta que maxStepUp. El perfil no la ve como hondonada (una cara inclinada no es un borde) y la ruta no veía
+// cómo cruzarla: la rodeaba o bajaba a ella. Ahora moveTo la cruza de frente, como un hueco, y los pasos por encima.
+// También con una ranura más honda que maxStepDown junto a la pared (60 cm, como en la isla del diorama): desde la pared, el
+// primer suelo que se puede pisar pasada la ranura es la rampa, dentro de la grieta; y la raíz, con un pie a cada lado,
+// bajaba a ella.
+describe('grieta con una cara en rampa (maxGapStep)', () => {
+  for (const [speed, back, depth] of [[1.4, false, false], [1.4, true, false], [0.6, false, false], [0.6, true, false], [1.4, false, true], [1.4, true, true], [0.6, true, true]] as const) {
+    it(`moveTo al otro lado a ${speed} m/s${back ? ', desde el lado de la pared' : ''}${depth ? ', con una ranura honda junto a ella' : ''}: la cruza sin pisarla ni bajar la raíz a ella`, () => {
+      const world = createWorld({
+        buildTerrain: (g) => {
+          box(g, 6, H, 12, 0, 0, 6);
+          box(g, 6, H, 6, 0, 0, -0.45 - 3);
+          if (depth) {
+            box(g, 6, H - 0.35, 0.33, 0, 0, -0.165);
+            box(g, 6, H - 0.6, 0.12, 0, 0, -0.39);
+          } else box(g, 6, H - 0.4, 0.45, 0, 0, -0.225);
+          const theta = Math.atan2(0.35, 0.37);
+          const ramp = new Mesh(new BoxGeometry(6, 0.3, Math.hypot(0.35, 0.37)), new MeshBasicMaterial());
+          ramp.rotation.x = -theta;
+          ramp.position.set(0, H - 0.175 - 0.15 * Math.cos(theta), -0.185 + 0.15 * Math.sin(theta));
+          g.add(ramp);
+        },
+        human: { config: { walkSpeed: speed } },
+      });
+      const from = back ? -2 : 1.6;
+      const to = back ? 1.6 : -2;
+      world.model.position.set(0, H, from);
+      world.model.rotation.set(0, back ? 0 : Math.PI, 0);
+      world.model.updateMatrixWorld(true);
+      world.human.reset();
+      const { human } = world;
+      const loco = human.locomotion;
+      let inCrack = 0;
+      let lowest = Infinity;
+      const was: Record<Side, boolean> = { left: false, right: false };
+      simulate(world, 9, [[0, (h) => h.moveTo(new Vector3(0, H, to))]], {
+        onFrame: () => {
+          lowest = Math.min(lowest, human.position.y);
+          for (const side of SIDES) {
+            const air = human.footPhase(side) === 'SWING';
+            if (was[side] && !air && loco.feet[side].planted.y - loco.planner.placement(side).ankleHeight < H - 0.12) inCrack++;
+            was[side] = air;
+          }
+        },
+      });
+      assert.ok(Math.abs(human.position.z - to) < 0.3, `no llegó: z ${human.position.z.toFixed(2)}`);
+      assert.equal(inCrack, 0, 'un pie apoyado en la grieta');
+      assert.ok(lowest > H - 0.18, `la raíz bajó a ${lowest.toFixed(2)} m`);
+    });
+  }
+});

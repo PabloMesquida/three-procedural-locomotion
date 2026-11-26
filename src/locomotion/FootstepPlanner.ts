@@ -38,6 +38,8 @@ export class FootstepPlanner {
   private readonly homeLocal: Record<Side, Vector3>;
   private readonly tmp = new Vector3();
   private readonly tmp2 = new Vector3();
+  /** Whether the last landing placed for each foot (see `placeLanding`) found ground under it. */
+  readonly landingGrounded: Record<Side, boolean> = { left: true, right: true };
   private readonly zero = new Vector3();
   private readonly rootWorld = new Vector3();
   private readonly settleTarget = new Vector3();
@@ -218,6 +220,7 @@ export class FootstepPlanner {
   placeLanding(side: Side, desired: Vector3, footYaw: number, outPosition: Vector3, outRotation: Quaternion): void {
     let ground = this.placements[side].update(desired, footYaw);
     if (!ground.grounded && this.deepLanding) ground = this.placements[side].update(desired, footYaw, this.config.groundProbeDepth);
+    this.landingGrounded[side] = ground.grounded;
     outPosition.copy(ground.ankleTarget);
     outRotation.copy(ground.footRotation);
   }

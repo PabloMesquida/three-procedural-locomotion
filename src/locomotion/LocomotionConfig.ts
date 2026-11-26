@@ -329,8 +329,10 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   maxSlope: number;
   /**
    * Widest gap it steps across (m; 0 = none): a drop deeper than `maxStepDown` with ground it can step on again on
-   * the other side, no farther than this along the way it goes. It doesn't stop at it: if it has to, it puts the foot
-   * just before the edge, and crosses it with a long step. From a wider one it stops at the edge, as from a drop.
+   * the other side, no farther than this along the way it goes; also a dip it could step down into, more than 10 % of
+   * `stepLength` below the ground on both sides (a crevice between two rocks, a trench). It doesn't stop at it: if it
+   * has to, it puts the foot just before the edge, and crosses it with a long step. From a wider one it stops at the
+   * edge, as from a drop.
    */
   maxGapStep: number;
   /**

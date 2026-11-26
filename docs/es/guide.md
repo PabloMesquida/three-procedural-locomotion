@@ -468,6 +468,10 @@ hueco: en vez de pararse en el borde, el personaje lo cruza de un paso.
   baja un poco las caderas (unos 10 cm como mucho).
 - Sobre el hueco, el cuerpo sigue la línea entre las dos orillas.
 - La otra orilla puede estar más alta o más baja, dentro de `maxStepUp` y `maxStepDown`.
+- Una hondonada en la que podría pisar también es un hueco, si no es más ancha que `maxGapStep` y queda más de un
+  10 % de `stepLength` por debajo del suelo a los dos lados (una grieta entre dos rocas, también con una cara que
+  baja en rampa; una zanja entre dos tarimas): la cruza de un paso en vez de pisar adentro, y `moveTo` planea rutas
+  que la cruzan como a un hueco. En una menos honda, pisa.
 - Llegando en diagonal, el hueco es más ancho en la dirección en que va (`maxGapStep` se mide así): uno de 45 cm
   mide más de 50 cm a partir de unos 30° de la perpendicular, y se para en el borde.
 - `moveTo` planea rutas que cruzan huecos, de frente, pero cruzar uno cuesta lo que caminar el doble: si rodearlo no

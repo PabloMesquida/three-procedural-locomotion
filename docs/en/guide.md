@@ -461,6 +461,10 @@ instead of stopping at the edge, the character steps across it.
   Walking, the long step lowers the hips a little (about 10 cm at most).
 - Over the gap, the body follows the line between both sides.
 - The other side may be higher or lower, within `maxStepUp` and `maxStepDown`.
+- A dip it could step down into is a gap too, if it is no wider than `maxGapStep` and more than 10 % of `stepLength`
+  below the ground on both sides (a crevice between two rocks, also with one side sloping down into it; a trench
+  between two platforms): it steps over it instead of into it, and `moveTo` plans routes across it as across a gap.
+  A shallower one, it steps into.
 - Coming at it at an angle, the gap is wider along the way it goes (`maxGapStep` is measured that way): a 45 cm gap
   is wider than 50 cm from about 30° off square on, and it stops at the edge.
 - `moveTo` plans routes across gaps, square on, but crossing one costs as much as walking twice as far: if going

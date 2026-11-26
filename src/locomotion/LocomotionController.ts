@@ -192,8 +192,23 @@ const STAIR_RELEASE = 0.4;
  * before it, as before a wall.
  */
 const SLOPE_STEP_RISE = 0.5;
-/** Standing still, the body rises to the lower foot only for what goes past this (× stepLength; see standingGround). */
+/**
+ * The body rises to the lower foot only for what goes past this (× stepLength; see standingGround): standing still,
+ * STAND_SLACK; moving, MOVE_SLACK.
+ */
 const STAND_SLACK = 0.03;
+const MOVE_SLACK = 0.05;
+/**
+ * Walking, the body is held up over a drop deeper than `maxStepDown` between the feet only if they are no farther
+ * apart than this times the longest step across a gap (StairPlanner.gapReach; running, a step across one can be
+ * GAP_STRETCH times longer than the one it would take).
+ */
+const BRIDGE_STRETCH = 1.35;
+/**
+ * And only over a drop no deeper than this times `maxStepDown` (the bottom of a crevice between two rocks): over a deeper
+ * one, or one without ground, the gap is dealt with by the edge, `gapLine` and the jumps, which need to see it.
+ */
+const BRIDGE_DEPTH = 2;
 /** Ground with a normal more vertical than this (cosine; 5°) is flat: a stair tread (see slopeSpeedLimit). */
 const SLOPE_FLAT = Math.cos((5 * Math.PI) / 180);
 const SLOPE_WINDOW = 1;
@@ -737,6 +752,8 @@ export class LocomotionController {
   /** Each arm forward when the preparation started (degrees): from there to that of take-off. */
   private readonly leapArmStart = { left: 0, right: 0 };
   private readonly gapAhead = { edge: 0, width: 0, far: 0 };
+  /** The foot whose step crosses a dip, past it (see StairPlanner.crossDip); null if none. */
+  private dipSide: Side | null = null;
   /** Going idle: progress (0→1) of flattening the feet from their pose when stopping. */
   private settleBlend = 1;
   private readonly settleFrom: Record<Side, { position: Vector3; rotation: Quaternion }> = {
@@ -957,26 +974,61 @@ export class LocomotionController {
     this.backBand = backBands(rig);
     const hipsHeight = this.backBand.hips[1] / 1.1;
     this.backDepth = measureBack(rig, forward) ?? { hips: BACK_HIPS * hipsHeight, chest: BACK_CHEST * hipsHeight };
-    this.body.groundLine = (position, ground) => this.standingGround(this.stairs.groundHeight(position, ground));
+    this.body.groundLine = (position, ground) => this.standingGround(position, this.stairs.groundHeight(position, ground));
     this.body.gapLine = (fromX, fromZ, toX, toZ, ground) => this.stairs.gapLine(fromX, fromZ, toX, toZ, ground);
   }
 
   /**
-   * The ground the body follows (`ground`: under the root, or the line over the treads), standing still with both feet
-   * planted: never below the lower foot. On rocks seen as stairs the line passed below both feet (10 to 40 cm), and a
-   * crevice under the body between two rocks too: it stood with both knees bent, crouched. On stairs the line is
-   * between the two treads, above the lower one: as before.
+   * The ground the body follows (`ground`: under the root, or the line over the treads): never below the lower foot.
+   * Standing still with both feet planted: on rocks seen as stairs the line passed below both feet (10 to 40 cm), and a
+   * crevice under the body between two rocks too, and it stood with both knees bent, crouched. Moving, the lower of the
+   * stance foot and of where the other one took off and will land: stepping over a narrow trench with one step, the
+   * body went down into it (up to 28 cm). Not over a drop it can't step down (a gap: see `gapLine`). On stairs the line
+   * is between the two treads, above the lower one: as before.
    */
-  private standingGround(ground: number): number {
-    if (this.gait.mode !== 'idle' || !Number.isFinite(ground)) return ground;
+  private standingGround(position: Vector3, ground: number): number {
+    if (!Number.isFinite(ground)) return ground;
+    const idle = this.gait.mode === 'idle';
     let lower = Number.POSITIVE_INFINITY;
     for (const side of SIDES) {
       const foot = this.feet[side];
-      if (foot.phase !== 'PLANTED') return ground;
-      lower = Math.min(lower, foot.planted.y - this.planner.placement(side).ankleHeight);
+      let y = foot.planted.y;
+      if (foot.phase !== 'PLANTED') {
+        if (idle) return ground;
+        y = Math.min(y, foot.swing.landing.y);
+      }
+      lower = Math.min(lower, y - this.planner.placement(side).ankleHeight);
     }
+    // Andando, sobre un desnivel más hondo que una hondonada en la que podría pisar, solo si no es mucho más (ver
+    // BRIDGE_DEPTH) y con un pie a cada lado (la raíz entre donde apoya uno y donde apoyará el otro, en suelo; sin saltar): cruzando una grieta entre dos rocas más honda que eso, el cuerpo
+    // bajaba a ella (hasta 40 cm). Si no (yendo hacia un hueco), de él se ocupan el borde y `gapLine`.
+    const drop = lower - ground;
+    const down = this.config.maxStepDown;
+    if (!idle && drop > down && (drop > BRIDGE_DEPTH * down || !this.betweenFeet(position))) return ground;
     // Lo que pase de STAND_SLACK (en el llano, la planta queda unos mm por encima: subir por eso movía el cuerpo).
-    return ground + Math.max(lower - ground - STAND_SLACK * this.config.stepLength, 0);
+    return ground + Math.max(lower - ground - (idle ? STAND_SLACK : MOVE_SLACK) * this.config.stepLength, 0);
+  }
+
+  /**
+   * `position` (the root, world) is between the feet along the line from one to the other: where each one is planted or,
+   * in the air, where it will land, on ground (not jumping), and no farther apart than a step across a gap (see
+   * BRIDGE_STRETCH). Planning a stop at the edge of a gap, the landing could be over it, with no ground: the body went
+   * on over the gap.
+   */
+  private betweenFeet(position: Vector3): boolean {
+    if (this.body.state.airborne || this.jumping.phase !== 'GROUNDED') return false;
+    for (const side of SIDES) if (this.feet[side].phase !== 'PLANTED' && !this.planner.landingGrounded[side]) return false;
+    const a = this.feet.left.phase === 'PLANTED' ? this.feet.left.planted : this.feet.left.swing.landing;
+    const b = this.feet.right.phase === 'PLANTED' ? this.feet.right.planted : this.feet.right.swing.landing;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const length2 = dx * dx + dz * dz;
+    // Y a no más que el paso más largo sobre un hueco que cruza (ver BRIDGE_STRETCH): sostenido por encima de uno más
+    // ancho (con `maxGapStep` 0, cualquiera), pasaba el borde en vez de pararse.
+    const reach = BRIDGE_STRETCH * this.stairs.gapReach;
+    if (length2 < 1e-6 || length2 > reach * reach) return false;
+    const t = ((position.x - a.x) * dx + (position.z - a.z) * dz) / length2;
+    return t > 0 && t < 1;
   }
 
   /** Velocidad deseada (m/s), entre 0 y config.runSpeed. */
@@ -1041,6 +1093,7 @@ export class LocomotionController {
 
   /** Stops the character and rests both feet in their neutral position (keeps the desired crouch). */
   reset(): void {
+    this.dipSide = null;
     this.syncPlacementConfig();
     this.planner.widthOverride = null;
     this.planner.syncStepWidth();
@@ -2204,6 +2257,15 @@ export class LocomotionController {
       reachAt(now),
     );
     if (moved) this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
+    // Cayendo en una grieta entre dos rocas que el perfil no ve (con una cara que baja en rampa): la cruza.
+    const dip = this.stairs.crossDip(start, other.planted, other.planted.y - stanceAnkle, landing, placement.ankleHeight, this.landingDirection, this.tmp);
+    // El pie que la cruza (ver standingGround).
+    if (dip && this.stairs.dipCrossed) this.dipSide = side;
+    else if (this.dipSide === side) this.dipSide = null;
+    if (dip) {
+      this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
+      return true;
+    }
     return moved;
   }
 
