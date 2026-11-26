@@ -748,7 +748,15 @@ export class StairPlanner {
     }
     this.active = profile.edges > 0;
     this.run = 0;
-    if (!this.active) return false;
+    if (!this.active) {
+      // Un cambio de nivel sin bordes (la cresta o el pie de una rampa) después de girar: también mira por delante. Si
+      // no, la pendiente que iba a pisar solo la veía si la había mirado antes, desde más lejos, hacia allí (llegando
+      // a una rampa por un giro, no). Yendo recto no: sobre rocas, frenaba por cada cara.
+      const dir = this.horizontal(direction);
+      const turned = dir.x * this.lookedDirection.x + dir.z * this.lookedDirection.z < LOOKED_SAME_COS;
+      if (probe && turned) this.lookFarAhead(stance, stanceGround, direction, reach, stride);
+      return false;
+    }
 
     // Huella del pie de apoyo: la referencia para no saltarse escalones y para el escalón máximo.
     const stanceTread = this.stanceTread(uStance, stanceGround);

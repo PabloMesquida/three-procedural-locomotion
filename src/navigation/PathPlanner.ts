@@ -75,6 +75,17 @@ const ROUND_MARGIN = 0.2;
 const SLOPE_STEP_SHARE = 0.7;
 /** Cells on each side over which it measures a slope (see isSteep). */
 const SLOPE_CELLS = 2;
+/**
+ * Getting onto a slope from flat ground (less tilted than SLOPE_FLAT_COS) at an angle (more than SLOPE_ALIGNED_COS off
+ * its fall line), if it is a slope where it slows down (SLOPE_APPROACH_MIN or steeper, also a step further on: not
+ * a bump), the route first goes to a point this far before it, in line with the fall line (× stepLength; half if
+ * there isn't room). Coming at a narrow ramp at an angle, its look ahead left the ramp by its side (an edge, not a
+ * slope): it didn't slow down, and went onto it with the steps of flat ground.
+ */
+const SLOPE_APPROACH = 1;
+const SLOPE_APPROACH_MIN = (15 * Math.PI) / 180;
+const SLOPE_FLAT_COS = Math.cos((5 * Math.PI) / 180);
+const SLOPE_ALIGNED_COS = Math.cos((20 * Math.PI) / 180);
 /** Directions across which it measures the width of a narrow path: along X, along Z and the two diagonals. */
 const ACROSS: [number, number][] = [[1, 0], [0, 1], [1, 1], [1, -1]];
 /**
@@ -138,8 +149,10 @@ interface Cell {
   /** Indices of the cell. */
   i: number;
   j: number;
-  /** Vertical component of the normal of its ground (1: flat). */
+  /** Normal of its ground (world): vertical component (1: flat) and horizontal ones (downhill). */
   up: number;
+  nx: number;
+  nz: number;
   /** On a slope steeper than `maxSlope` (see isSteep): it isn't walked on. undefined: not known yet. */
   steep?: boolean;
   /** Next to a change of level it can't step (or no ground): it isn't walked on. undefined: not known yet. */
@@ -535,6 +548,7 @@ export class PathPlanner {
       from = p;
       index = far + 1;
     }
+    this.approachSlope(new Vector3(start.x, start0.height, start.z), out, hard);
     this.round(start.x, start.z, start0.height, hard + ROUND_MARGIN * config.stepLength, out);
     this.markNarrow(start, out, narrow);
     this.approachNarrow(start, out, narrow);
@@ -543,6 +557,73 @@ export class PathPlanner {
     this.alongWall(out);
     this.approachLedge(start, out);
     return true;
+  }
+
+  /**
+   * Where a stretch of the route gets onto a slope from flat ground at an angle (see SLOPE_APPROACH), it first goes to
+   * a point before it in line with its fall line, if it can walk there (with `room` from the edges) and from there on.
+   */
+  private approachSlope(start: Vector3, points: Vector3[], room: number): void {
+    const s = this.size;
+    const step = this.config().stepLength;
+    const minUp = Math.cos(SLOPE_APPROACH_MIN);
+    for (let k = 0; k < points.length; k++) {
+      const a = k === 0 ? start : points[k - 1];
+      const b = points[k];
+      const length = Math.hypot(b.x - a.x, b.z - a.z);
+      if (length < 1e-6) continue;
+      const dx = (b.x - a.x) / length;
+      const dz = (b.z - a.z) / length;
+      // Donde entra en la pendiente: la primera celda así de inclinada después de una llana.
+      const samples = Math.max(Math.ceil(length / (s / 2)), 1);
+      let flat = false;
+      let entry: Cell | null = null;
+      let t = 0;
+      for (let n = 0; n <= samples && !entry; n++) {
+        t = n / samples;
+        const c = this.cell(Math.round((a.x + (b.x - a.x) * t - this.x0) / s), Math.round((a.z + (b.z - a.z) * t - this.z0) / s), a.y + (b.y - a.y) * t);
+        if (!Number.isFinite(c.height)) break;
+        if (c.up >= SLOPE_FLAT_COS) flat = true;
+        else if (c.up < minUp && flat) entry = c;
+      }
+      if (!entry) continue;
+      // Su línea de máxima pendiente, hacia donde va el tramo; si ya va por ella, nada.
+      const h = Math.hypot(entry.nx, entry.nz);
+      if (h < 1e-6) continue;
+      let ux = entry.nx / h;
+      let uz = entry.nz / h;
+      const along = ux * dx + uz * dz;
+      if (along < 0) {
+        ux = -ux;
+        uz = -uz;
+      }
+      if (Math.abs(along) > SLOPE_ALIGNED_COS) continue;
+      const ex = a.x + (b.x - a.x) * t;
+      const ez = a.z + (b.z - a.z) * t;
+      // Una pendiente, no un bulto: un paso más allá, por esa línea, sigue cambiando así de alto.
+      const further = this.cell(Math.round((ex + ux * step - this.x0) / s), Math.round((ez + uz * step - this.z0) / s), entry.height);
+      if (!(Math.abs(further.height - entry.height) >= step * Math.tan(SLOPE_APPROACH_MIN))) continue;
+      // Si `a` ya está cerca de la entrada, en vez de él (si no, iba a él, volvía atrás y giraba). Todo el tramo de
+      // aproximación: más cerca, giraba ya en la cresta y entraba sin frenar.
+      const approach = SLOPE_APPROACH * step;
+      const before = (ex - a.x) * ux + (ez - a.z) * uz;
+      const replace = k > 0 && before > 0 && before < approach * 1.5;
+      const from = replace ? (k > 1 ? points[k - 2] : start) : a;
+      for (const d of [approach, approach / 2]) {
+        const px = ex - ux * d;
+        const pz = ez - uz * d;
+        const pc = this.cell(Math.round((px - this.x0) / s), Math.round((pz - this.z0) / s), a.y);
+        if (!Number.isFinite(pc.height)) continue;
+        if (!this.lineClear(from.x, from.z, from.y, px, pz, room, true) || !this.lineClear(px, pz, pc.height, b.x, b.z, room, true)) continue;
+        const p = new Vector3(px, pc.height, pz);
+        if (replace) points[k - 1] = p;
+        else {
+          points.splice(k, 0, p);
+          k++;
+        }
+        break;
+      }
+    }
   }
 
   /**
@@ -944,7 +1025,7 @@ export class PathPlanner {
     this.origin.set(this.x0 + i * this.size, top, this.z0 + j * this.size);
     this.raycasts++;
     const found = this.detector.castDown(this.origin, config.groundProbeHeight + config.groundProbeDepth, this.hit);
-    c = { height: found ? this.hit.point.y : Number.NEGATIVE_INFINITY, i, j, up: found ? this.hit.normal.y : 1, clearance: Number.NaN, apart: Number.NaN, cost: Number.POSITIVE_INFINITY, parent: -1, closed: false, back: Number.POSITIVE_INFINITY, parentBack: -1, closedBack: false };
+    c = { height: found ? this.hit.point.y : Number.NEGATIVE_INFINITY, i, j, up: found ? this.hit.normal.y : 1, nx: found ? this.hit.normal.x : 0, nz: found ? this.hit.normal.z : 0, clearance: Number.NaN, apart: Number.NaN, cost: Number.POSITIVE_INFINITY, parent: -1, closed: false, back: Number.POSITIVE_INFINITY, parentBack: -1, closedBack: false };
     this.cells.set(k, c);
     return c;
   }
@@ -1033,6 +1114,7 @@ export class PathPlanner {
       if (n.height > c.height + config.maxStepUp) return 0;
       if (gapFrom === 0) continue; // a este lado, junto al borde
       gapTo ||= k;
+      if (k === gapTo && this.cornerCut(i, j, di, dj, gapFrom, gapTo, c.height)) return 0;
       const ni = i + k * di;
       const nj = j + k * dj;
       if (this.isEdge(ni, nj) || this.clearance(ni, nj) < hard || this.apart(ni, nj) < hard) continue;
@@ -1074,6 +1156,31 @@ export class PathPlanner {
       return (lo + hi) / 2;
     };
     return edge((to - 1) * length, to * length, false) - edge((from - 1) * length, from * length, true);
+  }
+
+  /**
+   * Going from cell (i, j), on ground at `ground`, in a diagonal (di, dj), the "gap" between the cells `from` − 1 and
+   * `to` is only the corner of lower ground between two surfaces at its level that meet beside it (where a ramp comes
+   * down from the face of a platform): the edge it leaves runs along one axis and the one it lands on along the other.
+   * Across a real gap, both run the same way. Cutting that corner, the route went through the air a few centimetres
+   * off the side of the ramp, right over the drop of the face: the character stopped at the edge and then stepped down
+   * across the corner, far too long.
+   */
+  private cornerCut(i: number, j: number, di: number, dj: number, from: number, to: number, ground: number): boolean {
+    if (di === 0 || dj === 0) return false;
+    const down = this.config().maxStepDown;
+    const level = (ci: number, cj: number): boolean => this.cell(ci, cj, ground).height >= ground - down;
+    // La última celda antes del hueco y la primera después; de cada una, la de al lado en X y la de al lado en Z, hacia
+    // el hueco.
+    const ai = i + (from - 1) * di;
+    const aj = j + (from - 1) * dj;
+    const bi = i + to * di;
+    const bj = j + to * dj;
+    const leaveX = level(ai + di, aj);
+    const leaveZ = level(ai, aj + dj);
+    const landX = level(bi - di, bj);
+    const landZ = level(bi, bj - dj);
+    return leaveX !== leaveZ && landX !== landZ && leaveX !== landX;
   }
 
   /** Cell (i, j) is next to a change of level it can't step (either way) or has no ground. */

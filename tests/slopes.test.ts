@@ -143,3 +143,90 @@ describe('pendientes: bajar en diagonal', () => {
     assert.ok(knee < 130, `rodilla a ${knee.toFixed(0)}°`);
   });
 });
+
+// Como las laderas del Laboratorio: una meseta de 1,2 m con rampas estrechas de 20°, 30°, 40° y 50° que bajan de su
+// frente. Bajando de la meseta a un punto pasada la de 30°, el planificador tomaba la esquina de suelo bajo entre la
+// meseta y el costado de la rampa por un hueco que se cruza de un paso: la ruta pasaba unos centímetros fuera de la
+// rampa, por encima del frente de la meseta. El personaje se paraba en el borde (~1,5 s), volvía a planear y bajaba con
+// un paso de 1,5 m sobre la esquina: la rodilla a 172° y la cadera a 5 cm del suelo. Y llegando a la rampa en diagonal,
+// entraba en ella a la velocidad del llano (zancadas de 1,2 a 1,5 m): no veía la pendiente por delante.
+describe('pendientes: bajar de una meseta por una rampa estrecha', () => {
+  const RAMPS = [[-11, 20], [-13.4, 30], [-15.8, 40], [-18.2, 50]] as const;
+  const FRONT = -2.5;
+
+  it('la ruta entra por la cresta de la de 30°, sin pararse al borde ni zancadas largas (rodilla < 130°, la cadera arriba)', () => {
+    const world = createWorld({
+      buildTerrain: (terrain: Object3D) => {
+        const top = new Mesh(new BoxGeometry(8.7, HEIGHT, 2.5), new MeshBasicMaterial());
+        top.position.set(-14.65, HEIGHT / 2, FRONT - 1.25);
+        terrain.add(top);
+        for (const [x, deg] of RAMPS) {
+          const run = HEIGHT / Math.tan((deg * Math.PI) / 180);
+          const shape = new Shape([new Vector2(0, 0), new Vector2(0, HEIGHT), new Vector2(run, 0)]);
+          const geometry = new ExtrudeGeometry(shape, { depth: 1.4, bevelEnabled: false });
+          geometry.rotateY(-Math.PI / 2);
+          geometry.translate(0.7, 0, 0);
+          const ramp = new Mesh(geometry, new MeshBasicMaterial());
+          ramp.position.set(x, 0, FRONT);
+          terrain.add(ramp);
+        }
+      },
+    });
+    const { human, terrain } = world;
+    const start = new Vector3(-18, HEIGHT, -3.7);
+    world.model.position.copy(start);
+    world.model.updateMatrixWorld(true);
+    human.reset();
+    const target = new Vector3(-11, 0, 2);
+    const detector = new RaycastGroundDetector([terrain]);
+    const hit = createGroundHit();
+    const p = (o: Object3D): Vector3 => o.getWorldPosition(new Vector3());
+    const hipsOverGround = (): number => {
+      const hips = p(human.rig.hips);
+      return detector.castDown(hips, 4, hit) ? hips.y - hit.point.y : Number.NaN;
+    };
+    const standing = hipsOverGround();
+    let route: Vector3[] = [];
+    let knee = 0;
+    let hips = Number.POSITIVE_INFINITY;
+    let stopped = 0;
+    let moving = false;
+    let stride = 0;
+    const planted = { left: new Vector3(Number.NaN), right: new Vector3(Number.NaN) };
+    simulate(world, 18, [[0.2, (h) => { h.moveTo(target); route = h.movePath ?? []; }]], {
+      onFrame: () => {
+        for (const side of ['left', 'right'] as const) {
+          const leg = human.rig[side];
+          const thigh = p(leg.thigh), k = p(leg.shin), ankle = p(leg.foot);
+          knee = Math.max(knee, (k.clone().sub(thigh).angleTo(ankle.clone().sub(k)) * 180) / Math.PI);
+          // Zancadas que bajan: de un apoyo del pie al siguiente, más abajo.
+          const foot = human.locomotion.feet[side];
+          if (foot.phase !== 'PLANTED') continue;
+          const before = planted[side];
+          if (!Number.isNaN(before.x) && foot.planted.y < before.y - 0.05) stride = Math.max(stride, Math.hypot(foot.planted.x - before.x, foot.planted.z - before.z));
+          before.copy(foot.planted);
+        }
+        hips = Math.min(hips, hipsOverGround());
+        // Parado lejos del destino, después de echar a andar.
+        moving ||= human.speed > 0.5;
+        if (moving && human.position.distanceTo(target) > 0.5 && human.speed < 0.1) stopped += 1 / 60;
+      },
+    });
+    // Por dónde cruza la ruta el frente de la meseta: por la rampa de 30° (x de −14,1 a −12,7), lejos de sus costados.
+    assert.ok(route.length > 0, 'sin ruta');
+    let from = start;
+    for (const q of route) {
+      if ((from.z - FRONT) * (q.z - FRONT) < 0) {
+        const x = from.x + ((q.x - from.x) * (FRONT - from.z)) / (q.z - from.z);
+        assert.ok(x > -14.1 + 0.3 && x < -12.7 - 0.3, `la ruta cruza el frente de la meseta en x = ${x.toFixed(2)}`);
+      }
+      from = q;
+    }
+    assert.ok(human.position.distanceTo(target) < 0.2, `no llegó: ${human.position.toArray().map((v) => v.toFixed(2))}`);
+    assert.ok(stopped < 0.3, `parado ${stopped.toFixed(1)} s antes de llegar`);
+    // De frente, en la de 30° de arriba, hasta 1 m.
+    assert.ok(stride < 1.05, `una zancada de ${stride.toFixed(2)} m bajando`);
+    assert.ok(knee < 130, `rodilla a ${knee.toFixed(0)}°`);
+    assert.ok(hips > 0.75 * standing, `la cadera bajó a ${hips.toFixed(2)} m del suelo (de pie, a ${standing.toFixed(2)} m)`);
+  });
+});
