@@ -1,6 +1,6 @@
 {
   "name": "three-procedural-locomotion",
-  "version": "0.10.2",
+  "version": "0.11.0",
   "description": "Procedural human locomotion for Three.js (gait, footstep planning, IK; no baked animations).",
   "license": "MIT",
   "author": "Pablo Mesquida",
