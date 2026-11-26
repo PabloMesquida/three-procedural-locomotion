@@ -322,6 +322,12 @@ export interface LocomotionConfig extends PelvisConfig, TorsoConfig, ArmConfig, 
   /** Deepest step it goes down (m): from a deeper drop it doesn't step down, it stops at the edge. */
   maxStepDown: number;
   /**
+   * Steepest slope it walks on (degrees): ground that rises or falls without steps (a ramp, the face of a rock) more
+   * steeply than this is like a wall: moveTo goes round it and, walking towards it, the character stops at its foot
+   * (or at its top). On gentler slopes it goes slower and with shorter steps, as on stairs. 90 = no limit.
+   */
+  maxSlope: number;
+  /**
    * Widest gap it steps across (m; 0 = none): a drop deeper than `maxStepDown` with ground it can step on again on
    * the other side, no farther than this along the way it goes. It doesn't stop at it: if it has to, it puts the foot
    * just before the edge, and crosses it with a long step. From a wider one it stops at the edge, as from a drop.
@@ -470,6 +476,7 @@ export const defaultLocomotionConfig: LocomotionConfig = {
   maxExtraStepHeight: 0.3,
   maxStepUp: 0.35,
   maxStepDown: 0.35,
+  maxSlope: 35,
   maxGapStep: 0.5,
   maxGapJump: 1,
   maxGapJumpRun: 1.5,

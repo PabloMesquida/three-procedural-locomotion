@@ -22,6 +22,8 @@ const NATURAL_STEP_WIDTH = 0.8;
  */
 export class FootstepPlanner {
   readonly config: LocomotionConfig;
+  /** placeLanding looks for the ground further down if the ray of the foot doesn't reach it (not in the air: jumping). */
+  deepLanding = true;
   /**
    * Lateral distance between the feet to use instead of `config.stepWidth` (m, world; null = the config's),
    * e.g. on a narrow path. Applied by `syncStepWidth`.
@@ -207,9 +209,15 @@ export class FootstepPlanner {
     this.placeLanding(side, outPosition, footYaw, outPosition, outRotation);
   }
 
-  /** Places the foot on the ground under `desired` (world ankle), oriented with `footYaw`. */
+  /**
+   * Places the foot on the ground under `desired` (world ankle), oriented with `footYaw`. If the ray of the foot
+   * (`footProbeDepth`) doesn't reach it, it looks for it further down (`groundProbeDepth`): going down a slope with a
+   * long step, the ground where it lands is lower than that, and the foot stayed planted in the air, with the knee at
+   * up to 170° while the body went on down.
+   */
   placeLanding(side: Side, desired: Vector3, footYaw: number, outPosition: Vector3, outRotation: Quaternion): void {
-    const ground = this.placements[side].update(desired, footYaw);
+    let ground = this.placements[side].update(desired, footYaw);
+    if (!ground.grounded && this.deepLanding) ground = this.placements[side].update(desired, footYaw, this.config.groundProbeDepth);
     outPosition.copy(ground.ankleTarget);
     outRotation.copy(ground.footRotation);
   }

@@ -61,6 +61,10 @@ const WALL_MIN_COS = 0.2;
  * is about to be closer than allowed (see `wallAhead`).
  */
 const WALL_AHEAD_COS = 0.02;
+/** A slope steeper than `maxSlope` is measured this far on each side of the point (× stepLength; see lookFarAhead). */
+const STEEP_SPAN = 0.5;
+/** Ground with a normal less vertical than this (cosine; 5°) is a slope, not a tread (see aheadSlope). */
+const SLOPE_TILTED = Math.cos((5 * Math.PI) / 180);
 /** It forgets the wall once the stance foot is farther than this from it (× stepLength). */
 const WALL_FORGET = 2;
 /**
@@ -211,6 +215,19 @@ export class StairPlanner {
   private readonly dir = new Vector3();
   private readonly edge = new Vector3();
   private readonly foundAt = new Vector3();
+  /**
+   * Foot (or top) of the last slope steeper than `maxSlope` it saw ahead (see lookFarAhead; x NaN: none) and the
+   * direction it was going: it stops before it (see steepAhead).
+   */
+  private readonly steepPoint = new Vector3(Number.NaN, 0, 0);
+  private readonly steepDirection = new Vector3();
+  /**
+   * Mean slope of the ground from the stance foot to where lookFarAhead last looked (rise / run, + uphill; 0 if it
+   * was a wall, a jump or a slope steeper than `maxSlope`): with it the character slows down before a slope.
+   */
+  private aheadSlope = 0;
+  /** The last look ahead saw the ground change level (more than a quarter of a step): it looks again on the next step. */
+  private relook = false;
   private readonly checked = new Vector3();
   /** The walls it remembers (`wall`, `wallNormal`, `wallFrom` and `wallTo` of each; point NaN if empty). */
   private readonly walls = Array.from({ length: MAX_WALLS }, () => ({
@@ -331,6 +348,7 @@ export class StairPlanner {
     this.blend = 0;
     this.clearProfile();
     this.wall.x = Number.NaN;
+    this.steepPoint.x = Number.NaN;
     for (const w of this.walls) w.point.x = Number.NaN;
     this.lookedAt.x = Number.NaN;
     this.scannedAt.x = Number.NaN;
@@ -366,6 +384,42 @@ export class StairPlanner {
       if (this.load(k)) nearest = Math.min(nearest, this.aheadOfWall(position, forward, clearance, ground));
     }
     return nearest;
+  }
+
+  /**
+   * Mean slope of the ground ahead (rise / run, + uphill) along `forward` from `position` (world), from the last look
+   * ahead (see aheadSlope); 0 if it was looking another way or is already past where it looked.
+   */
+  slopeAhead(position: Vector3, forward: Vector3): number {
+    const p = this.lookedAt;
+    if (Number.isNaN(p.x)) return 0;
+    const d = this.lookedDirection;
+    if (forward.x * d.x + forward.z * d.z < LOOKED_SAME_COS) return 0;
+    if ((p.x - position.x) * d.x + (p.z - position.z) * d.z <= 0) return 0;
+    return this.aheadSlope;
+  }
+
+  /**
+   * Distance from `position` (world), going in the direction `forward`, to where it is `clearance` from the foot (or
+   * top) of a slope steeper than `maxSlope` it saw ahead (see lookFarAhead), if it is going towards it and would get
+   * there within WALL_EXTENT × stepLength of the point found; Infinity otherwise. Past it, it forgets it.
+   */
+  steepAhead(position: Vector3, forward: Vector3, clearance = 0): number {
+    const p = this.steepPoint;
+    if (Number.isNaN(p.x)) return Number.POSITIVE_INFINITY;
+    const n = this.steepDirection;
+    const perpendicular = (p.x - position.x) * n.x + (p.z - position.z) * n.z;
+    if (perpendicular < -this.heelBack) {
+      p.x = Number.NaN;
+      return Number.POSITIVE_INFINITY;
+    }
+    const c = forward.x * n.x + forward.z * n.z;
+    if (c < WALL_AHEAD_COS) return Number.POSITIVE_INFINITY;
+    const distance = perpendicular / c;
+    const x = position.x + forward.x * distance - p.x;
+    const z = position.z + forward.z * distance - p.z;
+    if (Math.hypot(x, z) > WALL_EXTENT * this.config.stepLength) return Number.POSITIVE_INFINITY;
+    return (perpendicular - clearance) / c;
   }
 
   /**
@@ -926,11 +980,30 @@ export class StairPlanner {
     const lx = this.lookedAt.x - stance.x;
     const lz = this.lookedAt.z - stance.z;
     const same = dir.x * this.lookedDirection.x + dir.z * this.lookedDirection.z > LOOKED_SAME_COS;
-    if (same && lx * dir.x + lz * dir.z >= reach && Math.abs(lx * dir.z - lz * dir.x) < WALL_SIDE * this.footLength) return;
+    if (same && !this.relook && lx * dir.x + lz * dir.z >= reach && Math.abs(lx * dir.z - lz * dir.x) < WALL_SIDE * this.footLength) return;
     const distance = reach + FAR_STRIDES * stride;
     this.lookedAt.set(stance.x + dir.x * distance, stanceGround, stance.z + dir.z * distance);
     this.lookedDirection.copy(dir);
     const far = this.heightAt(this.lookedAt.x, this.lookedAt.z, stanceGround);
+    // La pendiente que verá, con un rayo más a mitad de camino: si allí (o a mitad) el suelo está inclinado (una rampa,
+    // una roca; el extremo de una viga, la otra orilla de un hueco o una huella son planos: un escalón o un salto, que
+    // tienen lo suyo), la más empinada de la media y la de esa mitad del camino (una rampa que empieza antes o acaba
+    // antes: la media la diluía el llano; mirando desde la cresta de una corta, `far` ya cae abajo, en llano). Por
+    // alturas: la normal de un punto en la cara de una piedra suelta frenaba sin motivo.
+    const farTilted = this.hit.normal.y < SLOPE_TILTED;
+    const mid = this.heightAt(stance.x + (dir.x * distance) / 2, stance.z + (dir.z * distance) / 2, stanceGround);
+    const midTilted = this.hit.normal.y < SLOPE_TILTED;
+    const mean = (far - stanceGround) / distance;
+    let slope = 0;
+    if (Number.isFinite(far) && Number.isFinite(mid)) {
+      const candidates = [mean];
+      if (farTilted) candidates.push((far - mid) / (distance / 2));
+      if (midTilted) candidates.push((mid - stanceGround) / (distance / 2));
+      if (farTilted || midTilted) for (const c of candidates) if (Math.abs(c) > Math.abs(slope)) slope = c;
+    }
+    this.aheadSlope = slope;
+    // Hacia una pendiente (o escalera), mira otra vez en el paso siguiente: la vuelve a medir más cerca, y ya entera.
+    this.relook = Number.isFinite(far) && Math.abs(far - stanceGround) > 0.25 * this.config.maxStepUp;
     // Desde donde miró antes por esta misma línea, si lo hizo (ver GAP_SCAN_SPEED); si no, desde el pie.
     const scan = this.speed > GAP_SCAN_SPEED * this.config.walkSpeed && this.jumpWidth > 0;
     const sx = this.scannedAt.x - stance.x;
@@ -958,16 +1031,49 @@ export class StairPlanner {
         high = h;
       }
     }
-    if (this.passable(high - low)) return;
     const at = (lo + hi) / 2;
-    // A un pie de cada lado del salto, también: si no, es el hueco entre dos huellas de una escalera sin
-    // contrahuella, que se salta.
+    // A un pie de cada lado: un salto (si no, es el hueco entre dos huellas de una escalera sin contrahuella, que se
+    // salta) o una pendiente más empinada que maxSlope (la cara de una roca, una rampa).
     const before = this.heightAt(stance.x + dir.x * (at - this.toeFront), stance.z + dir.z * (at - this.toeFront), stanceGround);
+    const tiltBefore = this.hit.normal.y;
     const after = this.heightAt(stance.x + dir.x * (at + this.toeFront), stance.z + dir.z * (at + this.toeFront), stanceGround);
-    if (this.passable(after - before)) return;
+    const jump = !this.passable(high - low) && !this.passable(after - before);
+    // La pendiente, a la escala de un paso (los bultos de una piedra pequeña no cuentan): medio paso a cada lado. Es la
+    // que verá al llegar (con ella frena antes; la media hasta `far` la diluía el llano de antes).
+    let steep = false;
+    if (!jump) {
+      const span = STEEP_SPAN * this.config.stepLength;
+      const back = this.heightAt(stance.x + dir.x * (at - span), stance.z + dir.z * (at - span), stanceGround);
+      const upBack = this.hit.normal.y;
+      const ahead = this.heightAt(stance.x + dir.x * (at + span), stance.z + dir.z * (at + span), stanceGround);
+      const upAhead = this.hit.normal.y;
+      steep = this.tooSteep(ahead - back, 2 * span, Math.max(tiltBefore, upAhead, upBack));
+      // Una escalera (huellas planas) no: la lleva ella, y frenar antes la retrasaba.
+      const tilted = Math.min(upBack, upAhead) < SLOPE_TILTED;
+      this.aheadSlope = tilted && Number.isFinite(ahead - back) ? (ahead - back) / (2 * span) : 0;
+    }
+    // Ni lo uno ni lo otro: escalera o pendiente, que verá al llegar.
+    if (!jump && !steep) return;
+    this.aheadSlope = 0;
+    const wallGround = Number.isFinite(high) ? high : low;
+    if (steep) {
+      // Al pie de la pendiente (o arriba, bajando): donde el suelo empieza a estar así de inclinado.
+      const up = Math.cos((this.config.maxSlope * Math.PI) / 180);
+      let flat = 0;
+      let tilted = at;
+      for (let k = 0; k < WALL_REFINE_STEPS; k++) {
+        const mid = (flat + tilted) / 2;
+        const h = this.heightAt(stance.x + dir.x * mid, stance.z + dir.z * mid, stanceGround);
+        if (Number.isFinite(h) && this.hit.normal.y < up) tilted = mid;
+        else flat = mid;
+      }
+      this.steepPoint.set(stance.x + dir.x * flat, stanceGround, stance.z + dir.z * flat);
+      this.steepDirection.copy(dir);
+      return;
+    }
     // Hasta ese borde, también un hueco antes de él (la bisección puede dar con el más lejano de los dos).
     if (scan) this.scanForGap(stance, stanceGround, dir, scanned, at - this.toeFront);
-    this.foundAt.set(stance.x + dir.x * at, Number.isFinite(high) ? high : low, stance.z + dir.z * at);
+    this.foundAt.set(stance.x + dir.x * at, wallGround, stance.z + dir.z * at);
     this.foundWall(this.foundAt, dir, low);
   }
 
@@ -1228,6 +1334,17 @@ export class StairPlanner {
   private beyondWall(ground: number): number {
     const d = WALL_PROBE * this.footLength;
     return this.heightAt(this.wall.x + this.wallNormal.x * d, this.wall.z + this.wallNormal.z * d, ground);
+  }
+
+  /**
+   * Ground that rises or falls `rise` over `run` m with normals (vertical component) of at least `up` is steeper than
+   * `maxSlope`: by the heights and by the normals (a flight of stairs rises as much, but its treads are flat).
+   */
+  private tooSteep(rise: number, run: number, up: number): boolean {
+    const max = this.config.maxSlope;
+    if (!(max < 90) || !Number.isFinite(rise)) return false;
+    const angle = (max * Math.PI) / 180;
+    return Math.abs(rise) / run > Math.tan(angle) && up < Math.cos(angle);
   }
 
   /** Height of the ground at (`x`, `z`), looking for it around the height `near` like the profile; −∞ if none. */

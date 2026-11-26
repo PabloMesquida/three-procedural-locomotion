@@ -40,6 +40,8 @@ export interface BodyState {
   grounded: boolean;
   /** Height of the ground under the root (m, world). */
   groundHeight: number;
+  /** Vertical component of the normal of the ground under the root (1: flat; a stair tread is). */
+  groundUp: number;
   /** In the air (jump): the height follows gravity. */
   airborne: boolean;
   /** Vertical velocity in the air (m/s, positive = up). */
@@ -204,6 +206,7 @@ export class BodyController {
       turnRate: 0,
       grounded: true,
       groundHeight: 0,
+      groundUp: 1,
       airborne: false,
       verticalVelocity: 0,
       landingSpeed: 0,
@@ -682,6 +685,7 @@ export class BodyController {
     this.tmp.set(p.x, p.y + groundProbeHeight, p.z);
     const hit = this.detector.castDown(this.tmp, groundProbeHeight + depth, this.rootHit);
     this.rawGround = hit ? this.rootHit.point.y : Number.NaN;
+    this.state.groundUp = hit ? this.rootHit.normal.y : 1;
     return this.groundLine ? this.groundLine(p, this.rawGround) : this.rawGround;
   }
 

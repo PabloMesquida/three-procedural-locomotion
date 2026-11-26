@@ -68,6 +68,13 @@ const ROUND_CUT = 0.25;
 const ROUND_MAX_CUT = 6;
 const ROUND_MARGIN = 0.2;
 
+/**
+ * Ground steeper than `maxSlope` isn't walked on (see isSteep); a change of level with this share or more in one of
+ * the two cells next to it is a step, not a slope.
+ */
+const SLOPE_STEP_SHARE = 0.7;
+/** Cells on each side over which it measures a slope (see isSteep). */
+const SLOPE_CELLS = 2;
 /** Directions across which it measures the width of a narrow path: along X, along Z and the two diagonals. */
 const ACROSS: [number, number][] = [[1, 0], [0, 1], [1, 1], [1, -1]];
 /**
@@ -128,6 +135,13 @@ const NEIGHBORS:[number, number, number][] = [
 interface Cell {
   /** Height of the ground (m; −∞ if there is none). */
   height: number;
+  /** Indices of the cell. */
+  i: number;
+  j: number;
+  /** Vertical component of the normal of its ground (1: flat). */
+  up: number;
+  /** On a slope steeper than `maxSlope` (see isSteep): it isn't walked on. undefined: not known yet. */
+  steep?: boolean;
   /** Next to a change of level it can't step (or no ground): it isn't walked on. undefined: not known yet. */
   edge?: boolean;
   /**
@@ -930,9 +944,45 @@ export class PathPlanner {
     this.origin.set(this.x0 + i * this.size, top, this.z0 + j * this.size);
     this.raycasts++;
     const found = this.detector.castDown(this.origin, config.groundProbeHeight + config.groundProbeDepth, this.hit);
-    c = { height: found ? this.hit.point.y : Number.NEGATIVE_INFINITY, clearance: Number.NaN, apart: Number.NaN, cost: Number.POSITIVE_INFINITY, parent: -1, closed: false, back: Number.POSITIVE_INFINITY, parentBack: -1, closedBack: false };
+    c = { height: found ? this.hit.point.y : Number.NEGATIVE_INFINITY, i, j, up: found ? this.hit.normal.y : 1, clearance: Number.NaN, apart: Number.NaN, cost: Number.POSITIVE_INFINITY, parent: -1, closed: false, back: Number.POSITIVE_INFINITY, parentBack: -1, closedBack: false };
     this.cells.set(k, c);
     return c;
+  }
+
+  /**
+   * The cell is on a slope steeper than `maxSlope`: its ground is that tilted (the normal; a stair tread is flat) and,
+   * from SLOPE_CELLS cells before it to as many after it, along X, Z or a diagonal (the size of a step: the bumps of a
+   * small stone don't count), it rises more than that, and not in one jump (SLOPE_STEP_SHARE: that is a step, which
+   * canStep judges).
+   */
+  private isSteep(c: Cell): boolean {
+    if (c.steep !== undefined) return c.steep;
+    c.steep = false;
+    const config = this.config();
+    if (!(config.maxSlope < 90) || !Number.isFinite(c.height)) return false;
+    const angle = (config.maxSlope * Math.PI) / 180;
+    if (c.up >= Math.cos(angle)) return false;
+    const most = Math.tan(angle);
+    const heights: number[] = [];
+    for (const [di, dj] of ACROSS) {
+      heights.length = 0;
+      for (let k = -SLOPE_CELLS; k <= SLOPE_CELLS; k++) heights.push(k === 0 ? c.height : this.cell(c.i + k * di, c.j + k * dj, c.height).height);
+      if (!heights.every(Number.isFinite)) continue;
+      let total = 0;
+      let jump = 0;
+      for (let k = 1; k < heights.length; k++) {
+        const change = Math.abs(heights[k] - heights[k - 1]);
+        total += change;
+        jump = Math.max(jump, change);
+      }
+      if (jump >= SLOPE_STEP_SHARE * total) continue;
+      const rise = Math.abs(heights[heights.length - 1] - heights[0]);
+      if (rise / (2 * SLOPE_CELLS * this.size * Math.hypot(di, dj)) > most) {
+        c.steep = true;
+        break;
+      }
+    }
+    return c.steep;
   }
 
   private cellAt(i: number, j: number): Cell | undefined {
@@ -942,6 +992,7 @@ export class PathPlanner {
   /** From `a` to the cell next to it `b`: a step it can take. */
   private canStep(a: Cell, b: Cell): boolean {
     if (!Number.isFinite(b.height)) return false;
+    if (this.isSteep(b)) return false;
     const rise = b.height - a.height;
     const c = this.config();
     return rise <= c.maxStepUp && rise >= -c.maxStepDown;

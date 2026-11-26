@@ -1491,6 +1491,15 @@
         "constructionOnly": false
       },
       {
+        "name": "maxSlope",
+        "doc": {
+          "en": "Steepest slope it walks on (degrees): ground that rises or falls without steps (a ramp, the face of a rock) more steeply than this is like a wall: moveTo goes round it and, walking towards it, the character stops at its foot (or at its top). On gentler slopes it goes slower and with shorter steps, as on stairs. 90 = no limit.",
+          "es": "Pendiente más empinada por la que camina (grados): el suelo que sube o baja sin escalones (una rampa, la cara de una roca) más empinado que esto es como una pared: moveTo lo rodea y, caminando hacia él, el personaje se para al pie (o arriba). En pendientes más suaves va más despacio y con pasos más cortos, como en una escalera. 90 = sin límite."
+        },
+        "length": false,
+        "constructionOnly": false
+      },
+      {
         "name": "maxGapStep",
         "doc": {
           "en": "Widest gap it steps across (m; 0 = none): a drop deeper than `maxStepDown` with ground it can step on again on the other side, no farther than this along the way it goes. It doesn't stop at it: if it has to, it puts the foot just before the edge, and crosses it with a long step. From a wider one it stops at the edge, as from a drop.",

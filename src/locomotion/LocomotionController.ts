@@ -181,6 +181,22 @@ const STAIR_DOWN_SLOPE = 0.3;
 /** How fast the speed limit of the stairs is released when they end (× acceleration, per second). */
 const STAIR_RELEASE = 0.4;
 /**
+ * On a slope (a ramp, the face of a rock: ground that rises or falls without steps), it goes slower and with shorter
+ * steps, as on stairs: each step rises at most SLOPE_STEP_RISE × maxStepUp (falls, × maxStepDown), about a stair riser.
+ * Before, it went up and down a 30° rock at the speed and stride of the flat, 40–70 cm per step, with the knees to the
+ * chest. Without raycasts of its own: the slope is the steepest of how much the ground under the body (measured every
+ * frame) rose or fell over the last SLOPE_WINDOW × stepLength it went, the one of the step it last planned (a step
+ * before) and the one ahead the StairPlanner sees a step further (it slows down before a slope), followed in SLOPE_TIME
+ * s; as on stairs, the limit is released
+ * at STAIR_RELEASE. Ground steeper than `maxSlope` it doesn't walk on: the StairPlanner sees it ahead and it stops
+ * before it, as before a wall.
+ */
+const SLOPE_STEP_RISE = 0.5;
+/** Ground with a normal more vertical than this (cosine; 5°) is flat: a stair tread (see slopeSpeedLimit). */
+const SLOPE_FLAT = Math.cos((5 * Math.PI) / 180);
+const SLOPE_WINDOW = 1;
+const SLOPE_TIME = 0.15;
+/**
  * Jumping across a gap (`maxGapJump`), it lands with the root this far past the other side (× the length of the foot,
  * heel to toes): the feet, which land ahead of it, whole on the other side. Standing still at its edge (below
  * GAP_JUMP_STILL × walkSpeed, with the feet together), it jumps with both feet, as people do in the CMU captures of
@@ -765,6 +781,19 @@ export class LocomotionController {
   private lastFootDt = 0;
   /** Speed limit of the stairs (m/s; Infinity = none), released gradually (see stairSpeedLimit). */
   private stairLimit = Number.POSITIVE_INFINITY;
+  /** Slope of the ground under the body over the last SLOPE_WINDOW it went (rise / run, + uphill; see SLOPE_STEP_RISE). */
+  private stepSlope = 0;
+  /**
+   * Slope of the step it last planned (rise / run from where the foot was planted to where it will land): a step before
+   * the ground under the body (coming at a slope at an angle, the look ahead may not see it). 0 in the air.
+   */
+  private plannedSlope = 0;
+  /** Where that window started: the root (x, z) and the ground under it (y); x NaN: none. */
+  private readonly slopeFrom = new Vector3(Number.NaN, 0, 0);
+  /** `stepSlope` smoothed (SLOPE_TIME). */
+  private groundSlope = 0;
+  /** Speed limit of the slope (m/s; Infinity = none), released gradually (see slopeSpeedLimit). */
+  private slopeLimit = Number.POSITIVE_INFINITY;
   /** Extra lean of the trunk on stairs (rad), following the slope (see STAIR_LEAN_UP). */
   private stairLean = 0;
   /** Slope of the stairs under the body (rise / run, smoothed like `stairLean`). */
@@ -1024,6 +1053,9 @@ export class LocomotionController {
     this.handWall.left = this.handWall.right = Number.NEGATIVE_INFINITY;
     this.planner.landingShift.set(0, 0, 0);
     this.stairLimit = Number.POSITIVE_INFINITY;
+    this.groundSlope = this.stepSlope = this.plannedSlope = 0;
+    this.slopeFrom.x = Number.NaN;
+    this.slopeLimit = Number.POSITIVE_INFINITY;
     this.stairLean = 0;
     this.stairSlope = 0;
     this.glance = 0;
@@ -1249,6 +1281,7 @@ export class LocomotionController {
       this.ledgeOn ? this.config.ledgeMaxSpeed : this.config.runSpeed + (this.config.ledgeMaxSpeed - this.config.runSpeed) * kl,
       ledgeStop ? 0 : Number.POSITIVE_INFINITY,
       this.stairSpeedLimit(dt),
+      this.slopeSpeedLimit(dt),
     );
     this.centerOnPath(dt, kb);
     this.keepBackToWall(dt, kl);
@@ -1635,6 +1668,67 @@ export class LocomotionController {
     this.body.drift.copy(this.backOff).multiplyScalar(Math.min(WALL_BACK_OFF_SPEED * unit * dt, push) / push);
   }
 
+  /** Speed (m/s) at which each step is `length` long (step = speed / cadence; by bisection, the cadence depends on it). */
+  private speedForStep(length: number): number {
+    let lo = 0;
+    let hi = this.config.runSpeed;
+    for (let i = 0; i < 20; i++) {
+      const v = (lo + hi) / 2;
+      if (v / this.gait.stepFrequencyFor(v) > length) hi = v;
+      else lo = v;
+    }
+    return lo;
+  }
+
+  /**
+   * Speed limit on a slope (m/s; Infinity = none): the one at which each step rises or falls SLOPE_STEP_RISE of
+   * maxStepUp or maxStepDown (see SLOPE_STEP_RISE), released gradually.
+   */
+  private slopeSpeedLimit(dt: number): number {
+    const cfg = this.config;
+    const s = this.body.state;
+    // El suelo bajo el cuerpo: cuánto subió o bajó en lo último que avanzó (SLOPE_WINDOW).
+    if (s.airborne || this.jumping.phase !== 'GROUNDED' || !Number.isFinite(s.groundHeight)) {
+      this.stepSlope = this.plannedSlope = 0;
+      this.slopeFrom.x = Number.NaN;
+    } else if (Number.isNaN(this.slopeFrom.x)) {
+      this.slopeFrom.set(s.position.x, s.groundHeight, s.position.z);
+    } else {
+      const run = Math.hypot(s.position.x - this.slopeFrom.x, s.position.z - this.slopeFrom.z);
+      if (run >= SLOPE_WINDOW * cfg.stepLength) {
+        // Más que un escalón además de lo que bajaría o subiría la pendiente más empinada que camina (maxSlope) en ese
+        // tramo: un borde o un hueco (los lleva la escalera), no una pendiente. Antes solo un escalón: en una ventana de un
+        // paso, una pendiente de 27° o más ya lo superaba y no contaba.
+        const rise = s.groundHeight - this.slopeFrom.y;
+        const slope = run * Math.tan((Math.min(cfg.maxSlope, 60) * Math.PI) / 180);
+        this.stepSlope = rise > cfg.maxStepUp + slope || rise < -cfg.maxStepDown - slope ? 0 : rise / run;
+        this.slopeFrom.set(s.position.x, s.groundHeight, s.position.z);
+      } else if (s.speed < IDLE_SPEED * cfg.walkSpeed) this.stepSlope = 0;
+    }
+    // Y la que ve por delante (ver StairPlanner.slopeAhead), para frenar antes de entrar en ella.
+    const ahead = s.airborne ? 0 : this.stairs.slopeAhead(s.position, s.travel);
+    // En una escalera (con el suelo bajo el cuerpo plano: una huella), la lleva ella: un escalón por paso; en una
+    // empinada, de 30 × 30 cm, la de pendiente no la dejaba subir. Sobre rocas (también con bordes, pero inclinadas),
+    // la de pendiente sigue.
+    const treads = s.groundUp > SLOPE_FLAT ? this.stairs.blend : 0;
+    // La más empinada de las tres: bajo el cuerpo, la del paso planeado y la de delante. La del paso, sin pasar de un
+    // escalón más la pendiente más empinada que camina (más, un borde: lo lleva la escalera).
+    const edge = Math.tan((Math.min(cfg.maxSlope, 60) * Math.PI) / 180) + cfg.maxStepUp / cfg.stepLength;
+    const planned = Math.abs(this.plannedSlope) > edge ? 0 : this.plannedSlope;
+    let steepest = this.stepSlope;
+    for (const v of [planned, ahead]) if (Math.abs(v) > Math.abs(steepest)) steepest = v;
+    const target = steepest * (1 - treads);
+    this.groundSlope += (target - this.groundSlope) * (1 - Math.exp(-dt / SLOPE_TIME));
+    const rise = SLOPE_STEP_RISE * (this.groundSlope > 0 ? cfg.maxStepUp : cfg.maxStepDown);
+    const slope = Math.abs(this.groundSlope);
+    let limit = slope > 1e-3 && rise > 0 ? this.speedForStep(rise / slope) : Number.POSITIVE_INFINITY;
+    if (limit >= cfg.runSpeed) limit = Number.POSITIVE_INFINITY;
+    // Al acabar la pendiente, se suelta poco a poco (como al acabar una escalera).
+    if (limit > this.slopeLimit) limit = this.slopeLimit + STAIR_RELEASE * cfg.acceleration * dt;
+    this.slopeLimit = limit >= cfg.runSpeed ? Number.POSITIVE_INFINITY : limit;
+    return this.slopeLimit;
+  }
+
   /**
    * Speed limit over stairs (m/s): the one at which each step climbs one tread, and stopping in front of a
    * riser it can't climb.
@@ -1643,15 +1737,8 @@ export class LocomotionController {
     const stairs = this.stairs;
     let limit = Number.POSITIVE_INFINITY;
     if (stairs.run > 0 && stairs.blend > 0) {
-      // Paso (velocidad / cadencia) igual a la huella: por bisección, la cadencia depende de la velocidad.
-      let lo = 0;
-      let hi = this.config.runSpeed;
-      for (let i = 0; i < 20; i++) {
-        const v = (lo + hi) / 2;
-        if (v / this.gait.stepFrequencyFor(v) > stairs.run) hi = v;
-        else lo = v;
-      }
-      limit = this.config.runSpeed + (lo - this.config.runSpeed) * stairs.blend;
+      // Paso igual a la huella.
+      limit = this.config.runSpeed + (this.speedForStep(stairs.run) - this.config.runSpeed) * stairs.blend;
     }
     // Apoyando el pie al borde de un hueco para cruzarlo con el paso siguiente: despacio hasta ese paso.
     if (stairs.gapWait) limit = Math.min(limit, stairs.gapWaitSpeed);
@@ -1679,7 +1766,14 @@ export class LocomotionController {
     // En un camino angosto, también sus costados que no se pueden bajar: girando hacia uno, aún no lo conocía como
     // borde, iba hasta él y los pasos (por delante del cuerpo) caían fuera.
     const side = Math.min(this.narrowRoom(s.travel), this.narrowRoom(turning));
-    const ahead = Math.min(stairs.wallAhead(s.position, s.travel, clearance, ground), stairs.wallAhead(s.position, turning, clearance, ground), side);
+    const ahead = Math.min(
+      stairs.wallAhead(s.position, s.travel, clearance, ground),
+      stairs.wallAhead(s.position, turning, clearance, ground),
+      side,
+      // Una pendiente más empinada que maxSlope: como una pared.
+      stairs.steepAhead(s.position, s.travel, clearance),
+      stairs.steepAhead(s.position, turning, clearance),
+    );
     if (Number.isFinite(ahead)) {
       // Con la mitad de la deceleración: la frenada tiene una rampa (speedEasing) y se pasaba.
       const room = Math.max(ahead, 0);
@@ -1880,6 +1974,9 @@ export class LocomotionController {
     // El desvío antes que la altura: la holgura sobre el terreno se mide por donde pasará el pie.
     this.swingDetour(foot);
     swing.height = this.swingHeight(foot);
+    // La pendiente de este paso (ver SLOPE_STEP_RISE): de donde estaba apoyado el pie a donde cae.
+    const planned = Math.hypot(swing.landing.x - foot.planted.x, swing.landing.z - foot.planted.z);
+    this.plannedSlope = planned < 0.2 * this.config.stepLength ? 0 : (swing.landing.y - foot.planted.y) / planned;
   }
 
   /**
@@ -3073,7 +3170,10 @@ export class LocomotionController {
       // al tocar el suelo, pero el pie va a esa pose *relativa al cuerpo* (restando lo
       // que al cuerpo le queda por avanzar y caer): así llega a él justo al aterrizar,
       // sin estirar la pierna más de lo que alcanza mientras el cuerpo aún está alto.
+      // En el aire, el aterrizaje sigue la caída (ver updateAirFeet): sin buscar el suelo más abajo.
+      this.planner.deepLanding = false;
       this.planner.planLanding(side, this.displacement, body.velocity, lead, foot.swing.landing, foot.swing.landingRotation);
+      this.planner.deepLanding = true;
       // Saltando un hueco, cada pie cae un poco más adelante o más atrás (ver rollLeap).
       if (!Number.isNaN(this.leap.ground) || this.jumping.standingTakeoff) foot.swing.landing.addScaledVector(body.forward, this.leapVary.landing[side] * this.pelvis.maxLegReach(side, 1));
       this.samplePos.copy(foot.swing.landing).sub(this.displacement);

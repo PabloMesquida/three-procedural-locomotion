@@ -410,6 +410,14 @@ level, the character samples the ground ahead along its direction of travel, fin
   angle, and if it ended up closer (it came along it), it moves back over its feet. The body never crosses it
   (a `moveTo` plans a route round it; with `avoid: false`, or with your own controls, it stops in front of it).
 
+On a slope (a ramp, the face of a rock: ground that rises or falls without steps) it does the same as on stairs:
+it goes slower and with shorter steps, so that each step rises or falls about half `maxStepUp` (or `maxStepDown`),
+like a riser: on a 20° ramp, at about 0.65 m/s; on one of 30°, at about 0.45. It measures it with no raycasts of its
+own: from the ground under the body as it goes and from the ground a step further it already looks at, so it slows
+down a little before getting on it. A slope steeper than `maxSlope` (35° by default) it doesn't walk on: `moveTo`
+goes round it and, walking towards it, it stops at its foot (or at its top, going down), as in front of a wall.
+Stairs aren't slopes, however steep: their treads are flat; nor is the side of a low stone.
+
 Any size of step works up to those limits (tested from 10 × 40 cm to 30 × 30 cm, up and down). The shape of the
 step, the lean and the landing are compared with motion capture of people on stairs (CMU).
 

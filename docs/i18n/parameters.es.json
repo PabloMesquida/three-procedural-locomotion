@@ -392,6 +392,10 @@
       "en": "Highest step it climbs (m): a higher riser is a wall, and the character stops in front of it.",
       "es": "Escalón más alto que sube (m): una contrahuella más alta es una pared, y el personaje se para delante."
     },
+    "maxSlope": {
+      "en": "Steepest slope it walks on (degrees): ground that rises or falls without steps (a ramp, the face of a rock) more steeply than this is like a wall: moveTo goes round it and, walking towards it, the character stops at its foot (or at its top). On gentler slopes it goes slower and with shorter steps, as on stairs. 90 = no limit.",
+      "es": "Pendiente más empinada por la que camina (grados): el suelo que sube o baja sin escalones (una rampa, la cara de una roca) más empinado que esto es como una pared: moveTo lo rodea y, caminando hacia él, el personaje se para al pie (o arriba). En pendientes más suaves va más despacio y con pasos más cortos, como en una escalera. 90 = sin límite."
+    },
     "maxStepDown": {
       "en": "Deepest step it goes down (m): from a deeper drop it doesn't step down, it stops at the edge.",
       "es": "Escalón más hondo que baja (m): de un desnivel más hondo no baja, se para en el borde."

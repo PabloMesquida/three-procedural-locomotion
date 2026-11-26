@@ -4,7 +4,7 @@
 
 <!-- Generado por scripts/gen-docs.mjs a partir del código. No editar a mano: `node scripts/gen-docs.mjs`. -->
 
-155 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
+156 parámetros. Se pasan al crear el personaje (`config`) o en ejecución (`human.setConfig`); todos son
 opcionales y se validan (nombre, número finito y rango).
 
 - **↔** = longitud del cuerpo: se multiplica por `bodyScale` (tamaño del personaje respecto al de referencia de 1,83 m).
@@ -254,6 +254,7 @@ opcionales y se validan (nombre, número finito y rango).
 | `maxExtraStepHeight` ↔ | 0.3 | Altura extra máxima del swing para salvar obstáculos (m). |
 | `maxStepUp` ↔ | 0.35 | Escalón más alto que sube (m): una contrahuella más alta es una pared, y el personaje se para delante. |
 | `maxStepDown` ↔ | 0.35 | Escalón más hondo que baja (m): de un desnivel más hondo no baja, se para en el borde. |
+| `maxSlope` | 35 | Pendiente más empinada por la que camina (grados): el suelo que sube o baja sin escalones (una rampa, la cara de una roca) más empinado que esto es como una pared: moveTo lo rodea y, caminando hacia él, el personaje se para al pie (o arriba). En pendientes más suaves va más despacio y con pasos más cortos, como en una escalera. 90 = sin límite. |
 | `maxGapStep` ↔ | 0.5 | Hueco más ancho que cruza de un paso (m; 0 = ninguno): un desnivel más hondo que `maxStepDown` con suelo que puede pisar otra vez del otro lado, a no más de esto en la dirección en que va. No se para en él: si hace falta, apoya el pie justo antes del borde y lo cruza con un paso largo. En uno más ancho se para en el borde, como ante un desnivel. |
 | `maxGapJump` ↔ | 1 | Hueco más ancho que cruza de un salto (m; 0 = ninguno): uno más ancho que `maxGapStep` y no más que esto en la dirección en que va. Caminando o corriendo, sin pararse, de un pie a otro (desde el pie de apoyo más cercano al borde, cayendo sobre el otro); parado en su borde, con los dos pies. En uno más ancho se para en el borde. |
 | `maxGapJumpRun` ↔ | 1.5 | Hueco más ancho que cruza de un salto corriendo (m): a jogSpeed o más llega a este, y entre medias desde `maxGapJump` (caminando o parado) en proporción a la velocidad; así que uno más ancho que `maxGapJump` solo lo salta tomando carrera (y moveTo solo lo cruza con `run`). Por debajo de `maxGapJump`, igual que este. |

@@ -415,6 +415,14 @@ cambio de nivel, el personaje mide el suelo por delante en su dirección de avan
   diagonal, y si quedó más cerca (venía a lo largo de él), retrocede sobre los pies. El cuerpo nunca lo cruza
   (un `moveTo` planea una ruta que lo rodea; con `avoid: false`, o con tus controles, se para delante).
 
+En una pendiente (una rampa, la cara de una roca: suelo que sube o baja sin escalones) hace lo mismo que en una
+escalera: va más despacio y con pasos más cortos, para que cada paso suba o baje más o menos la mitad de `maxStepUp`
+(o de `maxStepDown`), como una contrahuella: en una rampa de 20°, a unos 0,65 m/s; en una de 30°, a unos 0,45. La mide
+sin raycasts propios: con el suelo bajo el cuerpo según avanza y con el suelo un paso más allá que ya mira, así que
+frena un poco antes de llegar. Por una pendiente más empinada que `maxSlope` (35° por defecto) no camina: `moveTo`
+la rodea y, caminando hacia ella, se para al pie (o arriba, bajando), como delante de una pared. Una escalera no es
+una pendiente, por empinada que sea: sus huellas son planas; tampoco el costado de una piedra baja.
+
 Sirve cualquier medida de escalón hasta esos límites (probado de 10 × 40 cm a 30 × 30 cm, subiendo y bajando).
 La forma del paso, la inclinación y el apoyo se comparan con capturas de movimiento de personas en escaleras
 (CMU).

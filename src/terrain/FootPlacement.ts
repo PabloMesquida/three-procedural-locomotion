@@ -143,9 +143,9 @@ export class FootPlacement {
    * `yawOffset` (rad, about the vertical axis) orients the foot as if the character had already turned by
    * that angle (useful to plan a step during a turn).
    */
-  update(desiredAnkle: Vector3, yawOffset = 0): FootGroundState {
+  update(desiredAnkle: Vector3, yawOffset = 0, extraDepth = 0): FootGroundState {
     const { state, config, tilt } = this;
-    const maxDistance = config.castHeight + config.castDepth;
+    const maxDistance = config.castHeight + config.castDepth + extraDepth;
     this.characterRoot.getWorldQuaternion(this.qRoot);
     if (yawOffset !== 0) this.qRoot.premultiply(this.qYaw.setFromAxisAngle(UP, yawOffset));
 

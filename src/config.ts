@@ -111,6 +111,7 @@ export function validateConfig(input: ProceduralHumanConfigInput, base: Procedur
   if (num('headInertia') < 0) problems.push(`"headInertia" must be ≥ 0 (got ${num('headInertia')})`);
   if (num('narrowTouchRelax') < 0 || num('narrowTouchRelax') > 1) problems.push(`"narrowTouchRelax" must be between 0 and 1 (got ${num('narrowTouchRelax')})`);
   if (num('fingerCurl') < 0) problems.push(`"fingerCurl" must be ≥ 0 (got ${num('fingerCurl')})`);
+  if (!(num('maxSlope') > 0 && num('maxSlope') <= 90)) problems.push(`"maxSlope" must be in (0, 90] (got ${num('maxSlope')})`);
   if (!(num('touchMaxReach') > 0 && num('touchMaxReach') <= 1)) problems.push(`"touchMaxReach" must be in (0, 1] (got ${num('touchMaxReach')})`);
   for (const key of ['narrowWidth', 'narrowStepWidth', 'narrowArmTilt', 'ledgeWidth', 'ledgeStepWidth', 'maxGapStep', 'maxGapJump', 'maxGapJumpRun'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
   for (const key of ['touchHoldTime', 'touchCooldown', 'touchCurveRadius'] as const) if (num(key) < 0) problems.push(`"${key}" must be ≥ 0 (got ${num(key)})`);
