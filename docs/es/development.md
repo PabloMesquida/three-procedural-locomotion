@@ -177,7 +177,7 @@ matrices de cada frame (2.148 → 351 por personaje). Las matrices resultantes s
 referencias exactas lo comprueban.
 
 Raycasts por personaje: 1 por frame (sonda de la raíz, que además detecta cambios del suelo bajo el cuerpo) y
-~14 al empezar cada paso (aterrizaje: talón y punta; altura del arco: 12 muestras de la punta), más 1 cada 0,25 s
+~14 al empezar cada paso (aterrizaje: talón y punta, y el tobillo si el pie se inclina; altura del arco: 12 muestras de la punta), más 1 cada 0,25 s
 buscando caminos angostos y otro buscando cornisas (cada 1 s parado; ~20 en un camino angosto o al encontrar una
 cornisa, ver `NarrowPath` y `Ledge`, y ~10 por frame en una cornisa: la pared detrás de la espalda y de las manos). Parado, la
 comprobación de si los pies están recolocados (4 raycasts) se reutiliza mientras la matriz de la raíz no cambie

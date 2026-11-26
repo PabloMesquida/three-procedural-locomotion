@@ -35,10 +35,12 @@ function rocks(t: Object3D, top: number): void {
 // girados, repetibles con una semilla) de 2,4 m de ancho que sube hasta `top` en el medio y vuelve a bajar, cruzado
 // con moveTo. Los pies apoyan en lo más alto bajo ellos (sobre un hueco entre rocas la planta puede quedar unos
 // centímetros por encima del suelo bajo el tobillo), sin hundirse.
+// También despacio (walkSpeed 0,6): con pasos más cortos pisa más veces en los huecos entre rocas.
 describe('rocas (terreno irregular sin escalones)', () => {
-for (const top of [0.4, 0.6, 0.8]) {
-  it(`un montículo de rocas de ${top} m: lo cruza por encima, con los pies sobre las rocas, sin resbalar`, () => {
-    const world = createWorld({ buildTerrain: (t) => rocks(t, top) });
+for (const [top, walkSpeed] of [[0.4], [0.6], [0.8], [0.4, 0.6], [0.6, 0.6], [0.8, 0.6]]) {
+  const slow = walkSpeed === undefined ? '' : `, despacio (${walkSpeed} m/s)`;
+  it(`un montículo de rocas de ${top} m${slow}: lo cruza por encima, con los pies sobre las rocas, sin resbalar`, () => {
+    const world = createWorld({ buildTerrain: (t) => rocks(t, top), human: walkSpeed === undefined ? {} : { config: { walkSpeed } } });
     const { human, terrain } = world;
     const loco = human.locomotion;
     const detector = new RaycastGroundDetector([terrain]);
@@ -48,7 +50,7 @@ for (const top of [0.4, 0.6, 0.8]) {
     let maxY = 0;
     let arrived = false;
     human.on('arrive', () => { arrived = true; });
-    const r = simulate(world, 14, [[0, (h) => h.moveTo(new Vector3(0, 0, -8))]], {
+    const r = simulate(world, walkSpeed === undefined ? 14 : 24, [[0, (h) => h.moveTo(new Vector3(0, 0, -8))]], {
       onFrame: () => {
         maxY = Math.max(maxY, human.position.y);
         for (const side of SIDES) {
@@ -63,10 +65,9 @@ for (const top of [0.4, 0.6, 0.8]) {
     // Por encima, no rodeándolo: sobre las rocas la raíz sigue la línea de los apoyos (ver StairPlanner), algo por debajo
     // de las cimas, y más despacio en la subida (ver SLOPE_STEP_RISE), un poco más baja: 0,66 m en el de 0,8.
     assert.ok(maxY > top - 0.2, `no subió (raíz a ${maxY.toFixed(2)} m)`);
-    // Despacio sobre piedras pequeñas el pie puede quedar unos centímetros hundido (solo hay rayos bajo el tobillo y la
-    // punta: un bulto entre ellos no lo ven; ya pasaba a 0,6 m/s, 4,3 cm), y en pendiente va más despacio (ver
-    // SLOPE_STEP_RISE): 3,2 cm en el de 0,4.
-    assert.ok(worstFoot < 0.035, `un pie apoyado se hundió ${(worstFoot * 100).toFixed(1)} cm en la roca`);
+    // Con el talón en el flanco de una roca, el pie se inclina y el tobillo se aparta de su rayo, sobre la roca de al
+    // lado: FootPlacement mira también el suelo bajo él (antes, hasta 8 cm hundido en el de 0,8 a 0,6 m/s).
+    assert.ok(worstFoot < 0.025, `un pie apoyado se hundió ${(worstFoot * 100).toFixed(1)} cm en la roca`);
     assert.ok(r.slip < 1e-6 && r.stanceIK < 0.001 && r.alternates, `deslizamiento ${r.slip}, IK ${r.stanceIK}, alterna ${r.alternates}`);
   });
 }

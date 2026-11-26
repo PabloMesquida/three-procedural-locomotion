@@ -43,6 +43,11 @@ export interface FootGroundState {
 
 const UP = new Vector3(0, 1, 0);
 const IDENTITY = new Quaternion();
+/**
+ * Horizontal distance (× ankleHeight) from which the ankle of a tilted foot is considered to have moved off the heel's
+ * ray, and the ground under it is looked at too (about 6° of tilt).
+ */
+const ANKLE_PROBE_SHIFT = 0.1;
 /** Margin for considering that the ground under the toes "sticks out" of the plane of the heel (m). */
 
 /**
@@ -55,6 +60,9 @@ const IDENTITY = new Quaternion();
  *  - If the ground under the toes is higher than that plane (bump, step), the foot tilts about the
  *    heel→toes line so as not to go through it.
  *  - If it is lower (edge of a step), the foot stays resting on the heel and the toes stay in the air.
+ *
+ * If the foot is tilted, the ankle moves off the heel's ray: the ground under it is looked at too (one more raycast,
+ * only then), and if it is above the sole the foot rises to rest on it, with the heel in the air.
  *
  * It is calibrated in the rest pose, with the character standing on its origin:
  *  - height of the ankle above the ground,
@@ -86,6 +94,8 @@ export class FootPlacement {
   private readonly qYaw = new Quaternion();
   private readonly binormal0 = new Vector3();
   private readonly binormal1 = new Vector3();
+  private readonly ankleRayOrigin = new Vector3();
+  private readonly ankleHit = createGroundHit();
 
   constructor(
     detector: GroundDetector,
@@ -197,12 +207,38 @@ export class FootPlacement {
       // El tobillo queda sobre el talón, a su altura, en la dirección "arriba" del pie.
       this.n.copy(UP).applyQuaternion(tilt);
       state.ankleTarget.copy(heel).addScaledVector(this.n, this.ankleHeight);
+
+      // Inclinado, el tobillo se aparta del rayo del talón (hasta ankleHeight · sen 35°, unos 5 cm), sobre suelo que no
+      // se miró. En una grieta entre dos rocas, con el talón en el flanco de una, quedaba sobre la otra y la planta se
+      // hundía en ella varios centímetros (hasta 15). Se mira con otro rayo, solo si se apartó (en llano, no): si ese
+      // suelo está por encima de la planta (el plano por el talón con esa normal), el pie sube hasta apoyarse en él, con
+      // el talón en el aire.
+      const dx = state.ankleTarget.x - heel.x;
+      const dz = state.ankleTarget.z - heel.z;
+      const shift = ANKLE_PROBE_SHIFT * this.ankleHeight;
+      if (dx * dx + dz * dz > shift * shift) {
+        this.ankleRayOrigin.set(state.ankleTarget.x, state.rayOrigin.y, state.ankleTarget.z);
+        if (this.detector.castDown(this.ankleRayOrigin, maxDistance, this.ankleHit)) {
+          state.ankleTarget.y += this.belowSole(this.ankleHit.point);
+        }
+      }
     }
 
     // rotación del pie = inclinación del suelo · orientación del personaje · pie en reposo
     state.footRotation.copy(tilt).multiply(this.qRoot).multiply(this.restFootRelRotation);
 
     return state;
+  }
+
+  /**
+   * How far `p` (a point of the ground under the foot) is above the plane of the sole: the one through the heel's hit
+   * with the normal `n` of the placed foot (m, 0 if it is below).
+   */
+  private belowSole(p: Vector3): number {
+    const heel = this.state.hit.point;
+    const n = this.n;
+    const soleY = heel.y - (n.x * (p.x - heel.x) + n.z * (p.z - heel.z)) / n.y;
+    return Math.max(0, p.y - soleY);
   }
 
   /** Is the ground under the toes above the plane of the ground under the heel? */
