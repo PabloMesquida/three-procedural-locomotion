@@ -125,22 +125,22 @@ level of the soles ([details](docs/en/skeletons.md#model-requirements)).
 **From GitHub, at a fixed version (recommended):**
 
 ```bash
-npm install three github:PabloMesquida/three-procedural-locomotion#v0.10.1
+npm install three github:PabloMesquida/three-procedural-locomotion#v0.10.2
 ```
 
 npm downloads the repository at that tag and builds the library while installing it (`prepare` script). To
 update it, install another tag. If your project already has three, leave it out
-(`npm install github:PabloMesquida/three-procedural-locomotion#v0.10.1`): `npm install three` without a version
+(`npm install github:PabloMesquida/three-procedural-locomotion#v0.10.2`): `npm install three` without a version
 would update the one you have.
 
 **From a local copy of the repository, by packing it:**
 
 ```bash
 # in this folder
-npm pack                      # builds and generates three-procedural-locomotion-0.10.1.tgz
+npm pack                      # builds and generates three-procedural-locomotion-0.10.2.tgz
 
 # in your project
-npm install three ../path/to/three-procedural-locomotion/three-procedural-locomotion-0.10.1.tgz
+npm install three ../path/to/three-procedural-locomotion/three-procedural-locomotion-0.10.2.tgz
 ```
 
 To update it: bump `version` in `package.json`, run `npm pack` and install the `.tgz` again.
