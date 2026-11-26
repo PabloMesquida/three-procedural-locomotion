@@ -192,6 +192,8 @@ const STAIR_RELEASE = 0.4;
  * before it, as before a wall.
  */
 const SLOPE_STEP_RISE = 0.5;
+/** Standing still, the body rises to the lower foot only for what goes past this (× stepLength; see standingGround). */
+const STAND_SLACK = 0.03;
 /** Ground with a normal more vertical than this (cosine; 5°) is flat: a stair tread (see slopeSpeedLimit). */
 const SLOPE_FLAT = Math.cos((5 * Math.PI) / 180);
 const SLOPE_WINDOW = 1;
@@ -955,8 +957,26 @@ export class LocomotionController {
     this.backBand = backBands(rig);
     const hipsHeight = this.backBand.hips[1] / 1.1;
     this.backDepth = measureBack(rig, forward) ?? { hips: BACK_HIPS * hipsHeight, chest: BACK_CHEST * hipsHeight };
-    this.body.groundLine = (position, ground) => this.stairs.groundHeight(position, ground);
+    this.body.groundLine = (position, ground) => this.standingGround(this.stairs.groundHeight(position, ground));
     this.body.gapLine = (fromX, fromZ, toX, toZ, ground) => this.stairs.gapLine(fromX, fromZ, toX, toZ, ground);
+  }
+
+  /**
+   * The ground the body follows (`ground`: under the root, or the line over the treads), standing still with both feet
+   * planted: never below the lower foot. On rocks seen as stairs the line passed below both feet (10 to 40 cm), and a
+   * crevice under the body between two rocks too: it stood with both knees bent, crouched. On stairs the line is
+   * between the two treads, above the lower one: as before.
+   */
+  private standingGround(ground: number): number {
+    if (this.gait.mode !== 'idle' || !Number.isFinite(ground)) return ground;
+    let lower = Number.POSITIVE_INFINITY;
+    for (const side of SIDES) {
+      const foot = this.feet[side];
+      if (foot.phase !== 'PLANTED') return ground;
+      lower = Math.min(lower, foot.planted.y - this.planner.placement(side).ankleHeight);
+    }
+    // Lo que pase de STAND_SLACK (en el llano, la planta queda unos mm por encima: subir por eso movía el cuerpo).
+    return ground + Math.max(lower - ground - STAND_SLACK * this.config.stepLength, 0);
   }
 
   /** Velocidad deseada (m/s), entre 0 y config.runSpeed. */

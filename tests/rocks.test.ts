@@ -72,3 +72,21 @@ for (const [top, walkSpeed] of [[0.4], [0.6], [0.8], [0.4, 0.6], [0.6, 0.6], [0.
   });
 }
 });
+
+// Parado sobre las rocas, el cuerpo seguía la línea de la escalera (las rocas se ven como escalones) o el suelo bajo la
+// raíz (una grieta entre dos rocas), por debajo de los dos pies: se quedaba con las dos rodillas dobladas, agachado
+// (en estos destinos, la raíz quedaba de 8 a 13 cm por debajo del pie más bajo).
+describe('rocas: parado sobre ellas', () => {
+  for (const [top, x, z] of [[0.8, 0.4, -3.1], [0.6, 0.9, -2], [0.6, -0.4, -5], [0.8, -0.9, -4]] as const) {
+    it(`parado en (${x}, ${z}) sobre un montículo de ${top} m: el cuerpo no queda por debajo del pie más bajo`, () => {
+      const world = createWorld({ buildTerrain: (t) => rocks(t, top) });
+      const { human } = world;
+      const loco = human.locomotion;
+      simulate(world, 12, [[0, (h) => h.moveTo(new Vector3(x, top, z))]]);
+      const soles = SIDES.map((side) => loco.feet[side].planted.y - loco.planner.placement(side).ankleHeight);
+      assert.equal(human.gaitMode, 'idle');
+      // Hasta STAND_SLACK (0,03 × stepLength) por debajo, y algo más: en el llano no se mueve por milímetros.
+      assert.ok(human.position.y > Math.min(...soles) - 0.04, `raíz a ${human.position.y.toFixed(2)} m, pies a ${soles.map((y) => y.toFixed(2)).join(' y ')}`);
+    });
+  }
+});
