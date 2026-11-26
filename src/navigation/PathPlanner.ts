@@ -277,7 +277,8 @@ export class PathPlanner {
     // Ya en él (o en otro a su altura): va por él.
     const here = this.cell(0, 0, start.y);
     if (this.isNarrow(0, 0) && Math.abs(here.height - c.height) < this.narrowDrop()) return null;
-    const middle = this.narrowMiddle(target.x, target.z, ti, tj, new Vector3(target.x, c.height, target.z));
+    const middle = new Vector3(target.x, c.height, target.z);
+    this.narrowMiddle(target.x, target.z, ti, tj, middle);
     const [di, dj] = ACROSS[c.across!];
     const across = Math.hypot(di, dj);
     const ax = di / across;
@@ -680,7 +681,9 @@ export class PathPlanner {
       if (!found) continue;
       const exit = this.cell(ei, ej, b.y);
       const [di, dj] = ACROSS[exit.across!];
-      const middle = this.narrowMiddle(this.x0 + ei * s, this.z0 + ej * s, ei, ej, new Vector3());
+      // Sin su medio (un lado no cae: no es un camino angosto de verdad), nada.
+      const middle = new Vector3();
+      if (!this.narrowMiddle(this.x0 + ei * s, this.z0 + ej * s, ei, ej, middle)) continue;
       // A lo largo del camino, hacia `b`.
       let ux = -dj;
       let uz = di;
@@ -731,9 +734,10 @@ export class PathPlanner {
 
   /**
    * Middle of the narrow path at cell (i, j), across it from (`x`, `z`): finds both edges by bisection
-   * (NARROW_EDGE_STEPS raycasts each). Puts it in `out` (x, z).
+   * (NARROW_EDGE_STEPS raycasts each). Puts it in `out` (x, z); if it doesn't find both, (`x`, `z`), and returns
+   * false: there it isn't really a narrow path (one side doesn't drop).
    */
-  private narrowMiddle(x: number, z: number, i: number, j: number, out: Vector3): Vector3 {
+  private narrowMiddle(x: number, z: number, i: number, j: number, out: Vector3): boolean {
     const c = this.cell(i, j, 0);
     const [di, dj] = ACROSS[c.across!];
     const length = Math.hypot(di, dj);
@@ -762,11 +766,17 @@ export class PathPlanner {
     };
     const plus = edge(1);
     const minus = edge(-1);
-    if (Number.isNaN(plus) || Number.isNaN(minus)) return out;
+    // Sin los dos bordes, donde se pidió: antes `out` quedaba como venía, y quien pasaba uno nuevo recibía (0, 0) y
+    // ponía en la ruta un punto en el origen del mundo (iba hasta él y volvía: en un terreno de rocas, medias vueltas).
+    if (Number.isNaN(plus) || Number.isNaN(minus)) {
+      out.x = x;
+      out.z = z;
+      return false;
+    }
     const middle = (plus + minus) / 2;
     out.x = x + ax * middle;
     out.z = z + az * middle;
-    return out;
+    return true;
   }
 
   /**
@@ -796,8 +806,10 @@ export class PathPlanner {
       // una viga, con el destino delante, se giraba, volvía unos pasos y se giraba otra vez.
       if (entry < 0 || (k === 0 && entry === 0)) continue;
       const [di, dj] = ACROSS[this.cell(ei, ej, b.y).across!];
-      // La entrada, en el medio del camino (no en el centro de su celda, que puede estar en su borde).
-      const middle = this.narrowMiddle(this.x0 + ei * s, this.z0 + ej * s, ei, ej, new Vector3());
+      // La entrada, en el medio del camino (no en el centro de su celda, que puede estar en su borde). Sin él (un lado
+      // no cae: no es un camino angosto de verdad), nada.
+      const middle = new Vector3();
+      if (!this.narrowMiddle(this.x0 + ei * s, this.z0 + ej * s, ei, ej, middle)) continue;
       const ex = middle.x;
       const ez = middle.z;
       let ux = -dj;

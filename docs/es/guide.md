@@ -519,7 +519,9 @@ de él.
 
 Parado sobre él, los pies quedan uno al lado del otro, lo más juntos que pueden sin superponerse. Cuando el camino
 se ensancha o se acaba, vuelve a caminar normal al llegar ahí. Con `narrowWidth: 0` nunca hace equilibrio. Una
-línea pintada en el suelo no es un camino: hace falta un desnivel a los dos lados. Cuesta una consulta al suelo
+línea pintada en el suelo no es un camino: hace falta un desnivel a los dos lados; tampoco la esquina de una
+plataforma, que también cae a los dos lados pero no sigue (un camino empieza solo si hay suelo 25 cm más allá a lo
+largo de él). Cuesta una consulta al suelo
 cada 0,25 s en marcha (cada segundo parado) y, en un camino angosto, unas 20 cada vez (mide los dos bordes y la dirección del camino).
 
 Con [tocar superficies](#tocar-superficies) activado, una baranda o una pared junto al camino se tocan como en

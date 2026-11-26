@@ -512,7 +512,8 @@ ground), it steps off.
 
 Standing still on it, the feet stand side by side, as close as they can without overlapping. When the path widens
 or ends, it goes back to walking normally once it gets there. With `narrowWidth: 0` it never balances. A line
-painted on the ground isn't a path: it needs a drop on both sides. It costs one ground query every 0.25 s while
+painted on the ground isn't a path: it needs a drop on both sides; nor is the corner of a platform, which drops on
+both sides too but doesn't go on (a path starts only if there is ground 25 cm further along it). It costs one ground query every 0.25 s while
 moving (every second standing still) and, on a narrow path, about 20 each time (it measures both edges and the direction of the path).
 
 With [touching surfaces](#touching-surfaces) on, a railing or a wall beside the path is touched as anywhere

@@ -614,3 +614,58 @@ describe('caminos angostos: salir de ellos', () => {
     });
   }
 });
+
+// Antes, yendo en diagonal hacia la esquina de una plataforma, la punta de la esquina (con caída a los dos lados de la
+// sonda, a 14 cm) contaba como camino angosto: hacía equilibrio y, parado allí, no lo soltaba nunca.
+describe('caminos angostos: la esquina de una plataforma no lo es', () => {
+  // Con el tamaño del modelo del Laboratorio (con el de referencia, la sonda no caía en la punta).
+  for (const [x, z] of [[3.5, -2.3], [6, -2.3], [3.3, 4.4], [6.2, 4.4]] as const) {
+    it(`yendo en diagonal hacia (${x}, ${z}), fuera de la esquina, se para sin hacer equilibrio`, () => {
+      const world = worldOn((terrain) => block(terrain, 3.5, 1.02, 6, 4.75, 1), 0, { modelScale: 0.907 });
+      const { human } = world;
+      world.model.position.set(4.75, 1.02, 1);
+      world.model.updateMatrixWorld(true);
+      human.reset();
+      let most = 0;
+      // A un punto en el aire más allá de la esquina: va en línea recta y se para en el borde.
+      simulate(world, 10, [[0, (h) => h.moveTo(new Vector3(x, 1.02, z))]], {
+        onFrame: () => { most = Math.max(most, human.balance); },
+      });
+      const p = human.position;
+      // Parado junto a la esquina (cerca de un borde en X y de otro en Z).
+      const nearX = Math.min(Math.abs(p.x - 3), Math.abs(p.x - 6.5));
+      const nearZ = Math.min(Math.abs(p.z + 2), Math.abs(p.z - 4));
+      assert.ok(nearX < 0.6 && nearZ < 0.6, `se paró en (${p.x.toFixed(2)}, ${p.z.toFixed(2)}), no junto a la esquina`);
+      assert.ok(p.y > 1, 'se cayó de la plataforma');
+      assert.ok(most < 0.01, `equilibrio ${most.toFixed(2)}`);
+    });
+  }
+});
+
+// Antes, donde una celda parecía de camino angosto pero un lado no caía (una franja junto a una grieta, en un terreno de
+// rocas), no encontraba su medio y dejaba el punto como venía: quien pasaba uno nuevo recibía (0, 0), y el punto de
+// entrada o salida de la ruta caía junto al origen del mundo (iba hasta él y volvía: medias vueltas). Ahora devuelve
+// false con el punto pedido, y sin medio no añade ese punto.
+describe('caminos angostos: uno que no lo es del todo', () => {
+  it('una franja junto a una grieta (un lado no cae): sin su medio, el punto pedido, no el origen', () => {
+    const world = worldOn((terrain) => {
+      block(terrain, 20.9, 1.02, 6, 9.45, 0);
+      block(terrain, 0.25, 1.02, 6, 20.125, 0);
+    }, 0);
+    const { human } = world;
+    world.model.position.set(18, 1.02, -2);
+    world.model.updateMatrixWorld(true);
+    human.reset();
+    const target = new Vector3(20.12, 1.02, 2);
+    human.moveTo(target);
+    type Planner = { x0: number; z0: number; size: number; isNarrow(i: number, j: number): boolean; narrowMiddle(x: number, z: number, i: number, j: number, out: Vector3): boolean };
+    const planner = (human as unknown as { pathPlanner: Planner }).pathPlanner;
+    const i = Math.round((target.x - planner.x0) / planner.size);
+    const j = Math.round((target.z - planner.z0) / planner.size);
+    assert.ok(planner.isNarrow(i, j), 'la franja no cuenta como camino angosto');
+    const out = new Vector3();
+    const found = planner.narrowMiddle(target.x, target.z, i, j, out);
+    assert.equal(found, false);
+    assert.ok(Math.hypot(out.x - target.x, out.z - target.z) < 1e-9, `medio en (${out.x.toFixed(2)}, ${out.z.toFixed(2)})`);
+  });
+});

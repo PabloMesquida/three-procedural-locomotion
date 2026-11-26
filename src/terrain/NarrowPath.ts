@@ -18,6 +18,12 @@ const EDGE_STEPS = 5;
  */
 const ALONG_PROBE = 0.25;
 const ALONG_SLANT = Math.cos((3 * Math.PI) / 180);
+/**
+ * A new narrow path goes on: there is ground this far past its centre along it (m, ahead). The tip of a platform's
+ * corner, met at an angle, drops on both sides of the probe within `width` too, but ends right there: before, going
+ * to a corner it balanced, and standing there it never let go (it never got past where the path ended).
+ */
+const GOES_ON = 0.25;
 
 /** Where and how it looks for the edges of the path (see NarrowPath.probe). */
 export interface NarrowProbe {
@@ -153,6 +159,11 @@ export class NarrowPath {
     this.center.copy(probe.point).addScaledVector(right, (edge + other) / 2);
     this.center.y = this.level;
     rays += this.direction(probe, right, s, edge, (edge + other) / 2);
+    // Uno nuevo tiene que seguir por delante (no es la punta de una esquina).
+    if (!this.narrow) {
+      rays++;
+      if (this.endsAt(probe, right)) return rays;
+    }
     this.narrow = true;
     this.end.x = Number.NaN;
     // Medido en un corte oblicuo, el ancho de verdad es menor.
@@ -211,6 +222,23 @@ export class NarrowPath {
     if (this.across.dot(right) < 0) this.across.negate();
     if (this.across.dot(right) > ALONG_SLANT) this.across.copy(right);
     return rays;
+  }
+
+  /** Past the centre of the path just measured, GOES_ON along it (ahead), the ground drops: it ends there. */
+  private endsAt(probe: NarrowProbe, right: Vector3): boolean {
+    // A lo largo: perpendicular a `across`, hacia donde va.
+    let ax = -this.across.z;
+    let az = this.across.x;
+    if (ax * probe.forward.x + az * probe.forward.z < 0) {
+      ax = -ax;
+      az = -az;
+    }
+    this.base.copy(this.center);
+    this.base.x += ax * GOES_ON;
+    this.base.z += az * GOES_ON;
+    const ends = this.dropAt(probe, right, 0);
+    this.base.copy(probe.point);
+    return ends;
   }
 
   /** Distance (m, horizontal) from `point` to the middle of the path, in the direction of `across` (negative: against it). */
