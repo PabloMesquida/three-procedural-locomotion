@@ -35,6 +35,22 @@ export interface Tread {
   cross: boolean;
 }
 
+/** A stretch of the profile while `firmTreads` rebuilds it. */
+interface Piece {
+  start: number;
+  end: number;
+  startHeight: number;
+  endHeight: number;
+  startEdge: boolean;
+  endEdge: boolean;
+  /** Its lowest point (m). */
+  low: number;
+  /** 0: firm ground; 1: steeper than the slope it walks; 2: no ground. */
+  kind: 0 | 1 | 2;
+  /** Not stood on: steep, without ground, or a firm stretch too short for a foot between two such. */
+  unstandable: boolean;
+}
+
 /**
  * Height profile of the ground along a horizontal path, a straight line or an arc (curved and spiral stairs):
  * the treads it is made of, separated by edges (a jump in height of at least `edgeHeight` between two
@@ -66,6 +82,11 @@ export class GroundProfile {
   private castDepth = 0;
   private edgeHeight = 0;
   private holeHeight = 0;
+  /** The samples of the last `sample` (position, height, on firm ground) and the stretches `firmTreads` makes. */
+  private readonly sampleU: number[] = [];
+  private readonly sampleHeight: number[] = [];
+  private readonly sampleFirm: boolean[] = [];
+  private readonly pieces: Piece[] = [];
   /** Tread being built while sampling. */
   private tread!: Tread;
 
@@ -93,7 +114,8 @@ export class GroundProfile {
    * the previous one (the first, above `startHeight`; never from lower than that) down to `castDepth` below
    * it: it follows the ground however much it rises, without starting inside a high step, above a ceiling
    * or under a higher floor behind which it started. Where there is no ground (a gap over the void, a
-   * cliff) it is taken as a hole lower than anything, and it goes on looking for the ground beyond.
+   * cliff) it is taken as a hole lower than anything, and it goes on looking for the ground beyond. With `steepCos`
+   * (the cosine of the steepest slope it walks on), ground steeper than that is not part of a tread (see `firmTreads`).
    */
   sample(
     detector: GroundDetector,
@@ -104,6 +126,8 @@ export class GroundProfile {
     startHeight: number,
     castHeight: number,
     castDepth: number,
+    steepCos = Number.NEGATIVE_INFINITY,
+    minTread = 0,
   ): void {
     if (this.turn !== 0) {
       const limit = MAX_ARC_ANGLE * this.radius;
@@ -121,7 +145,14 @@ export class GroundProfile {
     let previous = this.heightAt(detector, from, startHeight);
     // Última altura con suelo: desde ella se busca el siguiente (sobre un hueco no hay a qué seguir).
     let solid = Number.isFinite(previous) ? previous : startHeight;
+    const su = this.sampleU;
+    const sh = this.sampleHeight;
+    const sf = this.sampleFirm;
+    su.length = sh.length = sf.length = 0;
+    su.push(from);
+    sf.push(Number.isFinite(previous) && this.hit.normal.y >= steepCos);
     if (!Number.isFinite(previous)) previous = this.holeHeight;
+    sh.push(previous);
     this.tread = this.addTread(from, previous, false);
     for (let i = 1; i <= n; i++) {
       const u = from + i * step;
@@ -129,10 +160,135 @@ export class GroundProfile {
       const near = Math.max(solid, startHeight);
       let h = this.heightAt(detector, u, near);
       const noGround = !Number.isFinite(h);
+      su.push(u);
+      sf.push(!noGround && this.hit.normal.y >= steepCos);
       if (noGround) h = this.holeHeight;
+      sh.push(h);
       this.span(detector, u - step, previous, u, h, Math.max(near, h), 0);
       previous = h;
       if (!noGround) solid = h;
+    }
+    if (steepCos > -1) this.firmTreads(minTread);
+  }
+
+  /**
+   * Ground steeper than the slope it walks on (the samples of the last `sample` that are not firm) is not stood on.
+   * The lip of a crevice between two rounded rocks steepens gradually down to its bottom: it is no edge, and the tread
+   * went on over the crevice as if it were flat. Here a dip (a stretch of steep samples, with the stretches without
+   * ground and those shorter than `minTread` between them, lower than the firm ground on both sides by an edge or
+   * more) becomes one tread at the height of its lowest sample, between edges at the last firm sample before it and
+   * the first after it: a gap from firm ground to firm ground, crossed (or jumped, or a drop) like the one between two
+   * platforms. A steep face between two levels (the side of a rock, a ramp) stays as it was: a step, or a slope (see
+   * lookFarAhead). The first and the last sample of the profile stay as they were too (the steep ground may go on).
+   */
+  private firmTreads(minTread: number): void {
+    const su = this.sampleU;
+    const sh = this.sampleHeight;
+    const sf = this.sampleFirm;
+    const count = su.length;
+    // Empinada: con suelo (sin él ya es un hueco), ni la primera ni la última.
+    const steep = (k: number): boolean => k > 0 && k < count - 1 && !sf[k] && sh[k] > this.holeHeight;
+    let any = false;
+    for (let k = 1; k < count - 1 && !any; k++) any = steep(k);
+    if (!any) return;
+    const pieces = this.pieces;
+    let n = 0;
+    const add = (start: number, end: number, startHeight: number, endHeight: number, low: number, startEdge: boolean, endEdge: boolean, kind: 0 | 1 | 2): void => {
+      if (pieces.length <= n) pieces.push({ start: 0, end: 0, startHeight: 0, endHeight: 0, low: 0, startEdge: false, endEdge: false, kind: 0, unstandable: false });
+      const p = pieces[n++];
+      p.start = start;
+      p.end = end;
+      p.startHeight = startHeight;
+      p.endHeight = endHeight;
+      p.low = low;
+      p.startEdge = startEdge;
+      p.endEdge = endEdge;
+      p.kind = kind;
+      p.unstandable = kind !== 0;
+    };
+    // Cada huella, en tramos firmes y empinados (cada tramo empinado, de la última muestra firme antes de él, o el
+    // principio de la huella, a la primera después, o su final). Los bordes, solo los de verdad (los de la huella).
+    let k = 0;
+    for (let i = 0; i < this.count; i++) {
+      const t = this.treads[i];
+      if (this.hole(t)) {
+        add(t.start, t.end, t.startHeight, t.endHeight, this.holeHeight, t.startEdge, t.endEdge, 2);
+        continue;
+      }
+      let from = t.start;
+      let fromHeight = t.startHeight;
+      while (k < count && su[k] < t.start) k++;
+      while (k < count && su[k] <= t.end) {
+        if (!steep(k)) {
+          k++;
+          continue;
+        }
+        let low = sh[k];
+        let e = k;
+        while (e + 1 < count && su[e + 1] <= t.end && steep(e + 1)) low = Math.min(low, sh[++e]);
+        const before = su[k - 1] >= t.start;
+        const after = e + 1 < count && su[e + 1] <= t.end;
+        const startU = before ? su[k - 1] : t.start;
+        const startH = before ? sh[k - 1] : t.startHeight;
+        const endU = after ? su[e + 1] : t.end;
+        const endH = after ? sh[e + 1] : t.endHeight;
+        if (startU > from) add(from, startU, fromHeight, startH, Math.min(fromHeight, startH), from === t.start && t.startEdge, false, 0);
+        add(startU, endU, startH, endH, Math.min(low, startH, endH), startU === t.start && t.startEdge, endU === t.end && t.endEdge, 1);
+        from = endU;
+        fromHeight = endH;
+        k = e + 1;
+      }
+      if (t.end > from) add(from, t.end, fromHeight, t.endHeight, Math.min(fromHeight, t.endHeight), from === t.start && t.startEdge, t.endEdge, 0);
+    }
+    // Un tramo firme más corto que un pie entre dos que no se pisan, tampoco (el fondo llano de la grieta).
+    for (let p = 1; p < n - 1; p++) {
+      const piece = pieces[p];
+      if (!piece.unstandable && piece.end - piece.start < minTread && pieces[p - 1].unstandable && pieces[p + 1].unstandable) piece.unstandable = true;
+    }
+    // De nuevo las huellas.
+    this.count = 0;
+    let previous: Tread | null = null;
+    const emit = (piece: Piece): void => {
+      // Sin un borde de verdad entre las dos, la misma huella (como estaba).
+      if (previous && piece.kind !== 2 && !this.hole(previous) && !piece.startEdge && !previous.endEdge && previous.end === piece.start) {
+        previous.end = piece.end;
+        previous.endHeight = piece.endHeight;
+        previous.endEdge = piece.endEdge;
+        return;
+      }
+      const t = this.addTread(piece.start, piece.startHeight, piece.startEdge);
+      t.end = piece.end;
+      t.endHeight = piece.endHeight;
+      t.endEdge = piece.endEdge;
+      previous = t;
+    };
+    for (let p = 0; p < n; p++) {
+      if (!pieces[p].unstandable) {
+        emit(pieces[p]);
+        continue;
+      }
+      // Lo que no se pisa, seguido: una hondonada si tiene algo empinado y queda más honda que el suelo firme de los dos
+      // lados (y hay suelo a los dos lados).
+      let last = p;
+      let low = pieces[p].low;
+      let hasSteep = pieces[p].kind === 1;
+      while (last + 1 < n && pieces[last + 1].unstandable) {
+        last++;
+        low = Math.min(low, pieces[last].low);
+        if (pieces[last].kind === 1) hasSteep = true;
+      }
+      const sides = p > 0 && last < n - 1 ? Math.min(pieces[p - 1].endHeight, pieces[last + 1].startHeight) : Number.NEGATIVE_INFINITY;
+      if (hasSteep && low < sides - this.edgeHeight) {
+        if (previous) previous.endEdge = true;
+        const t = this.addTread(pieces[p].start, low, true);
+        t.end = pieces[last].end;
+        t.endEdge = true;
+        pieces[last + 1].startEdge = true;
+        previous = t;
+      } else {
+        for (let q = p; q <= last; q++) emit(pieces[q]);
+      }
+      p = last;
     }
   }
 

@@ -1110,7 +1110,9 @@ export class PathPlanner {
     if (room >= hard && this.gapAcross(i, j, d, hard, config.maxStepDown, widest, most) > 0) return c.gaps[d];
     const dip = GAP_DIP * config.stepLength;
     const near = Math.min(hard, this.size);
-    if (room >= near && dip < config.maxStepDown && config.maxGapStep > 0) this.gapAcross(i, j, d, near, dip, GAP_SHARE * config.maxGapStep, most);
+    // Hasta lo que salta, como un hueco: de suelo firme a suelo firme, una grieta entre rocas redondeadas suele ser más
+    // ancha que un paso.
+    if (room >= near && dip < config.maxStepDown && config.maxGapStep > 0) this.gapAcross(i, j, d, near, dip, widest, most);
     return c.gaps[d];
   }
 
@@ -1124,9 +1126,12 @@ export class PathPlanner {
     const [di, dj] = NEIGHBORS[d];
     let gapFrom = 0;
     let gapTo = 0;
+    const steep = this.steepCos();
     for (let k = 1; k <= most; k++) {
       const n = this.cell(i + k * di, j + k * dj, c.height);
-      if (!(n.height >= c.height - drop)) {
+      // También el suelo más empinado que maxSlope a su altura (el labio de una grieta entre rocas redondeadas): no se
+      // pisa, y es parte del hueco (como para los pies, ver GroundProfile).
+      if (!(n.height >= c.height - drop) || (n.up < steep && n.height <= c.height + config.maxStepUp)) {
         if (gapTo > 0) return 0; // otro desnivel pasado el hueco
         if (gapFrom === 0) gapFrom = k;
         continue;
@@ -1162,11 +1167,12 @@ export class PathPlanner {
     const length = Math.hypot(di, dj) * s;
     const ux = (di * s) / length;
     const uz = (dj * s) / length;
+    const steep = this.steepCos();
     const level = (t: number): boolean => {
       this.origin.set(x + ux * t, ground + config.groundProbeHeight, z + uz * t);
       this.raycasts++;
       const found = this.detector.castDown(this.origin, config.groundProbeHeight + config.groundProbeDepth, this.hit);
-      return found && this.hit.point.y >= ground - drop;
+      return found && this.hit.point.y >= ground - drop && this.hit.normal.y >= steep;
     };
     const edge = (lo: number, hi: number, loLevel: boolean): number => {
       for (let k = 0; k < GAP_EDGE_STEPS; k++) {
@@ -1461,11 +1467,19 @@ export class PathPlanner {
   /**
    * For `lineClear`, from the sample `from` of the line (`samples` of them) on ground at `base`.height: the sample past a
    * dip it crosses as a gap, or −1. The dip (with ground in it) is deeper than GAP_DIP × `stepLength` below both sides
-   * and no wider than GAP_SHARE × `maxGapStep` along the line, and starts at or after the sample `first`; the other side
-   * is ground it can stand on, a step up or down, with no edge beside it (`ignoreEnds`: or the end of the line). Like
+   * and starts at or after the sample `first`; from the last firm ground before it (not steeper than `maxSlope`: the
+   * lip of a crevice between rounded rocks is part of it, as for the feet, see GroundProfile) to the other side, no
+   * wider than GAP_SHARE × `maxGapStep` along the line; the other side is firm ground it can stand on, a step up or
+   * down, with no edge beside it (`ignoreEnds`: or the end of the line). Like
    * the dip links of the grid (see `gapLink`), but at any angle: across a crevice running at an angle to the grid, the
    * route went back to cross it square on to a grid direction.
    */
+  /** Cosine of `maxSlope`: a cell whose ground normal is less upright than this is too steep for a foot. */
+  private steepCos(): number {
+    const max = this.config().maxSlope;
+    return max < 90 ? Math.cos((max * Math.PI) / 180) : Number.NEGATIVE_INFINITY;
+  }
+
   private dipAcross(ax: number, az: number, bx: number, bz: number, samples: number, from: number, base: Cell, first: number, ignoreEnds: boolean): number {
     const config = this.config();
     const dip = GAP_DIP * config.stepLength;
@@ -1477,6 +1491,8 @@ export class PathPlanner {
     let lowest = Number.POSITIVE_INFINITY;
     let previous = base;
     const heights: number[] = [];
+    const firms: boolean[] = [];
+    const steep = this.steepCos();
     for (let n = from + 1; n <= most; n++) {
       const t = n / samples;
       const i = Math.round((ax + (bx - ax) * t - this.x0) / s);
@@ -1485,17 +1501,23 @@ export class PathPlanner {
       // Sin suelo, un hueco (ver gapLink); más alto de lo que sube, una pared.
       if (!Number.isFinite(c.height) || c.height > base.height + config.maxStepUp) return -1;
       heights.push(c.height);
+      firms.push(c.up >= steep);
       previous = c;
       lowest = Math.min(lowest, c.height);
-      const level = c.height >= base.height - config.maxStepDown && !this.isSteep(c);
+      const level = c.height >= base.height - config.maxStepDown && !this.isSteep(c) && c.up >= steep;
       if (!level || !(lowest < Math.min(base.height, c.height) - dip)) continue;
       if (this.isEdge(i, j) && !(ignoreEnds && n === samples)) continue;
       // Lo que queda más hondo que los dos lados: desde la primera muestra así hasta la última.
       const bottom = Math.min(base.height, c.height) - dip;
       const start = heights.findIndex((h) => h < bottom);
-      let end = heights.length - 1;
-      while (!(heights[end] < bottom)) end--;
-      if (from + 1 + start < first || (end - start + 1) * spacing > widest) return -1;
+      // De suelo firme a suelo firme: de la última muestra firme antes de la hondonada (o la de salida) a la primera
+      // después.
+      const firmAt = (k: number): boolean => firms[k] && heights[k] >= bottom;
+      let before = start - 1;
+      while (before >= 0 && !firmAt(before)) before--;
+      let after = start + 1;
+      while (after < heights.length - 1 && (heights[after] < bottom || !firmAt(after))) after++;
+      if (from + 1 + start < first || (after - before - 1) * spacing > widest) return -1;
       return n;
     }
     return -1;

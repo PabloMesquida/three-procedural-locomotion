@@ -254,6 +254,18 @@ const LEAP_MAX_SPEED = 0.75;
  * least this far from the edge; the preparation lasts at least LEAP_MIN_PREP s.
  */
 const LEAP_TAKEOFF_AHEAD = 0.5;
+/**
+ * Leaping while turning, it jumps towards where it is turning (the heading it wants), up to this much off the way it
+ * goes (rad): with the one it had, crossing a crevice at an angle where the route turned, it jumped 30° off, along the
+ * crevice, and landed past the side of the rock.
+ */
+const LEAP_TURN = Math.PI / 6;
+/** Past a gap it jumps, it looks this far (× stepLength) for the firm ground it lands and brakes on (see leapFrom). */
+const LEAP_ROOM_LOOK = 3;
+/** Standing, it looks ahead again before setting off if the heading it wants changed more than this (rad). */
+const LOOK_OFF_SAME = Math.PI / 12;
+/** Held still this long (s) by the edge guard before a gap it can jump, wanting to move, it jumps standing. */
+const GAP_HELD = 0.5;
 const LEAP_EDGE_ROOM = 0.2;
 const LEAP_MIN_PREP = 0.08;
 /**
@@ -673,6 +685,11 @@ export class LocomotionController {
    * foot, and the stairs would put the foot past it, on the ground on the other side.
    */
   readonly standTarget = new Vector3(Number.NaN, 0, 0);
+  /**
+   * Where it is going to stop (world; NaN x = nowhere: it goes on): the destination of a `moveTo`. A jump across a gap
+   * is no faster than what lets it stop there (see leapFrom).
+   */
+  readonly stopPoint = new Vector3(Number.NaN, 0, 0);
   /** Obstacles that aren't ground (see Colliders): it doesn't go through them; null = none. */
   colliders: Colliders | null = null;
 
@@ -706,6 +723,16 @@ export class LocomotionController {
   private readonly leap = { pending: false, oneFoot: false, up: 0, speed: 0, heading: 0, ground: Number.NaN, lead: 'left' as Side, split: 1, time: 0, stride: false, reach: 1, airStep: false };
   /** It found it couldn't jump across the gap ahead moving: it brakes for it and, stopped, jumps with both feet. */
   private leapRefused = false;
+  /**
+   * The foot that touched down last without a leap check (it wasn't leaping yet): if it decides to leap while it is
+   * still planted, it leaps from it (see updateGapJump). Seeing the edge late (a crevice between rounded rocks, found
+   * with the step after it), it let the guard go and waited for a touchdown that came with the body past the edge.
+   */
+  private leapUnchecked: Side | null = null;
+  /** How long (s) the edge guard has held it still while it wants to move (see GAP_HELD). */
+  private heldTime = 0;
+  /** Heading it last looked ahead with before setting off (rad; NaN: since it moved, not yet). */
+  private lookedOffHeading = Number.NaN;
   /** How many jumps across gaps so far, and this one's variation (see rollLeap; offsets in leg lengths and degrees). */
   private leapCount = 0;
   private readonly leapVary = {
@@ -752,6 +779,8 @@ export class LocomotionController {
   /** Each arm forward when the preparation started (degrees): from there to that of take-off. */
   private readonly leapArmStart = { left: 0, right: 0 };
   private readonly gapAhead = { edge: 0, width: 0, far: 0 };
+  /** Way a jump across a gap goes (horizontal, unit; see LEAP_TURN). */
+  private readonly leapDirection = new Vector3();
   /** Going idle: progress (0→1) of flattening the feet from their pose when stopping. */
   private settleBlend = 1;
   private readonly settleFrom: Record<Side, { position: Vector3; rotation: Quaternion }> = {
@@ -1009,24 +1038,32 @@ export class LocomotionController {
 
   /**
    * `position` (the root, world) is between the feet along the line from one to the other: where each one is planted or,
-   * in the air, where it will land, on ground (not jumping), and no farther apart than a step across a gap (see
-   * BRIDGE_STRETCH). Planning a stop at the edge of a gap, the landing could be over it, with no ground: the body went
-   * on over the gap.
+   * in the air, where it took off or where it will land, on ground (not jumping), and no farther apart than a step
+   * across a gap (see BRIDGE_STRETCH). Planning a stop at the edge of a gap, the landing could be over it, with no
+   * ground: the body went on over the gap. With the foot behind taking off, the body is still between it and the other:
+   * only by its landing (ahead of both), crossing a crevice it went down into it and stopped there, before a "wall".
    */
   private betweenFeet(position: Vector3): boolean {
     if (this.body.state.airborne || this.jumping.phase !== 'GROUNDED') return false;
     for (const side of SIDES) if (this.feet[side].phase !== 'PLANTED' && !this.planner.landingGrounded[side]) return false;
-    const a = this.feet.left.phase === 'PLANTED' ? this.feet.left.planted : this.feet.left.swing.landing;
-    const b = this.feet.right.phase === 'PLANTED' ? this.feet.right.planted : this.feet.right.swing.landing;
-    const dx = b.x - a.x;
-    const dz = b.z - a.z;
-    const length2 = dx * dx + dz * dz;
     // Y a no más que el paso más largo sobre un hueco que cruza (ver BRIDGE_STRETCH): sostenido por encima de uno más
     // ancho (con `maxGapStep` 0, cualquiera), pasaba el borde en vez de pararse.
     const reach = BRIDGE_STRETCH * this.stairs.gapReach;
-    if (length2 < 1e-6 || length2 > reach * reach) return false;
-    const t = ((position.x - a.x) * dx + (position.z - a.z) * dz) / length2;
-    return t > 0 && t < 1;
+    const between = (a: Vector3, b: Vector3): boolean => {
+      const dx = b.x - a.x;
+      const dz = b.z - a.z;
+      const length2 = dx * dx + dz * dz;
+      if (length2 < 1e-6 || length2 > reach * reach) return false;
+      const t = ((position.x - a.x) * dx + (position.z - a.z) * dz) / length2;
+      return t > 0 && t < 1;
+    };
+    const left = this.feet.left;
+    const right = this.feet.right;
+    const a = left.phase === 'PLANTED' ? left.planted : left.swing.landing;
+    const b = right.phase === 'PLANTED' ? right.planted : right.swing.landing;
+    if (between(a, b)) return true;
+    if (left.phase !== 'PLANTED' && between(left.planted, b)) return true;
+    return right.phase !== 'PLANTED' && between(a, right.planted);
   }
 
   /** Velocidad deseada (m/s), entre 0 y config.runSpeed. */
@@ -1372,6 +1409,8 @@ export class LocomotionController {
     // 2b. Salto: despegue (velocidad vertical) y aterrizaje.
     //     El frame del despegue aún se resuelve apoyado (final de la preparación);
     //     el cuerpo empieza a subir desde el siguiente.
+    const held = this.body.state.speed <= GAP_JUMP_STILL * this.config.walkSpeed && this.targetSpeed > 0 && this.body.speedLimit < GAP_JUMP_STILL * this.config.walkSpeed;
+    this.heldTime = held ? this.heldTime + dt : 0;
     this.updateGapJump();
     this.updateStrideJump(dt);
     const jumpEvent = this.jumping.update(dt, this.body.state, this.targetSpeed > 0 && this.body.speedLimit > 0);
@@ -1412,6 +1451,7 @@ export class LocomotionController {
           foot.plantedRotation.copy(foot.swing.landingRotation);
           if (this.stairs.leaping) this.leapFrom(event.side);
           else if (this.strideJump) this.strideFrom(event.side);
+          this.leapUnchecked = this.stairs.leaping ? null : event.side;
           this.pivotApplied[event.side] = 0;
           this.landed[event.side] = true;
           foot.steps++;
@@ -2262,8 +2302,9 @@ export class LocomotionController {
       changed = true;
     }
     // Cayendo en una cara más empinada que maxSlope (el costado de una grieta entre dos rocas redondeadas), también donde
-    // la puso crossDip: a suelo firme.
-    if (this.stairs.firmLanding(start, other.planted, stanceGround, landing, placement.state, placement.ankleHeight, this.landingDirection, this.tmp)) {
+    // la puso crossDip: a suelo firme. Andando: parado, al recolocar los pies, el pie movido quedaba lejos de su sitio y
+    // volvía a recolocarlo, sin acabar de pararse.
+    if (probe && this.stairs.firmLanding(start, other.planted, stanceGround, landing, placement.state, placement.ankleHeight, this.landingDirection, this.tmp)) {
       this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
       changed = true;
     }
@@ -2931,6 +2972,7 @@ export class LocomotionController {
     const gap = this.gapAhead;
     const foot = this.stairs.heelBack + this.stairs.toeFront;
     if (s.speed > GAP_MOVING * cfg.walkSpeed) {
+      this.lookedOffHeading = Number.NaN;
       if (this.leapRefused) return;
       // Tan lejos como lo que tardaría en frenar ante él (el guarda) y un paso más: si no, empezaba a frenar antes.
       const step = this.leapStep(s.speed);
@@ -2939,12 +2981,23 @@ export class LocomotionController {
       // Despegando junto al borde, ¿le alcanza? (Al apoyar el pie de despegue lo mide con su sitio; si no, frena.)
       if (!this.leapFor((1 + GAP_JUMP_LANDING) * foot + gap.width, gap.far - ground, s.speed)) return;
       this.stairs.leaping = true;
+      // Con el pie de despegue ya apoyado (lo vio tarde): desde él, ya.
+      const late = this.leapUnchecked;
+      this.leapUnchecked = null;
+      if (late && this.feet[late].phase === 'PLANTED') this.leapFrom(late);
       return;
     }
-    // Parado en el borde con los pies juntos: con los dos pies.
-    if (this.gait.mode !== 'idle' || s.speed > GAP_JUMP_STILL * cfg.walkSpeed) return;
+    // Parado en el borde con los pies juntos: con los dos pies. También con la marcha andando, si el guarda lo tiene quieto
+    // queriendo avanzar (ver GAP_HELD): echando a andar junto al borde de una grieta, daba pasos en el sitio sin volver
+    // a reposo, y no saltaba.
+    if ((this.gait.mode !== 'idle' && this.heldTime < GAP_HELD) || s.speed > GAP_JUMP_STILL * cfg.walkSpeed) return;
     const heading = this.body.headingTarget;
     const direction = this.tmp.copy(s.travel).applyAxisAngle(UP, heading - s.heading);
+    // Antes de echar a andar, mira si delante hay un hueco (una vez por arranque y rumbo; ver lookBeforeSetting).
+    if (!(Math.abs(wrapAngle(heading - this.lookedOffHeading)) < LOOK_OFF_SAME)) {
+      this.lookedOffHeading = heading;
+      this.stairs.lookBeforeSetting(s.position, ground, direction, Math.max(this.stairs.jumpWidth, cfg.maxGapStep) + 2 * foot + cfg.stepLength);
+    }
     if (!this.stairs.gapJump(s.position, direction, ground, gap)) return;
     const distance = gap.edge + gap.width + GAP_JUMP_LANDING * foot;
     const up = Math.min(Math.max(Math.sqrt((cfg.gravity * distance) / 2), GAP_TWO_MIN_UP * cfg.jumpSpeed), cfg.jumpSpeed);
@@ -2969,7 +3022,7 @@ export class LocomotionController {
    * LEAP_MAX_SPEED × jogSpeed, going up no more than `jumpSpeed`. Leaves in `leap` the speed up and forward and returns
    * true, or false if it can't.
    */
-  private leapFor(distance: number, rise: number, speed: number): boolean {
+  private leapFor(distance: number, rise: number, speed: number, most = Number.POSITIVE_INFINITY): boolean {
     const cfg = this.config;
     const g = cfg.gravity;
     // Hasta el esfuerzo máximo de un salto (ver JUMP_MAX_EFFORT): corriendo sobre uno ancho (maxGapJumpRun) lo necesita.
@@ -2978,7 +3031,7 @@ export class LocomotionController {
     if (!(root > 0)) return false;
     const longest = (top + Math.sqrt(root)) / g;
     const lo = Math.max(speed, distance / longest);
-    const hi = Math.max(speed, LEAP_MAX_SPEED * cfg.jogSpeed);
+    const hi = Math.min(Math.max(speed, LEAP_MAX_SPEED * cfg.jogSpeed), most);
     if (lo > hi) return false;
     // La que menos le cuesta (ver JumpProfile.effort): más deprisa hacia delante (lo que pasa de la que traía cuesta
     // JUMP_FORWARD_COST) y menos hacia arriba. Antes conservaba la velocidad y subía lo que hiciera falta: caminando sobre
@@ -3110,15 +3163,29 @@ export class LocomotionController {
     const foot = this.stairs.heelBack + this.stairs.toeFront;
     const gap = this.gapAhead;
     const step = this.leapStep(s.speed);
-    if (!this.stairs.gapAhead(ankle, s.travel, ground, step + (1 + LEAP_EDGE_ROOM) * this.stairs.toeFront + foot, gap)) return;
+    // Hacia donde quiere ir (ver LEAP_TURN).
+    const turn = clamp(wrapAngle(this.body.headingTarget - s.heading), -LEAP_TURN, LEAP_TURN);
+    const dir = this.leapDirection.copy(s.travel).applyAxisAngle(UP, turn);
+    if (!this.stairs.gapAhead(ankle, dir, ground, step + (1 + LEAP_EDGE_ROOM) * this.stairs.toeFront + foot, gap)) return;
     // Despega con la raíz LEAP_TAKEOFF_AHEAD por delante del tobillo (CMU 49: ~0,15 piernas), sin pasar del borde: si
     // no, la raíz llegaba al borde antes de despegar y se paraba en seco. A lo sumo LEAP_PREP de su apoyo.
-    const toAnkle = (ankle.x - s.position.x) * s.travel.x + (ankle.z - s.position.z) * s.travel.z;
+    const toAnkle = (ankle.x - s.position.x) * dir.x + (ankle.z - s.position.z) * dir.z;
     const ahead = Math.min(toAnkle + LEAP_TAKEOFF_AHEAD * foot, toAnkle + gap.edge - LEAP_EDGE_ROOM * foot);
     const preparation = Math.min(Math.max(ahead / Math.max(s.speed, 1e-3), LEAP_MIN_PREP), LEAP_PREP * this.gait.stanceDuration(s.speed));
     // Del borde a la raíz al despegar: desde el tobillo, menos lo que la raíz habrá avanzado.
     const fromRoot = gap.edge + toAnkle - s.speed * preparation;
-    const fits = this.leapFor(Math.max(fromRoot, 0) + gap.width + GAP_JUMP_LANDING * foot, gap.far - ground, s.speed);
+    // No más deprisa de lo que le deja frenar el suelo firme que hay pasado el hueco (ver LEAP_ROOM_LOOK): sobre una
+    // grieta estrecha entre rocas, saltaba a 2 m/s y el impulso lo llevaba un metro más allá, por la otra ladera.
+    const far = gap.edge + gap.width;
+    let room = this.stairs.firmRun(ankle.x + dir.x * far, ankle.z + dir.z * far, dir, gap.far, LEAP_ROOM_LOOK * this.config.stepLength);
+    // Y que pueda pararse donde va (con el destino justo pasado el hueco, el impulso lo llevaba un metro más allá).
+    if (!Number.isNaN(this.stopPoint.x)) {
+      const along = (this.stopPoint.x - ankle.x) * dir.x + (this.stopPoint.z - ankle.z) * dir.z - far;
+      if (along >= 0) room = Math.min(room, along + foot);
+    }
+    const after = room - (1 + GAP_JUMP_LANDING) * foot;
+    const most = room >= LEAP_ROOM_LOOK * this.config.stepLength ? Number.POSITIVE_INFINITY : Math.sqrt(2 * this.config.deceleration * Math.max(after, 0));
+    const fits = this.leapFor(Math.max(fromRoot, 0) + gap.width + GAP_JUMP_LANDING * foot, gap.far - ground, s.speed, most);
     // O el otro pie apoya en el borde (el tobillo, con la punta a LEAP_EDGE_ROOM pies de él) y despega desde ahí: si el
     // paso no queda demasiado corto (LEAP_SHORT) o si desde aquí no le alcanza, y siempre que la raíz no llegue al borde
     // antes de que apoye (corriendo, llegaba: un paso corto al borde no sirve).
@@ -3142,7 +3209,7 @@ export class LocomotionController {
     // Caminando, el libre aún apoya (doble apoyo): despega ya, para subir la rodilla antes del salto (ver leapDrive).
     const lead = this.leapFree();
     if (this.gait.isStance(lead)) this.gait.duty[lead] = Math.min(this.gait.duty[lead], this.gait.footPhase(lead) + 1e-3);
-    this.leap.heading = s.heading;
+    this.leap.heading = s.heading + turn;
     this.leap.ground = gap.far;
   }
 
@@ -3318,7 +3385,11 @@ export class LocomotionController {
     gait.phase = fract(plant - gait.offsets[lead]);
     // Desde parado hacia delante, sin que se le pida avanzar: cae clavado (ver STICK_SHARE).
     const p = this.jumping.profile;
-    if (this.jumping.standingTakeoff && p.vx > p.approach && this.targetSpeed <= p.approach) {
+    // O con el sitio donde va a pararse (ver stopPoint) más cerca de lo que tardaría en frenar: saltando parado una grieta
+    // con el destino al otro lado, el impulso lo llevaba un metro más allá y volvía.
+    const stop = this.stopPoint;
+    const stopNear = !Number.isNaN(stop.x) && Math.hypot(stop.x - this.body.state.position.x, stop.z - this.body.state.position.z) < (this.speed * this.speed) / (2 * Math.max(cfg.deceleration, 1e-6));
+    if (this.jumping.standingTakeoff && p.vx > p.approach && (this.targetSpeed <= p.approach || stopNear)) {
       gait.reset();
       this.setGaitMode('idle');
       this.sticking = true;

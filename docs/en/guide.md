@@ -465,6 +465,12 @@ instead of stopping at the edge, the character steps across it.
   below the ground on both sides (a crevice between two rocks, also with one side sloping down into it; a trench
   between two platforms): it steps over it instead of into it, and `moveTo` plans routes across it as across a gap.
   A shallower one, it steps into.
+- Ground steeper than `maxSlope` isn't stood on, nor at the lip of a crevice between rounded rocks, which steepens
+  down to its bottom: the feet and `moveTo` measure the crevice from firm ground to firm ground, at any angle. A
+  foot that would land on such a face goes to the nearest firm spot within reach. If the crevice is wider than
+  `maxGapStep`, it jumps it (up to `maxGapJump`, the other side up to twice `maxStepDown` lower), towards where it
+  is going and no faster than lets it stop at the destination; setting off right by its edge, it looks first and
+  jumps standing.
 - Coming at it at an angle, the gap is wider along the way it goes (`maxGapStep` is measured that way): a 45 cm gap
   is wider than 50 cm from about 30° off square on, and it stops at the edge.
 - `moveTo` plans routes across gaps, square on, but crossing one costs as much as walking twice as far: if going

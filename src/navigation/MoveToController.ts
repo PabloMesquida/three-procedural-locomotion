@@ -361,6 +361,7 @@ export class MoveToController {
     this.active = false;
     this.controller.targetSpeed = 0;
     this.controller.standTarget.x = Number.NaN;
+    this.controller.stopPoint.x = Number.NaN;
   }
 
   /** What is left to walk to the destination (m): along the route, if there is one; 0 without a destination. */
@@ -390,6 +391,9 @@ export class MoveToController {
    */
   update(dt = 0): void {
     this.updateTurnLimits();
+    // Donde va a pararse (ver LocomotionController.stopPoint).
+    if (this.active) this.controller.stopPoint.copy(this.target);
+    else this.controller.stopPoint.x = Number.NaN;
     if (!this.active) return;
     if (this.facing) {
       this.face(dt);
@@ -401,6 +405,9 @@ export class MoveToController {
     const distance = this.distance();
 
     const state = this.controller.body.state;
+    // Saltando un hueco, nada hasta tocar el suelo: con el destino justo pasada la otra orilla, llegaba en el aire, y
+    // al caer el impulso del salto lo llevaba un metro más allá, ya sin destino.
+    if (state.airborne || this.controller.jumping.phase !== 'GROUNDED') return;
     // Por una ruta, hacia un punto por delante en ella; hasta que el destino queda a menos de eso: entonces,
     // como en línea recta (frena y llega).
     // En el último tramo, si va por un camino angosto (allí mira más cerca), también: frena a tiempo.

@@ -472,6 +472,12 @@ hueco: en vez de pararse en el borde, el personaje lo cruza de un paso.
   10 % de `stepLength` por debajo del suelo a los dos lados (una grieta entre dos rocas, también con una cara que
   baja en rampa; una zanja entre dos tarimas): la cruza de un paso en vez de pisar adentro, y `moveTo` planea rutas
   que la cruzan como a un hueco. En una menos honda, pisa.
+- El suelo más empinado que `maxSlope` no se pisa, tampoco en el labio de una grieta entre rocas redondeadas, que
+  se empina hasta el fondo: los pies y `moveTo` miden la grieta de suelo firme a suelo firme, en cualquier ángulo. Un
+  pie que caería en una de esas caras va al sitio firme más cercano a su alcance. Si la grieta es más ancha que
+  `maxGapStep`, la salta (hasta `maxGapJump`, con el otro lado hasta el doble de `maxStepDown` más abajo), hacia donde
+  va y no más rápido de lo que le deja pararse en el destino; si echa a andar justo al borde, primero mira y salta
+  parado.
 - Llegando en diagonal, el hueco es más ancho en la dirección en que va (`maxGapStep` se mide así): uno de 45 cm
   mide más de 50 cm a partir de unos 30° de la perpendicular, y se para en el borde.
 - `moveTo` planea rutas que cruzan huecos, de frente, pero cruzar uno cuesta lo que caminar el doble: si rodearlo no

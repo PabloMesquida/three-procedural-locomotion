@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { BoxGeometry, Group, Mesh, MeshBasicMaterial, type Object3D, Vector3 } from 'three';
+import { BoxGeometry, ExtrudeGeometry, Group, Mesh, MeshBasicMaterial, type Object3D, Shape, Vector2, Vector3 } from 'three';
 
 import type { ProceduralHuman, Side } from '../src/index.ts';
 import { createWorld, SIDES, simulate, type World } from './helpers/sim.ts';
@@ -363,5 +363,74 @@ describe('zanja en diagonal a la cuadrícula (maxGapStep)', () => {
       assert.ok(arrived < 5, `llegó a los ${arrived.toFixed(1)} s`);
       assert.equal(inTrench, 0, 'un pie apoyado en la zanja');
     });
+  }
+});
+
+/**
+ * Losa de roca de `height` de alto a lo ancho de X (6 m), de z = `z0` a `z1` por la base: arriba llana y, hacia una
+ * grieta, un labio redondeado de `back` / `front` m (hacia −Z / +Z; 0: cara vertical) que se empina hasta casi la vertical
+ * (y = height · (1 − s²)), como el borde de una roca: lo de arriba se pisa (menos empinado que maxSlope), la cara no.
+ */
+function roundedSlab(parent: Object3D, z0: number, z1: number, height: number, back: number, front: number): void {
+  const points: Vector2[] = [new Vector2(z0, 0)];
+  const lip = (from: number, dir: number, width: number, reverse: boolean): Vector2[] => {
+    const out: Vector2[] = [];
+    for (let k = 0; k <= 14; k++) {
+      const t = k / 14;
+      out.push(new Vector2(from + dir * t * width, height * (1 - t * t)));
+    }
+    return reverse ? out.reverse() : out;
+  };
+  points.push(...(back > 0 ? lip(z0 + back, -1, back, true) : [new Vector2(z0, height)]));
+  points.push(...(front > 0 ? lip(z1 - front, 1, front, false) : [new Vector2(z1, height)]));
+  points.push(new Vector2(z1, 0));
+  const geometry = new ExtrudeGeometry(new Shape(points), { depth: 6, bevelEnabled: false });
+  // El perfil, en (z, y); extruido a lo largo de X.
+  geometry.rotateY(-Math.PI / 2);
+  geometry.translate(3, 0, 0);
+  parent.add(new Mesh(geometry, new MeshBasicMaterial()));
+}
+
+// Una grieta entre dos rocas redondeadas, como las de un terreno de rocas modelado (60 cm de hondo): cada lado acaba en
+// un labio que se empina hasta casi la vertical. El perfil del suelo no la veía (sin escalón: la altura cambia poco a
+// poco) y los pasos caían en los labios y en el fondo; la ruta la medía más estrecha de lo que es de suelo firme a suelo
+// firme. Ahora la cruza de un paso si cabe y si no, la salta, sin apoyar un pie en ella ni bajar la raíz.
+describe('grieta entre rocas redondeadas (maxGapStep, maxGapJump)', () => {
+  const ROCK = 0.6;
+  for (const [name, lip, bottom] of [['estrecha', 0.12, 0.04], ['media', 0.2, 0.06], ['ancha (la salta)', 0.3, 0.12]] as const) {
+    for (const back of [false, true]) {
+      it(`${name}, ${back ? 'de vuelta' : 'de ida'}: la cruza sin pisarla ni bajar la raíz`, () => {
+        const world = createWorld({
+          buildTerrain: (g) => {
+            roundedSlab(g, -4, 0, ROCK, 0, lip);
+            roundedSlab(g, bottom, 4, ROCK, lip, 0);
+          },
+        });
+        const from = back ? 2 : -2;
+        const to = back ? -2 : 2;
+        world.model.position.set(0, ROCK, from);
+        world.model.rotation.set(0, back ? Math.PI : 0, 0);
+        world.model.updateMatrixWorld(true);
+        world.human.reset();
+        const { human } = world;
+        const loco = human.locomotion;
+        let inCrack = 0;
+        let lowest = Infinity;
+        const was: Record<Side, boolean> = { left: false, right: false };
+        simulate(world, 8, [[0, (h) => h.moveTo(new Vector3(0, ROCK, to))]], {
+          onFrame: () => {
+            if (!human.airborne) lowest = Math.min(lowest, human.position.y);
+            for (const side of SIDES) {
+              const air = human.footPhase(side) === 'SWING';
+              if (was[side] && !air && loco.feet[side].planted.y - loco.planner.placement(side).ankleHeight < ROCK - 0.05) inCrack++;
+              was[side] = air;
+            }
+          },
+        });
+        assert.ok(Math.abs(human.position.z - to) < 0.3, `no llegó: z ${human.position.z.toFixed(2)}`);
+        assert.equal(inCrack, 0, 'un pie apoyado en la grieta');
+        assert.ok(lowest > ROCK - 0.12, `la raíz bajó a ${lowest.toFixed(2)} m`);
+      });
+    }
   }
 });
