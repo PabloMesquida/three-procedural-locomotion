@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { BoxGeometry, Mesh, MeshBasicMaterial, type Object3D, Vector3 } from 'three';
+import { BoxGeometry, Group, Mesh, MeshBasicMaterial, type Object3D, Vector3 } from 'three';
 
 import type { ProceduralHuman, Side } from '../src/index.ts';
 import { createWorld, SIDES, simulate, type World } from './helpers/sim.ts';
@@ -309,6 +309,59 @@ describe('grieta con una cara en rampa (maxGapStep)', () => {
       assert.ok(Math.abs(human.position.z - to) < 0.3, `no llegó: z ${human.position.z.toFixed(2)}`);
       assert.equal(inCrack, 0, 'un pie apoyado en la grieta');
       assert.ok(lowest > H - 0.18, `la raíz bajó a ${lowest.toFixed(2)} m`);
+    });
+  }
+});
+
+// Una zanja como las de arriba, más honda que maxStepDown (60 cm) y en diagonal a la cuadrícula de la ruta (girada 30°
+// o 60°). La ruta solo enlazaba por encima de una hondonada en 8 direcciones, y el atajo en línea recta no la cruzaba:
+// para cruzarla en una de ellas, volvía atrás y la rodeaba en parte; en una grieta de la isla del diorama, unos 8 s de
+// pasos de giro, y uno en ella.
+describe('zanja en diagonal a la cuadrícula (maxGapStep)', () => {
+  for (const angle of [30, 60]) {
+    it(`girada ${angle}°: moveTo la cruza en línea recta, sin pisarla`, () => {
+      const a = (angle * Math.PI) / 180;
+      const world = createWorld({
+        buildTerrain: (g) => {
+          const group = new Group();
+          group.rotation.y = a;
+          box(group, 8, H, 6, 0, 0, 3);
+          box(group, 8, H, 6, 0, 0, -0.35 - 3);
+          box(group, 8, H - 0.6, 0.35, 0, 0, -0.175);
+          g.add(group);
+        },
+      });
+      // A lo largo de la normal de la zanja (−z girada), de 2,4 m de este lado (empieza mirando hacia −z: así, antes de
+      // llegar a ella, ya gira hacia ella) a 1,2 m del otro.
+      const nx = -Math.sin(a);
+      const nz = -Math.cos(a);
+      const from = new Vector3(-nx * 2.4, H, -nz * 2.4);
+      const to = new Vector3(nx * 1.55, H, nz * 1.55);
+      world.model.position.copy(from);
+      world.model.updateMatrixWorld(true);
+      world.human.reset();
+      const { human } = world;
+      const loco = human.locomotion;
+      let route: Vector3[] | null = null;
+      let inTrench = 0;
+      let arrived = Number.NaN;
+      const was: Record<Side, boolean> = { left: false, right: false };
+      simulate(world, 8, [[0, (h) => { h.moveTo(to); route = h.movePath; }]], {
+        onFrame: (t) => {
+          for (const side of SIDES) {
+            const air = human.footPhase(side) === 'SWING';
+            if (was[side] && !air && loco.feet[side].planted.y - loco.planner.placement(side).ankleHeight < H - 0.1) inTrench++;
+            was[side] = air;
+          }
+          const p = human.position;
+          if (Number.isNaN(arrived) && Math.hypot(p.x - to.x, p.z - to.z) < 0.2) arrived = t;
+        },
+      });
+      // En línea recta: sin ruta (movePath null) o con un solo punto, el destino.
+      const points = (route as Vector3[] | null) ?? [];
+      assert.ok(points.length <= 1, `ruta de ${points.length} puntos: ${points.map((p) => `(${p.x.toFixed(2)}, ${p.z.toFixed(2)})`).join(' ')}`);
+      assert.ok(arrived < 5, `llegó a los ${arrived.toFixed(1)} s`);
+      assert.equal(inTrench, 0, 'un pie apoyado en la zanja');
     });
   }
 });

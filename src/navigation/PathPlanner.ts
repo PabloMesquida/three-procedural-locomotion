@@ -1408,31 +1408,97 @@ export class PathPlanner {
   /**
    * The straight line from (`ax`, `az`), on ground at `ay`, to (`bx`, `bz`) can be walked: each step of it can
    * be taken and it passes at least `room` m from the edges (`ignoreEnds`: except within `room` of each end,
-   * where it can be closer: it starts or ends next to an edge; from colliders, only at the start).
+   * where it can be closer: it starts or ends next to an edge; from colliders, only at the start). It also crosses a
+   * dip as a gap, at any angle (see `dipAcross`), with the edges of its lips closer.
    */
   private lineClear(ax: number, az: number, ay: number, bx: number, bz: number, room: number, ignoreEnds: boolean): boolean {
     const s = this.size;
     const length = Math.hypot(bx - ax, bz - az);
     const samples = Math.max(Math.ceil(length / (s / 2)), 1);
+    const spacing = length / samples;
     let pi = Math.round((ax - this.x0) / s);
     let pj = Math.round((az - this.z0) / s);
     let previous = this.cell(pi, pj, ay);
+    // La última muestra sin borde al lado (de donde saltaría una hondonada) y hasta dónde, pasada una, no mira los bordes.
+    let takeoff = this.isEdge(pi, pj) ? -1 : 0;
+    let takeoffCell = previous;
+    let lipUntil = -1;
     for (let n = 1; n <= samples; n++) {
       const t = n / samples;
       const i = Math.round((ax + (bx - ax) * t - this.x0) / s);
       const j = Math.round((az + (bz - az) * t - this.z0) / s);
       const c = this.cell(i, j, previous.height);
-      if (c !== previous && (!this.canStep(previous, c) || !this.alongNarrow(pi, pj, i, j))) return false;
+      const fromEnd = Math.min(t, 1 - t) * length;
+      const blocked =
+        (c !== previous && (!this.canStep(previous, c) || !this.alongNarrow(pi, pj, i, j))) ||
+        (!(ignoreEnds && fromEnd <= room + s) && n > lipUntil && this.clearance(i, j) < room);
+      if (blocked) {
+        const lip = Math.ceil((room + s) / spacing);
+        const land = takeoff >= 0 ? this.dipAcross(ax, az, bx, bz, samples, takeoff, takeoffCell, n - lip, ignoreEnds) : -1;
+        if (land < 0) return false;
+        n = land;
+        lipUntil = land + lip;
+        const lt = land / samples;
+        pi = Math.round((ax + (bx - ax) * lt - this.x0) / s);
+        pj = Math.round((az + (bz - az) * lt - this.z0) / s);
+        previous = this.cell(pi, pj, takeoffCell.height);
+        continue;
+      }
       pi = i;
       pj = j;
-      const fromEnd = Math.min(t, 1 - t) * length;
-      if (!(ignoreEnds && fromEnd <= room + s) && this.clearance(i, j) < room) return false;
       // Un collider, tampoco junto al destino (si está dentro de uno, la ruta acaba a su borde); junto a la
       // salida sí (puede estar arrimado a él).
       if (!(ignoreEnds && t * length <= room + s) && this.apart(i, j) < room) return false;
+      if (!this.isEdge(i, j)) {
+        takeoff = n;
+        takeoffCell = c;
+      }
       previous = c;
     }
     return true;
+  }
+
+  /**
+   * For `lineClear`, from the sample `from` of the line (`samples` of them) on ground at `base`.height: the sample past a
+   * dip it crosses as a gap, or −1. The dip (with ground in it) is deeper than GAP_DIP × `stepLength` below both sides
+   * and no wider than GAP_SHARE × `maxGapStep` along the line, and starts at or after the sample `first`; the other side
+   * is ground it can stand on, a step up or down, with no edge beside it (`ignoreEnds`: or the end of the line). Like
+   * the dip links of the grid (see `gapLink`), but at any angle: across a crevice running at an angle to the grid, the
+   * route went back to cross it square on to a grid direction.
+   */
+  private dipAcross(ax: number, az: number, bx: number, bz: number, samples: number, from: number, base: Cell, first: number, ignoreEnds: boolean): number {
+    const config = this.config();
+    const dip = GAP_DIP * config.stepLength;
+    if (!(config.maxGapStep > 0) || !(dip < config.maxStepDown)) return -1;
+    const s = this.size;
+    const spacing = Math.hypot(bx - ax, bz - az) / samples;
+    const widest = GAP_SHARE * config.maxGapStep;
+    const most = Math.min(samples, from + Math.ceil((widest + 2 * (this.clearanceNeeded() + s)) / spacing) + 1);
+    let lowest = Number.POSITIVE_INFINITY;
+    let previous = base;
+    const heights: number[] = [];
+    for (let n = from + 1; n <= most; n++) {
+      const t = n / samples;
+      const i = Math.round((ax + (bx - ax) * t - this.x0) / s);
+      const j = Math.round((az + (bz - az) * t - this.z0) / s);
+      const c = this.cell(i, j, previous.height);
+      // Sin suelo, un hueco (ver gapLink); más alto de lo que sube, una pared.
+      if (!Number.isFinite(c.height) || c.height > base.height + config.maxStepUp) return -1;
+      heights.push(c.height);
+      previous = c;
+      lowest = Math.min(lowest, c.height);
+      const level = c.height >= base.height - config.maxStepDown && !this.isSteep(c);
+      if (!level || !(lowest < Math.min(base.height, c.height) - dip)) continue;
+      if (this.isEdge(i, j) && !(ignoreEnds && n === samples)) continue;
+      // Lo que queda más hondo que los dos lados: desde la primera muestra así hasta la última.
+      const bottom = Math.min(base.height, c.height) - dip;
+      const start = heights.findIndex((h) => h < bottom);
+      let end = heights.length - 1;
+      while (!(heights[end] < bottom)) end--;
+      if (from + 1 + start < first || (end - start + 1) * spacing > widest) return -1;
+      return n;
+    }
+    return -1;
   }
 }
 

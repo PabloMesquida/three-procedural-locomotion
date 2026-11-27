@@ -135,6 +135,8 @@ export const GAP_DIP = 0.1;
 const DIP_SAMPLES = 8;
 /** Its sides, at most this much below the stance foot (× GAP_DIP; not the face of the dip, sloping up to the far one). */
 const DIP_RIM = 2;
+/** Looking for firm ground for a foot (see `firmLanding`): every this much along the step (× foot length). */
+const FIRM_SAMPLE = 0.5;
 const GAP_STRETCH = 1.35;
 const GAP_WAIT_SPEED = 0.4;
 
@@ -204,8 +206,6 @@ export class StairPlanner {
    * and further: a 1.1 m step.
    */
   gapCrossing = false;
-  /** The last `crossDip` that moved the landing put it past the dip (not just before it). */
-  dipCrossed = false;
   /**
    * It is going to jump across the gap ahead running, without stopping (set by LocomotionController, see
    * `gapAhead`): the edge guard doesn't brake for gaps it jumps across.
@@ -916,7 +916,6 @@ export class StairPlanner {
    * there is no side ahead (going down stairs), and up to about 2 × DIP_SAMPLES if there is.
    */
   crossDip(start: Vector3, stance: Vector3, stanceGround: number, landing: Vector3, ankleHeight: number, direction: Vector3, out: Vector3): boolean {
-    this.dipCrossed = false;
     const width = this.gapWidth;
     const c = this.config;
     if (!(width > 0)) return false;
@@ -976,8 +975,64 @@ export class StairPlanner {
     // siguiente la cruza.
     else if (before > 0) u = before;
     else return false;
-    this.dipCrossed = u === past;
     out.set(landing.x + dx * (u - natural), stanceGround + ankleHeight, landing.z + dz * (u - natural));
+    return true;
+  }
+
+  /**
+   * The landing (`landing`, world ankle, already placed; `ground`, the query of the ground its foot placement made
+   * there) is on ground steeper than `maxSlope` and more than GAP_DIP below the stance foot: the side of a crevice
+   * between two rounded rocks. Nobody puts a foot there, and the step went into the crevice. Along `direction`,
+   * through the landing, the nearest firm ground (not steeper than that, within a step up or down of the stance foot,
+   * on ground at `stanceGround`; under the heel, the ankle and the tips of the toes): behind it (ahead of where the
+   * foot took off, `start`) or ahead of it (no farther from the stance foot than the longest step across a gap),
+   * whichever is closer in proportion to the step; if there is none ahead, it isn't a crevice (going down the side of
+   * a rock). Returns it in `out` (height: that of the stance foot; it is placed again) and true, or false (the landing
+   * is firm, or there is none). Only then: one or a few raycasts every FIRM_SAMPLE.
+   */
+  firmLanding(start: Vector3, stance: Vector3, stanceGround: number, landing: Vector3, ground: FootGroundState, ankleHeight: number, direction: Vector3, out: Vector3): boolean {
+    const c = this.config;
+    if (!(c.maxSlope < 90) || !ground.grounded) return false;
+    const flat = Math.cos((c.maxSlope * Math.PI) / 180);
+    if (ground.hit.normal.y >= flat) return false;
+    // Y más abajo que el pie de apoyo (ver GAP_DIP): metido en una grieta. Subiendo por la cara de una roca, no (en un
+    // montículo de piedras pequeñas, muchas caras son así de empinadas, y llevaba el pie más lejos de lo que llega).
+    if (!(stanceGround - (landing.y - ankleHeight) > GAP_DIP * c.stepLength)) return false;
+    // La consulta, la de este aterrizaje.
+    if (Math.hypot(ground.rayOrigin.x - landing.x, ground.rayOrigin.z - landing.z) > this.footLength) return false;
+    const d = this.horizontal(direction);
+    const dx = d.x;
+    const dz = d.z;
+    // También un paso corto (el pie de atrás alcanzando al otro, al otro lado de la grieta).
+    const natural = (landing.x - start.x) * dx + (landing.z - start.z) * dz;
+    if (!(natural > 0)) return false;
+    const behindStance = (stance.x - start.x) * dx + (stance.z - start.z) * dz;
+    const firm = (s: number): boolean => {
+      const h = this.heightAt(landing.x + dx * s, landing.z + dz * s, stanceGround);
+      return Number.isFinite(h) && this.hit.normal.y >= flat && this.passable(h - stanceGround);
+    };
+    const foot = (s: number): boolean => firm(s) && firm(s - this.heelBack) && firm(s + this.toeFront);
+    const step = FIRM_SAMPLE * this.footLength;
+    let before = Number.NaN;
+    for (let s = -step; natural + s > 0; s -= step) {
+      if (foot(s)) {
+        before = s;
+        break;
+      }
+    }
+    const farthest = Math.max(this.gapReach, (natural - behindStance) * this.gapStretch);
+    let past = Number.NaN;
+    for (let s = step; natural + s - behindStance <= farthest; s += step) {
+      if (foot(s)) {
+        past = s;
+        break;
+      }
+    }
+    // Sin suelo firme pasada ella, no es una grieta: baja de verdad (la ladera de una roca), como antes.
+    if (Number.isNaN(past)) return false;
+    let s = past;
+    if (!Number.isNaN(before) && Math.abs(Math.log((natural + before) / natural)) < Math.abs(Math.log((natural + past) / natural))) s = before;
+    out.set(landing.x + dx * s, stanceGround + ankleHeight, landing.z + dz * s);
     return true;
   }
 

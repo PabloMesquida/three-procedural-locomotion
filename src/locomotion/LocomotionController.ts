@@ -752,8 +752,6 @@ export class LocomotionController {
   /** Each arm forward when the preparation started (degrees): from there to that of take-off. */
   private readonly leapArmStart = { left: 0, right: 0 };
   private readonly gapAhead = { edge: 0, width: 0, far: 0 };
-  /** The foot whose step crosses a dip, past it (see StairPlanner.crossDip); null if none. */
-  private dipSide: Side | null = null;
   /** Going idle: progress (0→1) of flattening the feet from their pose when stopping. */
   private settleBlend = 1;
   private readonly settleFrom: Record<Side, { position: Vector3; rotation: Quaternion }> = {
@@ -1093,7 +1091,6 @@ export class LocomotionController {
 
   /** Stops the character and rests both feet in their neutral position (keeps the desired crouch). */
   reset(): void {
-    this.dipSide = null;
     this.syncPlacementConfig();
     this.planner.widthOverride = null;
     this.planner.syncStepWidth();
@@ -2258,15 +2255,19 @@ export class LocomotionController {
     );
     if (moved) this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
     // Cayendo en una grieta entre dos rocas que el perfil no ve (con una cara que baja en rampa): la cruza.
-    const dip = this.stairs.crossDip(start, other.planted, other.planted.y - stanceAnkle, landing, placement.ankleHeight, this.landingDirection, this.tmp);
-    // El pie que la cruza (ver standingGround).
-    if (dip && this.stairs.dipCrossed) this.dipSide = side;
-    else if (this.dipSide === side) this.dipSide = null;
-    if (dip) {
+    const stanceGround = other.planted.y - stanceAnkle;
+    let changed = moved;
+    if (this.stairs.crossDip(start, other.planted, stanceGround, landing, placement.ankleHeight, this.landingDirection, this.tmp)) {
       this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
-      return true;
+      changed = true;
     }
-    return moved;
+    // Cayendo en una cara más empinada que maxSlope (el costado de una grieta entre dos rocas redondeadas), también donde
+    // la puso crossDip: a suelo firme.
+    if (this.stairs.firmLanding(start, other.planted, stanceGround, landing, placement.state, placement.ankleHeight, this.landingDirection, this.tmp)) {
+      this.planner.placeLanding(side, this.tmp, footYaw, landing, landingRotation);
+      changed = true;
+    }
+    return changed;
   }
 
   /**
