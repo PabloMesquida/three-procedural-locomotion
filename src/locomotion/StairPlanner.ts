@@ -49,6 +49,10 @@ const WALL_ASSUMED = 2;
 const WALL_AROUND = 1;
 /** To check an edge, it looks this far in front of it and behind it (× foot length). */
 const WALL_PROBE = 0.5;
+/** An edge found still on ground it stands on is moved on to where that ends, up to this far (× foot length; see toEdge). */
+const EDGE_REFINE = 1;
+/** Closer than this to where the ground stops being stood on (m), a point found is already at the edge. */
+const EDGE_EPSILON = 0.005;
 /** Bisection steps to find where the edge ends, if it ends within `WALL_SIDE`. */
 const WALL_END_STEPS = 5;
 /**
@@ -107,6 +111,12 @@ const JUMP_MIN_COS = Math.cos((35 * Math.PI) / 180);
  * at the edge of a curved crevice, the route went 40° off the edge it found, and it stood there.
  */
 const JUMP_STANDING_COS = Math.cos((50 * Math.PI) / 180);
+/**
+ * Moving (see `gapAhead`), a gap still counts as ahead with the root over it up to this fraction of its width: braking
+ * late before a crevice it saw late, the root went a few centimetres past the edge just as the foot landed at it, the
+ * jump it had decided was off then, and it went on over the crevice without jumping or braking.
+ */
+const JUMP_OVER = 0.5;
 const JUMP_EDGE_SLACK = 1;
 /**
  * Faster than walkSpeed, a gap it jumps across has to be seen in time to take off before it (or brake): between the
@@ -147,6 +157,11 @@ const FIRM_SIDE = 0.5;
 const FIRM_SIDE_COST = 1.5;
 /** …never closer than this to the stance foot (ankle to ankle, × foot length). */
 const FIRM_APART = 0.6;
+/**
+ * …and, with the body still, first the spots no farther than this from it (× gapReach), or with it between the two feet:
+ * as close as LocomotionController holds the body up over a gap beside a foot (BRIDGE_NEAR).
+ */
+const ROOT_NEAR = 0.5;
 const GAP_STRETCH = 1.35;
 /**
  * Jumping a gap, the other side can be this much lower than a step down (× `maxStepDown`): from the higher rock of a
@@ -218,6 +233,14 @@ export class StairPlanner {
    * crosses it, it slows down (see LocomotionController), or the body went on and the next step was very long.
    */
   gapWait = false;
+  /**
+   * The last step stopped before a gap it would step across (no wider than `maxGapStep`) because from there the other
+   * side was out of reach (by a few centimetres, at an angle or with the stance foot back from the edge): the edge guard
+   * doesn't let the body go on over it as over one it steps across, and the jumps take it (see aheadOfWall, gapAhead).
+   * Before, both feet stopped at the edge and the body went on over the crevice and sank, with the legs split. Until a
+   * step crosses it, a jump lands or it is reset.
+   */
+  crossHeld = false;
   /**
    * The last step crosses a gap (from the stance foot to the landing), or stops just before one to cross it with the
    * next: meanwhile it doesn't speed up (see LocomotionController). Speeding up after a turn, the landing went further
@@ -362,14 +385,15 @@ export class StairPlanner {
       if (c < (square ? JUMP_STANDING_COS : JUMP_MIN_COS)) continue;
       const perpendicular = (this.wall.x - position.x) * n.x + (this.wall.z - position.z) * n.z;
       const edge = perpendicular / c;
-      if (perpendicular < -this.heelBack || (square ? perpendicular : edge) > within) continue;
+      const over = square ? this.heelBack : Math.max(this.heelBack, JUMP_OVER * this.wallJump);
+      if (perpendicular < -over || (square ? perpendicular : edge) > within) continue;
       if (!this.alongWall(position.x + direction.x * edge, position.z + direction.z * edge)) continue;
       const width = this.wallJump / c;
       const rise = this.wallJumpFar - ground;
       // Más ancho de lo que cruza de un paso, o tanto más abajo que no lo baja de un paso (ver JUMP_DROP).
       if (width > this.jumpWidth || rise > this.config.maxStepUp || rise < -JUMP_DROP * this.config.maxStepDown) continue;
       // Uno que cruza de un paso, no (parado ante él, `square`, sí: si el guarda lo paró, no lo cruzaba de un paso).
-      if (!square && width <= this.gapWidth && this.passable(rise)) continue;
+      if (!square && !this.crossHeld && width <= this.gapWidth && this.passable(rise)) continue;
       out.edge = edge;
       out.width = width;
       out.far = this.wallJumpFar;
@@ -394,6 +418,7 @@ export class StairPlanner {
     this.lookedAt.x = Number.NaN;
     this.scannedAt.x = Number.NaN;
     this.gapWait = false;
+    this.crossHeld = false;
     this.gapCrossing = false;
     this.leaping = false;
   }
@@ -543,7 +568,7 @@ export class StairPlanner {
     const c = forward.x * n.x + forward.z * n.z;
     if (c < WALL_AHEAD_COS) return Number.POSITIVE_INFINITY;
     // Un hueco que cruza de un paso, yendo hacia él (en diagonal es más ancho): no frena.
-    if (this.wallGap <= this.gapWidth * c) return Number.POSITIVE_INFINITY;
+    if (this.wallGap <= this.gapWidth * c && !this.crossHeld) return Number.POSITIVE_INFINITY;
     // Ni ante uno que va a saltar corriendo (ver `leaping`).
     if (this.leaping && this.wallJump <= this.jumpWidth * c) return Number.POSITIVE_INFINITY;
     const perpendicular = (this.wall.x - position.x) * n.x + (this.wall.z - position.z) * n.z;
@@ -852,6 +877,9 @@ export class StairPlanner {
         at.y = treadHeight(t, (t.start + t.end) / 2);
         const d = profile.tangent(t.start, this.dir);
         this.foundWall(at, d, below);
+        // Un desnivel que no baja (no un hueco que cruce de un paso): aunque el borde lo midiera como uno (por unos
+        // centímetros, desde otro punto), el guarda no lo deja pasar (ver crossHeld).
+        if (t.startHeight < below) this.crossHeld = true;
         wallCos = Math.max(d.x * this.wallNormal.x + d.z * this.wallNormal.z, WALL_MIN_COS);
         end = i;
         beforeWall = solid;
@@ -903,7 +931,10 @@ export class StairPlanner {
     this.gapWait = false;
     if (bestTread >= 0 && next < end && profile.treads[bestTread + 1].cross && best < uLanding && natural > GAP_MIN_ADVANCE * c.stepLength) {
       const near = Math.max(best - uStance, 1e-6);
-      let cross = bounds(next) && lo <= farthest && Math.abs(Math.log((lo - uStance) / natural)) <= Math.abs(Math.log(near / natural));
+      const reachable = bounds(next) && lo <= farthest;
+      let cross = reachable && Math.abs(Math.log((lo - uStance) / natural)) <= Math.abs(Math.log(near / natural));
+      // Al borde de uno que cruzaría de un paso, pero desde aquí no llega (ver crossHeld): hasta que lo cruce.
+      if (!reachable) this.crossHeld = true;
       if (!cross && 2 * natural - near > farthest - uStance) {
         // Tendría que esperar: si no le da para frenar antes del borde, cruza estirando el paso (ver GAP_STRETCH).
         const v = this.speed;
@@ -915,6 +946,7 @@ export class StairPlanner {
       if (cross) {
         best = lo;
         bestTread = next;
+        this.crossHeld = false;
       }
     }
     this.gapCrossing = false;
@@ -1031,13 +1063,45 @@ export class StairPlanner {
    * where the foot took off, `start`, nor farther from the stance foot than the longest step across a gap) or a little
    * to a side (see FIRM_SIDE), not on the stance foot (see FIRM_APART). Returns it in `out` (height: that of the stance
    * foot; it is placed again) and true, or false (the landing is firm, or there is none within reach: it stays).
+   * Also on the bottom of a crevice deeper than a step down: then all around, within reach of the stance foot. With the
+   * body still at `root`, first the spots that keep it held up (ROOT_NEAR): turning in place over a crevice, each foot
+   * went to the nearest firm ground, both on the same side, and the body was left over the crevice.
    * Only then: up to three raycasts per spot, nearest first.
    */
-  firmLanding(start: Vector3, stance: Vector3, stanceGround: number, landing: Vector3, ground: FootGroundState, ankleHeight: number, direction: Vector3, out: Vector3): boolean {
+  firmLanding(
+    start: Vector3,
+    stance: Vector3,
+    stanceGround: number,
+    landing: Vector3,
+    ground: FootGroundState,
+    ankleHeight: number,
+    direction: Vector3,
+    out: Vector3,
+    root: Vector3 | null = null,
+  ): boolean {
     const c = this.config;
-    if (!(c.maxSlope < 90) || !ground.grounded) return false;
-    const flat = Math.cos((c.maxSlope * Math.PI) / 180);
-    if (ground.hit.normal.y >= flat) return false;
+    if (!ground.grounded) return false;
+    // O en el fondo de una grieta, más abajo de lo que baja de un paso: dándose la vuelta a medio cruzarla (un pie a cada
+    // lado, el cuerpo encima), el pie de atrás caía en el fondo, que es llano, y el cuerpo bajaba con él.
+    const hole = !this.passable(ground.hit.point.y - stanceGround);
+    // Con el cuerpo quieto (`root`) sobre una grieta, primero donde lo deja sostenido: junto al pie (ROOT_NEAR) o entre los
+    // dos pies. Y un aterrizaje en suelo firme que no lo sostiene (`lost`), también se mueve: girando en el sitio sobre una
+    // grieta, cada pie iba al suelo firme más cercano, los dos al mismo lado, y el cuerpo quedaba sobre ella.
+    const near = ROOT_NEAR * this.gapReach;
+    const supports = (x: number, z: number): boolean => {
+      if (!root || Math.hypot(root.x - x, root.z - z) <= near) return true;
+      const ax = x - stance.x;
+      const az = z - stance.z;
+      const t = ((root.x - stance.x) * ax + (root.z - stance.z) * az) / (ax * ax + az * az);
+      return t > 0 && t < 1;
+    };
+    const over = root !== null && this.offGround(root.x, root.z, stanceGround);
+    const lost = over && !supports(landing.x, landing.z);
+    const around = hole || lost;
+    if (!(c.maxSlope < 90) && !around) return false;
+    const flat = c.maxSlope < 90 ? Math.cos((c.maxSlope * Math.PI) / 180) : 0;
+    const steep = ground.hit.normal.y < flat;
+    if (!steep && !around) return false;
     // La consulta, la de este aterrizaje.
     if (Math.hypot(ground.rayOrigin.x - landing.x, ground.rayOrigin.z - landing.z) > this.footLength) return false;
     const d = this.horizontal(direction);
@@ -1045,16 +1109,17 @@ export class StairPlanner {
     const dz = d.z;
     const natural = (landing.x - start.x) * dx + (landing.z - start.z) * dz;
     // Un paso de verdad (ver GAP_MIN_ADVANCE): parándose, los pasos en el sitio que lo dejan quieto no; movido el pie,
-    // quedaba lejos de su sitio y volvía a dar otro, sin acabar de pararse.
-    if (!(natural > GAP_MIN_ADVANCE * c.stepLength)) return false;
+    // quedaba lejos de su sitio y volvía a dar otro, sin acabar de pararse. En el fondo de una grieta, cualquiera.
+    if (!around && !(natural > GAP_MIN_ADVANCE * c.stepLength)) return false;
     const step = FIRM_SAMPLE * this.footLength;
-    // Hacia atrás, hasta donde despegó.
-    const back = natural;
     const farthest = Math.max(this.gapReach, Math.hypot(landing.x - stance.x, landing.z - stance.z) * this.gapStretch);
+    // Hacia atrás, hasta donde despegó. En el fondo de una grieta, alrededor, hasta donde alcanza desde el apoyo: girando
+    // en ella, el pie apuntaba a lo largo de la grieta y por ahí no salía de ella.
+    const back = around ? farthest : Math.max(natural, 0);
     const apart = FIRM_APART * this.footLength;
     const candidates = this.firmCandidates;
     candidates.length = 0;
-    const sides = Math.round(FIRM_SIDE / FIRM_SAMPLE);
+    const sides = around ? Math.ceil(farthest / step) : Math.round(FIRM_SIDE / FIRM_SAMPLE);
     for (let i = -Math.floor(back / step); i * step <= farthest; i++) {
       for (let j = -sides; j <= sides; j++) {
         if (i === 0 && j === 0) continue;
@@ -1066,14 +1131,17 @@ export class StairPlanner {
       const h = this.heightAt(x, z, stanceGround);
       return Number.isFinite(h) && this.hit.normal.y >= flat && this.passable(h - stanceGround);
     };
-    for (const { s, l } of candidates) {
-      const x = landing.x + dx * s - dz * l;
-      const z = landing.z + dz * s + dx * l;
-      const fromStance = Math.hypot(x - stance.x, z - stance.z);
-      if (fromStance > farthest || fromStance < apart) continue;
-      if (!firm(x, z) || !firm(x - dx * this.heelBack, z - dz * this.heelBack) || !firm(x + dx * this.toeFront, z + dz * this.toeFront)) continue;
-      out.set(x, stanceGround + ankleHeight, z);
-      return true;
+    // Si no hay uno que lo sostenga: el más cercano (sobre suelo empinado o el fondo), o se queda (en suelo firme).
+    for (const pass of over ? (steep || hole ? [true, false] : [true]) : [false]) {
+      for (const { s, l } of candidates) {
+        const x = landing.x + dx * s - dz * l;
+        const z = landing.z + dz * s + dx * l;
+        const fromStance = Math.hypot(x - stance.x, z - stance.z);
+        if (fromStance > farthest || fromStance < apart || (pass && !supports(x, z))) continue;
+        if (!firm(x, z) || !firm(x - dx * this.heelBack, z - dz * this.heelBack) || !firm(x + dx * this.toeFront, z + dz * this.toeFront)) continue;
+        out.set(x, stanceGround + ankleHeight, z);
+        return true;
+      }
     }
     return false;
   }
@@ -1307,6 +1375,7 @@ export class StairPlanner {
    * already remembers `MAX_WALLS`.
    */
   private foundWall(point: Vector3, direction: Vector3, ground: number): void {
+    this.toEdge(point, direction, ground);
     const w = this.wall;
     const n = this.wallNormal;
     let empty = -1;
@@ -1353,6 +1422,29 @@ export class StairPlanner {
       }
     }
     this.store(slot);
+  }
+
+  /**
+   * Moves `point` on along `direction` (up to EDGE_REFINE foot lengths) to where the ground from `ground` stops being
+   * stood on, if it is still on it. The edge of a crevice between rounded rocks comes from the profile at its last firm
+   * sample, up to a sample before the lip gets too steep: measured from there (WALL_PROBE past it, still firm ground),
+   * the edge came out short and skewed, and the jump didn't see it from the foot beside it.
+   */
+  private toEdge(point: Vector3, direction: Vector3, ground: number): void {
+    const d = this.horizontal(direction);
+    const reach = EDGE_REFINE * this.footLength;
+    const x = point.x;
+    const z = point.z;
+    if (this.offGround(x + d.x * EDGE_EPSILON, z + d.z * EDGE_EPSILON, ground) || !this.offGround(x + d.x * reach, z + d.z * reach, ground)) return;
+    let lo = 0;
+    let hi = reach;
+    for (let k = 0; k < WALL_REFINE_STEPS; k++) {
+      const mid = (lo + hi) / 2;
+      if (this.offGround(x + d.x * mid, z + d.z * mid, ground)) hi = mid;
+      else lo = mid;
+    }
+    point.x = x + d.x * lo;
+    point.z = z + d.z * lo;
   }
 
   /**
