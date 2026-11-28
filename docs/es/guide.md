@@ -71,7 +71,7 @@ Dos formas, que se pueden mezclar:
   [hueco](#huecos) si rodearlo es mucho más largo. Si no puede llegar al
   punto, va al más cercano que alcanza (`moveTarget`). Planea sobre el suelo que pisa, con las mismas reglas que
   los pasos, y rodea los `colliders` (un tronco, columnas, paredes) con el cuerpo fuera de ellos. Con
-  `avoid: false`, en línea recta.
+  `avoid: false`, en línea recta. Si se lo da en el aire (saltando), planea la ruta al caer.
 - **Clic para ir**: raycast contra el suelo en `click` y el punto a `moveTo`. Con OrbitControls (o cualquier control de
   cámara con el ratón), no uses solo `pointerdown`: también salta al empezar cada arrastre de la cámara. Guarda
   dónde fue el `pointerdown` y, en `click`, ignóralo si el puntero se movió más de unos píxeles (ver

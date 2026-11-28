@@ -71,7 +71,8 @@ Two ways, which can be mixed:
   jumps across a [gap](#gaps) if going round it is much longer. If the point
   can't be reached, it goes to the reachable one closest to it (`moveTarget`). It plans on the ground it walks
   on, with the same rules as the steps, and goes round the `colliders` (a tree trunk, columns, walls) keeping
-  its body clear of them. With `avoid: false`, in a straight line.
+  its body clear of them. Given in the air (jumping), it plans the route on landing. With `avoid: false`, in a
+  straight line.
 - **Click to move**: raycast the ground on `click` and give `moveTo` the point. With OrbitControls (or any camera
   control with the mouse), don't use `pointerdown` alone: it also fires at the start of every drag of the camera.
   Keep where `pointerdown` was and, on `click`, ignore it if the pointer moved more than a few pixels (see

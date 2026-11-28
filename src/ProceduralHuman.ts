@@ -180,6 +180,8 @@ export class ProceduralHuman {
   /** Seconds stuck on that route, and how many times it has planned it again. */
   private stuckTime = 0;
   private replans = 0;
+  /** A `moveTo` given in the air: it plans its route on landing. */
+  private planOnLanding = false;
   private readonly mutableConfig: ProceduralHumanConfig;
   private readonly scaledConfig: ProceduralHumanConfig;
   private readonly maxTimeStep: number;
@@ -290,18 +292,27 @@ export class ProceduralHuman {
    * riser higher than `maxStepUp`, a drop deeper than `maxStepDown`, a hole), it plans a route round it from
    * the start and follows it with curves; it goes up a platform by its stairs. If the point can't be reached,
    * it goes to the reachable one closest to it (`moveTarget`). With `avoid: false`, in a straight line (it
-   * stops in front of what it can't step). It only sees the ground: not walls or columns that aren't part of it.
+   * stops in front of what it can't step). It only sees the ground: not walls or columns that aren't part of it. In the
+   * air (jumping), it plans the route on landing.
    */
   moveTo(point: Vector3, options: { run?: boolean; avoid?: boolean } = {}): void {
     const run = options.run ?? false;
     const body = this.locomotion.body.state;
     const start = this.routeStart.copy(body.position);
     if (Number.isFinite(body.groundHeight)) start.y = body.groundHeight;
+    this.startOnFeet(start, point);
     this.route.length = 0;
     this.routeTarget.copy(point);
     this.routeRun = run;
     this.stuckTime = 0;
     this.replans = (options.avoid ?? true) ? 0 : MAX_REPLANS;
+    // En el aire, la planea al caer (de momento, en línea recta): desde allí, el suelo bajo la raíz es el fondo de lo
+    // que salta, y la ruta lo mandaba a él.
+    this.planOnLanding = (options.avoid ?? true) && body.airborne;
+    if (this.planOnLanding) {
+      this.navigation.setTarget(point, run);
+      return;
+    }
     const planned = (options.avoid ?? true) && this.pathPlanner.plan(start, point, this.route, this.routeNarrow, run);
     if (planned && (this.route.length > 1 || this.routeNarrow[0])) {
       this.navigation.setTarget(this.route[this.route.length - 1], run, this.route, this.routeNarrow, this.pathPlanner.arrival);
@@ -317,7 +328,33 @@ export class ProceduralHuman {
    */
   followPath(points: readonly Vector3[], options: { run?: boolean } = {}): void {
     if (points.length === 0) return;
+    this.planOnLanding = false;
     this.navigation.setTarget(points[points.length - 1], options.run ?? false, points);
+  }
+
+  /**
+   * Straddling a gap (the ground under the root lower than the feet stand, by more than `maxStepDown`), a route starts
+   * from the foot on the ground closest to `target` (moves `start` there): from the bottom of a crevice it found no way
+   * out and sent the character into it.
+   */
+  private startOnFeet(start: Vector3, target: Vector3): void {
+    const loco = this.locomotion;
+    let lowest = Number.POSITIVE_INFINITY;
+    let best: Side | null = null;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const side of SIDES) {
+      const foot = loco.feet[side];
+      if (foot.phase === 'SWING') continue;
+      lowest = Math.min(lowest, foot.planted.y - loco.planner.placement(side).ankleHeight);
+      const distance = Math.hypot(target.x - foot.planted.x, target.z - foot.planted.z);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = side;
+      }
+    }
+    if (best === null || !(lowest - start.y > loco.config.maxStepDown)) return;
+    const foot = loco.feet[best].planted;
+    start.set(foot.x, foot.y - loco.planner.placement(best).ankleHeight, foot.z);
   }
 
   /**
@@ -337,6 +374,7 @@ export class ProceduralHuman {
 
   /** Stop: cancels the `moveTo` and sets the desired speed to 0. */
   stop(): void {
+    this.planOnLanding = false;
     this.navigation.cancel();
     this.locomotion.targetSpeed = 0;
   }
@@ -429,6 +467,10 @@ export class ProceduralHuman {
     const step = total / steps;
     for (let i = 0; i < steps; i++) {
       const navigating = this.navigation.active;
+      if (this.planOnLanding && !this.locomotion.body.state.airborne) {
+        this.planOnLanding = false;
+        if (this.navigation.active) this.moveTo(this.routeTarget, { run: this.routeRun });
+      }
       this.replanIfStuck(step);
       this.navigation.update(step);
       // Hasta dónde llegará (para el gesto de tocar: en un tramo corto, se para antes de que llegue la mano).

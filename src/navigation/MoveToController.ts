@@ -407,7 +407,7 @@ export class MoveToController {
     const state = this.controller.body.state;
     // Saltando un hueco, nada hasta tocar el suelo: con el destino justo pasada la otra orilla, llegaba en el aire, y
     // al caer el impulso del salto lo llevaba un metro más allá, ya sin destino.
-    if (state.airborne || this.controller.jumping.phase !== 'GROUNDED') return;
+    if (state.airborne) return;
     // Por una ruta, hacia un punto por delante en ella; hasta que el destino queda a menos de eso: entonces,
     // como en línea recta (frena y llega).
     // En el último tramo, si va por un camino angosto (allí mira más cerca), también: frena a tiempo.
@@ -417,6 +417,17 @@ export class MoveToController {
     // Por un camino angosto hasta el final: frena según lo que le queda por él (no sale de él para frenar).
     const narrowToEnd = this.narrowToEnd();
     const left = narrowToEnd ? this.remaining() : distance;
+    // Cayendo de un salto (ya en el suelo), tampoco llega ni gira; pero frena si el destino queda a menos de lo que tarda
+    // en pararse, aunque ya lo haya pasado: si no, seguía pidiendo la velocidad de antes del salto y, saltando parado una
+    // grieta con el destino justo pasada la otra orilla, aceleraba al caer y se metía en la siguiente. (Despegando, no:
+    // frenando, se quedaría corto.)
+    const phase = this.controller.jumping.phase;
+    if (phase !== 'GROUNDED') {
+      if (phase !== 'LANDING') return;
+      if ((!onRoute || narrowToEnd) && left - c.arriveRadius <= this.controller.body.stoppingDistance(state.speed)) this.braking = true;
+      if (this.braking) this.controller.targetSpeed = 0;
+      return;
+    }
     if (this.braking) {
       this.controller.targetSpeed = 0;
       if (state.speed < 1e-3) {
