@@ -9,6 +9,10 @@ ground, **without baked animations**. Everything is computed every frame from a 
 of the steps (gait), where to place each foot (footstep planning), legs with Two-Bone IK, foot placement on the
 terrain and the posture of the body (pelvis, torso, head, arms, hands).
 
+> **Status:** in active development (0.x). The API and the motion itself may change between versions: install a
+> fixed tag ([how](#installing-in-another-project)) and read the
+> [release notes](https://github.com/PabloMesquida/three-procedural-locomotion/releases) before updating.
+
 <!-- Add a GIF or screenshot here, and a link to the live demo once the website is published. -->
 
 ## Features

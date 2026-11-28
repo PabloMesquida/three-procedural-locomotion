@@ -9,6 +9,10 @@ cualquier suelo, **sin animaciones bakeadas**. Todo se calcula cada frame a part
 ritmo de los pasos (gait), dónde apoyar cada pie (footstep planning), piernas con Two-Bone IK, foot placement
 sobre el terreno y postura del cuerpo (pelvis, torso, cabeza, brazos, manos).
 
+> **Estado:** en desarrollo activo (0.x). La API y el propio movimiento pueden cambiar entre versiones: instala una
+> etiqueta fija ([cómo](#instalar-en-otro-proyecto)) y lee las
+> [notas de cada versión](https://github.com/PabloMesquida/three-procedural-locomotion/releases) antes de actualizar.
+
 <!-- Añadir aquí un GIF o una captura, y el enlace a la demo en vivo cuando la web esté publicada. -->
 
 ## Qué hace
